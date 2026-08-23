@@ -1,0 +1,30 @@
+# Secrets and local config — never commit.
+# The leading slash-less `.env` matters: the real one lives at the REPO ROOT,
+# and a pattern of `*/.env` alone matches 2/.env and misses it entirely — which
+# is how the file holding the Supabase secret key ends up staged.
+.env
+.env.local
+.env.*.local
+*/.env
+*/.env.local
+*/.env.*.local
+
+# Generated from .env by harness/build-dashboard-config.js
+2-operations_reporting/build/dashboard/config.js
+
+.DS_Store
+
+# Personal call-prep notes, not part of any week's deliverable.
+0/
+
+# Duplicate canvas exports carrying the author's name — the build/ exports
+# under the same name (novus-invoice-processor.json, koya-*.json etc.) are
+# the ones that get committed instead.
+Ikechukwu*
+
+# Dependencies and build output.
+*/node_modules/
+.next/
+.vercel/
+*.tsbuildinfo
+.vercel
