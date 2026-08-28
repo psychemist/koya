@@ -1,0 +1,3 @@
+# Nemotron Text Extractor (A/B)
+
+={{ JSON.stringify({ model: 'nvidia/llama-3.3-nemotron-super-49b-v1.5', messages: [ { role: 'system', content: $json.extraction_system_prompt }, { role: 'user', content: $json.claude_input + '\n\nReturn ONLY a JSON object with exactly these keys: is_invoice, not_invoice_reason, vendor_name, invoice_number, invoice_date, due_date, total_amount, currency, description, is_credit_note.' } ], temperature: 0, top_p: 1, max_tokens: 1200, response_format: { type: 'json_object' }, stream: false }) }}
