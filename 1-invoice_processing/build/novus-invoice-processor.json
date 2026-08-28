@@ -1,0 +1,988 @@
+{
+  "name": "Novus Realty - Intelligent Invoice Processing (v2.5)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Invoices",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "name": "Fetch All Existing Sheet Records",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -420,
+        320
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "One read per run, not one per invoice. Feeds the duplicate check."
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "filters": {
+          "q": "is:unread newer_than:14d -label:novus-not-invoice -label:novus-processed (invoice OR invoices OR invoicing OR billing OR payment OR statement OR receipt OR \"fee note\" OR factuur OR filename:pdf)"
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "name": "Search Unread Invoice Emails",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -200,
+        320
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "The two -label: terms are the cost control. A mail already triaged as not-an-invoice carries novus-not-invoice and is filtered out BY GMAIL, so it is never downloaded and never reaches a paid node. Label names must match exactly, lowercase, spaces written as dashes."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Unroll Attachments & Normalize          (Run Once for All Items)\n//\n// One output item per processable unit:\n//   - one item per PDF attachment, OR\n//   - one item per unsupported attachment (when the mail has no PDF), OR\n//   - one item for the email body (when nothing is attached)\n//\n// Every piece of metadata a later node needs is carried ON THE ITEM.\n// No $getWorkflowStaticData - that was the source of the empty\n// \"Gmail Message ID\" that made the Add Label node fail.\n// ============================================================\n\n// ---- triage guard ------------------------------------------\n// Belt-and-braces backstop to the \"-label:novus-not-invoice\" term in the\n// Gmail search. If a mail somehow arrives here still carrying the\n// not-an-invoice label, drop it now - before any paid node.\n// Put your Gmail label ID here (Label_xxxxxxxx). Leave as-is to disable.\nconst NOT_INVOICE_LABEL_ID = 'Label_REPLACE_WITH_NOT_INVOICE_LABEL_ID';\n\nfunction alreadyTriaged(email) {\n  if (!NOT_INVOICE_LABEL_ID || NOT_INVOICE_LABEL_ID.indexOf('REPLACE') !== -1) return false;\n  const ids = email.labelIds || email.labels || [];\n  if (!Array.isArray(ids)) return false;\n  return ids.some(function (l) {\n    return (typeof l === 'string' ? l : (l && l.id)) === NOT_INVOICE_LABEL_ID;\n  });\n}\n\nconst PDF_EXT = /\\.pdf$/i;\nconst DOC_EXT = /\\.(docx?|xlsx?|pptx?|csv|txt|rtf|odt|ods|pages|numbers|zip|rar|7z|eml|msg|html?)$/i;\nconst IMG_EXT = /\\.(png|jpe?g|gif|tiff?|bmp|webp|heic|avif)$/i;\n\nfunction senderOf(email) {\n  const raw = email.From || email.from || '';\n  if (typeof raw === 'string' && raw.trim()) {\n    const m = raw.match(/<([^>]+)>/);\n    return (m ? m[1] : raw).trim().toLowerCase();\n  }\n  if (raw && Array.isArray(raw.value) && raw.value[0]) {\n    return String(raw.value[0].address || '').trim().toLowerCase();\n  }\n  if (raw && raw.text) {\n    const m = String(raw.text).match(/<([^>]+)>/);\n    return (m ? m[1] : raw.text).trim().toLowerCase();\n  }\n  return '';\n}\n\nconst out = [];\nconst emails = $input.all();\n\nfor (let i = 0; i < emails.length; i++) {\n  const email = emails[i].json || {};\n  const binaries = emails[i].binary || {};\n\n  // Guard against empty dummy items produced on repeat runs when 0 emails exist\n  const hasId = Boolean(email.id || email.messageId);\n  const hasBody = Boolean(email.textPlain || email.text || email.snippet || email.Snippet);\n  const hasSubject = Boolean(email.Subject || email.subject);\n  const hasBinaries = Object.keys(binaries).length > 0;\n\n  if (!hasId && !hasBody && !hasSubject && !hasBinaries) {\n    continue;\n  }\n\n  if (alreadyTriaged(email)) continue;   // <- already reviewed, do not pay for it again\n\n  const base = {\n    gmail_message_id: email.id || email.messageId || '',\n    gmail_thread_id: email.threadId || '',\n    sender_email: senderOf(email) || 'unknown@unknown',\n    subject: String(email.Subject || email.subject || ''),\n    plain_text_body: String(email.textPlain || email.text || email.snippet || email.Snippet || ''),\n    received_at: email.internalDate\n      ? new Date(Number(email.internalDate)).toISOString()\n      : String(email.date || email.Date || ''),\n  };\n\n  // ---- classify every binary on this email ------------------\n  const pdfs = [];\n  const unsupported = [];\n\n  for (const key of Object.keys(binaries)) {\n    const f = binaries[key] || {};\n    const name = String(f.fileName || '');\n    const mime = String(f.mimeType || '').toLowerCase();\n\n    if (mime.includes('pdf') || PDF_EXT.test(name)) {\n      pdfs.push({ key: key, f: f, name: name || key + '.pdf', mime: mime });\n    } else if (DOC_EXT.test(name) || (name && IMG_EXT.test(name))) {\n      unsupported.push({ key: key, f: f, name: name, mime: mime });\n    }\n    // inline images with no filename (signature logos) are ignored on purpose\n  }\n\n  // ---- emit --------------------------------------------------\n  if (pdfs.length > 0) {\n    pdfs.forEach(function (p, idx) {\n      out.push({\n        json: Object.assign({}, base, {\n          has_attachment: true,\n          attachment_key: p.key,\n          attachment_index: idx,\n          total_attachments: pdfs.length,\n          attachment_filename: p.name,\n          attachment_mime: p.mime || 'application/pdf',\n          source_type: 'pdf_attachment',\n          route_source: 'pdf',\n          extraction_error: '',\n        }),\n        binary: { data: p.f },\n        pairedItem: i,\n      });\n    });\n  } else if (unsupported.length > 0) {\n    unsupported.forEach(function (u, idx) {\n      out.push({\n        json: Object.assign({}, base, {\n          has_attachment: true,\n          attachment_key: u.key,\n          attachment_index: idx,\n          total_attachments: unsupported.length,\n          attachment_filename: u.name,\n          attachment_mime: u.mime,\n          source_type: 'pdf_attachment',\n          route_source: 'unsupported',\n          extraction_error: 'Unsupported attachment type (' + (u.mime || 'unknown type') + '): ' + u.name,\n        }),\n        binary: { data: u.f },\n        pairedItem: i,\n      });\n    });\n  } else {\n    out.push({\n      json: Object.assign({}, base, {\n        has_attachment: false,\n        attachment_key: null,\n        attachment_index: 0,\n        total_attachments: 0,\n        attachment_filename: '',\n        attachment_mime: '',\n        source_type: 'email_body',\n        route_source: 'email_body',\n        extraction_error: '',\n      }),\n      pairedItem: i,\n    });\n  }\n}\n\nreturn out;"
+      },
+      "name": "Unroll Attachments & Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.route_source }}",
+              "value2": "pdf"
+            }
+          ]
+        }
+      },
+      "name": "Has PDF Attachment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        240,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "name": "Extract From PDF File",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        460,
+        180
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "On Error = Continue. A corrupt PDF becomes an error ITEM the next node classifies, instead of killing the run."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Inspect Text Layer & Classify           (Run Once for ALL Items)\n//\n// Runs in All Items mode because .all() and .itemMatching() do not\n// exist in Run Once for Each Item mode.\n//\n// Sets $json.route to exactly one of:\n//   'text'       - a real text layer we can hand to the extractor\n//   'ocr'        - extraction \"succeeded\" but returned nothing usable\n//                  (image-only page, browser print furniture, ...)\n//   'unreadable' - Extract From File threw (corrupt / encrypted / not a PDF)\n// ============================================================\n\n// Only route_source === 'pdf' items were sent into Extract From PDF File,\n// and the node preserves order 1:1, so index i here IS pdfMetas[i].\nconst pdfMetas = $('Unroll Attachments & Normalize')\n  .all()\n  .filter(function (it) { return it.json.route_source === 'pdf'; });\n\n// --- strip everything that is page furniture, not invoice content ---\n// This is the fix for the \"scanned PDF that still returns a line of text\"\n// case. A page exported from a browser image viewer yields e.g.\n//   7/28/25, 4:53 PM  real-estate-commission-invoice-template.webp (620x877)\n//   https://.../real-estate-commission-invoice-template.webp   1/1\n// Every token there is furniture. Once it is removed nothing remains,\n// so the page has no text layer and must go to OCR.\nconst ARTEFACTS = [\n  /https?:\\/\\/\\S+/gi,                                                      // URLs\n  /\\b[\\w.\\-]+\\.(webp|png|jpe?g|gif|tiff?|bmp|svg|heic|avif)\\b/gi,          // image filenames\n  /\\(\\s*\\d{2,5}\\s*[\u00d7\u2715xX]\\s*\\d{2,5}\\s*\\)/g,                       // (620x877)\n  /\\b\\d{1,2}\\/\\d{1,2}\\/\\d{2,4},?\\s*\\d{1,2}:\\d{2}(:\\d{2})?\\s*(AM|PM)?\\b/gi, // print timestamp\n  /\\bpage\\s*\\d+\\s*(of\\s*\\d+)?\\b/gi,                                        // Page 1 of 1\n  /^\\s*\\d{1,3}\\s*\\/\\s*\\d{1,3}\\s*$/gm,                                      // 1/1 page marker\n  /[\\uFFFD\\u0000-\\u001F]/g,                                                // replacement / control chars\n];\n\nconst items = $input.all();\nconst out = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const j = items[i].json || {};\n\n  // --- recover the metadata that entered Extract From PDF File ---\n  let meta = (pdfMetas[i] && pdfMetas[i].json) || null;\n  if (!meta) {\n    try { meta = $('Unroll Attachments & Normalize').itemMatching(i).json; } catch (e) { meta = {}; }\n  }\n\n  // --- did the extractor fail? (On Error = Continue keeps the item) ---\n  let errMsg = '';\n  if (j.error) {\n    errMsg = typeof j.error === 'string' ? j.error : (j.error.message || JSON.stringify(j.error));\n  } else if (j.errorMessage) {\n    errMsg = String(j.errorMessage);\n  } else if (typeof j.text !== 'string' && j.message) {\n    errMsg = String(j.message);\n  }\n\n  const rawText = typeof j.text === 'string' ? j.text : '';\n\n  if (errMsg && !rawText.trim()) {\n    out.push({\n      json: Object.assign({}, meta, {\n        source_type: 'pdf_attachment',\n        invoice_text: '',\n        extracted_chars: 0,\n        route: 'unreadable',\n        failure_reason: 'corrupt_pdf',\n        extraction_error: 'PDF could not be parsed: ' + errMsg.slice(0, 250),\n      }),\n    });\n    continue;\n  }\n\n  let stripped = rawText.replace(/\\r/g, ' ');\n  for (const p of ARTEFACTS) stripped = stripped.replace(p, ' ');\n  stripped = stripped.replace(/\\s+/g, ' ').trim();\n\n  const meaningfulChars = stripped.replace(/[^a-zA-Z0-9]/g, '').length;\n  const letters = stripped.replace(/[^a-zA-Z]/g, '').length;\n  const hasDigits = /\\d/.test(stripped);\n  const invoiceSignal = /(invoice|factuur|facture|rechnung|fattura|factura|bill|statement|fee note|amount due|total|subtotal|balance|vat|tax|due date|payment|remit|quantity|qty)/i.test(stripped);\n\n  const needsOcr =\n    meaningfulChars < 60 ||\n    letters < 30 ||\n    !hasDigits ||\n    (!invoiceSignal && meaningfulChars < 250);\n\n  if (needsOcr) {\n    const why = meaningfulChars < 60\n      ? 'no usable text layer after stripping page artefacts (' + meaningfulChars + ' meaningful characters left)'\n      : (!hasDigits ? 'text layer contains no numeric data'\n                    : 'text layer contains no invoice vocabulary');\n    out.push({\n      json: Object.assign({}, meta, {\n        source_type: 'pdf_attachment',\n        invoice_text: '',\n        raw_text_preview: rawText.slice(0, 300),\n        extracted_chars: rawText.trim().length,\n        meaningful_chars: meaningfulChars,\n        route: 'ocr',\n        failure_reason: 'no_text_layer',\n        extraction_error: 'Image-only PDF: ' + why,\n      }),\n    });\n    continue;\n  }\n\n  out.push({\n    json: Object.assign({}, meta, {\n      source_type: 'pdf_attachment',\n      invoice_text: rawText.trim(),\n      extracted_chars: rawText.trim().length,\n      meaningful_chars: meaningfulChars,\n      pdf_page_count: j.numpages || null,\n      route: 'text',\n      failure_reason: '',\n      extraction_error: '',\n    }),\n  });\n}\n\nreturn out;"
+      },
+      "name": "Inspect Text Layer & Classify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// Prepare Non-PDF Source                  (Run Once for Each Item)\n//\n// Handles both remaining source types:\n//   route_source = 'email_body'  -> read the body\n//   route_source = 'unsupported' -> a .docx/.xlsx/.jpg was attached;\n//                                   fail cleanly, do not call Claude\n// Metadata is already on the item, so nothing has to be looked up.\n// ============================================================\nconst meta = $json;\n\nif (meta.route_source === 'unsupported') {\n  return {\n    json: Object.assign({}, meta, {\n      invoice_text: '',\n      extracted_chars: 0,\n      route: 'unreadable',\n      failure_reason: 'unsupported_attachment',\n      extraction_error: meta.extraction_error || 'Unsupported attachment type',\n    }),\n  };\n}\n\nconst body = String(meta.plain_text_body || '').trim();\nconst meaningful = body.replace(/[^a-zA-Z0-9]/g, '').length;\n\nif (meaningful < 25) {\n  return {\n    json: Object.assign({}, meta, {\n      source_type: 'email_body',\n      invoice_text: '',\n      extracted_chars: body.length,\n      route: 'unreadable',\n      failure_reason: 'empty_email_body',\n      extraction_error: 'Email has no attachment and no readable body text',\n    }),\n  };\n}\n\nreturn {\n  json: Object.assign({}, meta, {\n    source_type: 'email_body',\n    invoice_text: body,\n    extracted_chars: body.length,\n    meaningful_chars: meaningful,\n    route: 'text',\n    failure_reason: '',\n    extraction_error: '',\n  }),\n};"
+      },
+      "name": "Prepare Non-PDF Source",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.route }}",
+              "value2": "ocr"
+            }
+          ]
+        }
+      },
+      "name": "Needs OCR?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        920,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.route }}",
+              "value2": "unreadable"
+            }
+          ]
+        }
+      },
+      "name": "Is Unreadable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Re-attach PDF Binary                    (Run Once for ALL Items)\n//\n// All Items mode because .all() is not available per-item.\n//\n// Extract From File drops the binary, so pull the original PDF back\n// off the Unroll node, matched deterministically on\n// gmail_message_id + attachment_key.\n// Also carries the OCR system prompt so BOTH OCR HTTP nodes\n// (Claude and Nemotron) read their instructions from one place.\n// ============================================================\nconst OCR_SYSTEM_PROMPT = \"You are reading a scanned invoice for Novus Realty, a property management company. The PDF has no text layer, so you must read the page visually.\\n\\nOUTPUT CONTRACT - this overrides any habit you have of describing a document in your own structure.\\n\\nReturn ONE flat JSON object and nothing else. No prose. No markdown fence. It must contain EXACTLY these twelve keys and no others:\\n\\nreadable, unreadable_reason, is_invoice, not_invoice_reason, vendor_name, invoice_number, invoice_date, due_date, total_amount, currency, description, is_credit_note\\n\\nDo NOT nest objects. Do NOT add keys such as from, bill_to, ship_to, line_items, subtotal, sales_tax, amount_paid, balance_due, payment_instructions or notes. Anything outside the twelve keys is discarded.\\n\\nExample of a correct reply:\\n{\\\"readable\\\": true, \\\"unreadable_reason\\\": null, \\\"is_invoice\\\": true, \\\"not_invoice_reason\\\": null, \\\"vendor_name\\\": \\\"Fairway Commissions\\\", \\\"invoice_number\\\": \\\"FC-99120\\\", \\\"invoice_date\\\": \\\"2026-08-15\\\", \\\"due_date\\\": \\\"2026-09-15\\\", \\\"total_amount\\\": 3450.00, \\\"currency\\\": \\\"USD\\\", \\\"description\\\": \\\"Commission statement for Q3 property settlements\\\", \\\"is_credit_note\\\": false}\\n\\nField rules:\\n- readable: false if the page is too blurry, cropped, blank or damaged to read with confidence. Then give a short unreadable_reason and leave every other field null. Do not guess at a damaged page.\\n- is_invoice: false for anything that is not an actual demand for payment. Then give a short not_invoice_reason.\\n- vendor_name: the party ISSUING the invoice, the one to be paid. This is the letterhead or \\\"From\\\" party. It is never the \\\"Bill To\\\", \\\"Ship To\\\" or customer party, and never Novus Realty.\\n- invoice_number: exactly as printed on the page. BLANK BEATS INVENTED - if the page carries no invoice number, return null. Never take it from a filename, a heading, a PO number or an account number.\\n- invoice_date / due_date: ISO YYYY-MM-DD.\\n- total_amount: the single final amount payable, as a plain number with no currency symbol and no thousands separator. Read it from the line labelled Total, Total Due, Amount Due or Balance Due. Never return a line-item rate or a subtotal here.\\n- currency: 3-letter ISO code.\\n- description: ONE short line summarising what is being billed. Not a list, not an object.\\n- Any field you cannot clearly read on the page must be null.\";\n\nconst src = $('Unroll Attachments & Normalize').all();\nconst items = $input.all();\nconst out = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const j = items[i].json || {};\n\n  let hit = src.find(function (it) {\n    return it.json.gmail_message_id === j.gmail_message_id &&\n           it.json.attachment_key === j.attachment_key;\n  });\n\n  if (!hit) {\n    try { hit = $('Unroll Attachments & Normalize').itemMatching(i); } catch (e) { hit = null; }\n  }\n\n  if (!hit || !hit.binary || !hit.binary.data) {\n    // never throw - route it to the clean-failure path instead\n    out.push({\n      json: Object.assign({}, j, {\n        route: 'unreadable',\n        failure_reason: 'binary_lost',\n        extraction_error: 'Could not recover the PDF binary for OCR',\n        ocr_system_prompt: OCR_SYSTEM_PROMPT,\n        ocr_skipped: true,\n      }),\n    });\n    continue;\n  }\n\n  out.push({\n    json: Object.assign({}, j, { ocr_system_prompt: OCR_SYSTEM_PROMPT, ocr_skipped: false }),\n    binary: { data: hit.binary.data },\n  });\n}\n\nreturn out;"
+      },
+      "name": "Re-attach PDF Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "binaryPropertyName": "data",
+        "destinationKey": "pdf_base64",
+        "options": {}
+      },
+      "name": "PDF to Base64",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        160
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 1500, output_config: { effort: 'low' }, system: $('Re-attach PDF Binary').item.json.ocr_system_prompt, messages: [ { role: 'user', content: [ { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: ($json.pdf_base64 || $json.data) } }, { type: 'text', text: 'Read this scanned invoice and return the flat JSON object defined in the system prompt. Email subject: ' + ($('Re-attach PDF Binary').item.json.subject || '') + '. Filename: ' + ($('Re-attach PDF Binary').item.json.attachment_filename || '') + '.' } ] } ] }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "name": "Claude Vision OCR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        160
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notes": "Sends the PDF itself as a base64 document block so Claude reads the page visually. Retries 3x with a 5s backoff, which is what recovers a 429 or a 529 overload. Anything still failing after that is caught by On Error and logged as a failed row."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'nvidia/llama-3.3-nemotron-super-49b-v1.5', messages: [ { role: 'system', content: $json.extraction_system_prompt }, { role: 'user', content: $json.claude_input + '\\n\\nReturn ONLY a JSON object with exactly these keys: is_invoice, not_invoice_reason, vendor_name, invoice_number, invoice_date, due_date, total_amount, currency, description, is_credit_note.' } ], temperature: 0, top_p: 1, max_tokens: 1200, response_format: { type: 'json_object' }, stream: false }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "name": "Nemotron Text Extractor (A/B)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1180,
+        1140
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notes": "A/B alternative to Claude Text Extractor. LEFT UNCONNECTED ON PURPOSE. A disabled node in n8n passes its input straight through to its output, so wiring it in parallel produced a second, empty item and a phantom failure row for every email. To A/B: delete the Prepare Claude Input -> Claude Text Extractor link, then connect Prepare Claude Input -> this node -> Standardize Text Result. Reads the SAME system prompt from $json.extraction_system_prompt so both models get identical instructions."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'nvidia/llama-3.1-nemotron-nano-vl-8b-v1', messages: [ { role: 'system', content: $json.ocr_system_prompt }, { role: 'user', content: [ { type: 'text', text: 'Read this scanned invoice and return the JSON object described in the system prompt.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,' + ($json.page_png_base64 || '') } } ] } ], temperature: 0, top_p: 1, max_tokens: 1200, stream: false }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "name": "Nemotron Vision OCR (A/B)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        1140
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notes": "A/B alternative to Claude Vision OCR. LEFT UNCONNECTED ON PURPOSE - see the note on the Nemotron Text Extractor. To A/B: replace the PDF to Base64 -> Claude Vision OCR link with a link to this node. It also cannot run until something produces $json.page_png_base64: NVIDIA vision endpoints take base64 PNG or JPEG, not PDF."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Standardize OCR Result                  (Run Once for ALL Items)\n//\n// Metadata comes from Re-attach PDF Binary, NOT from PDF to Base64.\n// Extract From File (Move File to Base64 String) REPLACES the item json\n// with a fresh object holding only the base64, so reading metadata off\n// it produced blank gmail_message_id / sender / filename - which in turn\n// left the row with no duplicate key and no id to mark read.\n// Re-attach PDF Binary is 1:1 and order-preserving with PDF to Base64.\n// ============================================================\nconst metas = $('Re-attach PDF Binary').all();\n\nconst num = function (v) {\n  if (v === null || v === undefined || v === '') return null;\n  const n = Number(String(v).replace(/[^0-9.\\-]/g, ''));\n  return Number.isFinite(n) ? n : null;\n};\nconst str = function (v) {\n  if (v === null || v === undefined) return '';\n  const s = String(v).trim();\n  return (s === '' || /^(null|n\\/a|none|unknown|not specified|not stated|not provided)$/i.test(s)) ? '' : s;\n};\nconst parseLoose = function (t) {\n  const fenced = String(t).match(/```(?:json)?\\s*([\\s\\S]*?)```/i);\n  const candidate = fenced ? fenced[1] : String(t);\n  const a = candidate.indexOf('{');\n  const b = candidate.lastIndexOf('}');\n  if (a === -1 || b === -1) throw new Error('no JSON object in the reply');\n  return JSON.parse(candidate.slice(a, b + 1));\n};\n\n\n// --- tolerant field mapper ------------------------------------\n// A vision model handed a raw invoice will often answer in its own\n// natural document shape ({from:{name}, line_items:[], total, ...})\n// instead of the requested keys. Rather than trust the prompt alone,\n// map the shapes we actually see. Only issuer-side keys are ever\n// consulted for vendor_name - bill_to / ship_to / customer are the\n// PAYER and must never be picked up as the vendor.\nconst dig = function (o, path) {\n  return path.split('.').reduce(function (a, k) {\n    return (a && typeof a === 'object') ? a[k] : undefined;\n  }, o);\n};\nconst pickStr = function (o, paths) {\n  for (const p of paths) {\n    const v = dig(o, p);\n    if (typeof v === 'string' && v.trim()) return v.trim();\n    if (typeof v === 'number' && Number.isFinite(v)) return String(v);\n  }\n  return '';\n};\nconst pickNum = function (o, paths) {\n  for (const p of paths) {\n    const n = num(dig(o, p));\n    if (n !== null) return n;\n  }\n  return null;\n};\nconst VENDOR_PATHS = ['vendor_name', 'vendor', 'from.name', 'from.company', 'seller.name',\n                      'supplier.name', 'issuer.name', 'company.name', 'from'];\nconst NUMBER_PATHS = ['invoice_number', 'invoice_no', 'invoiceNumber', 'invoice_id',\n                      'invoice.number', 'number'];\nconst IDATE_PATHS  = ['invoice_date', 'issue_date', 'issued_date', 'issued', 'date'];\nconst DDATE_PATHS  = ['due_date', 'dueDate', 'payment_due', 'due'];\nconst TOTAL_PATHS  = ['total_amount', 'balance_due', 'amount_due', 'total_due',\n                      'grand_total', 'total'];\nconst CURR_PATHS   = ['currency', 'currency_code'];\n\nconst mapFields = function (x) {\n  let desc = pickStr(x, ['description', 'summary', 'notes']);\n  if (!desc && Array.isArray(x.line_items)) {\n    desc = x.line_items\n      .map(function (li) { return li && (li.description || li.name || li.item); })\n      .filter(Boolean).join('; ');\n  }\n  return {\n    vendor_name: str(pickStr(x, VENDOR_PATHS)),\n    invoice_number: str(pickStr(x, NUMBER_PATHS)),\n    invoice_date: str(pickStr(x, IDATE_PATHS)),\n    due_date: str(pickStr(x, DDATE_PATHS)),\n    total_amount: pickNum(x, TOTAL_PATHS),\n    currency: str(pickStr(x, CURR_PATHS)).toUpperCase(),\n    description: str(desc).slice(0, 500),\n    is_credit_note: x.is_credit_note === true,\n  };\n};\n\nconst items = $input.all();\nconst out = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const r = items[i].json || {};\n  const meta = (metas[i] && metas[i].json) || {};\n\n  const base = {\n    gmail_message_id: meta.gmail_message_id || '',\n    sender_email: meta.sender_email || '',\n    subject: meta.subject || '',\n    source_type: 'pdf_attachment',\n    attachment_filename: meta.attachment_filename || '',\n    extraction_method: 'vision_ocr',\n  };\n\n  // A failure is NOT an invoice. It is still logged, but it reaches the\n  // sheet through is_unreadable, never by pretending to be an invoice.\n  const fail = function (why) {\n    out.push({\n      json: Object.assign({}, base, {\n        is_invoice: false,\n        not_invoice_reason: '',\n        is_unreadable: true,\n        extraction_error: why,\n        vendor_name: '', invoice_number: '', invoice_date: '', due_date: '',\n        total_amount: null, currency: '', description: '', is_credit_note: false,\n      }),\n    });\n  };\n\n  if (meta.ocr_skipped === true) {\n    fail(meta.extraction_error || 'PDF binary was not available for OCR');\n    continue;\n  }\n\n  // BYPASS GUARD - see the matching comment in Standardize Text Result.\n  // An item still carrying the base64 payload, with no model response on it,\n  // never reached the OCR call. Drop it rather than logging a phantom row.\n  if (r.content === undefined && r.choices === undefined && !r.error && !r.type &&\n      (r.pdf_base64 !== undefined || r.ocr_system_prompt !== undefined)) {\n    continue;\n  }\n\n  // Two error shapes reach here: the Anthropic error body, and - now that\n  // neverError is off - n8n's own error item after the retries are spent.\n  if (r.type === 'error' || r.error) {\n    const e = r.error;\n    const detail = (typeof e === 'string')\n      ? e\n      : String((e && (e.message || e.description)) || JSON.stringify(e || {}));\n    const kind = (e && (e.type || e.code)) || 'error';\n    fail('Vision OCR failed: ' + kind + ' - ' + detail.slice(0, 250));\n    continue;\n  }\n\n  // --- normalise the two response shapes -----------------------\n  let text = '';\n  if (Array.isArray(r.content)) {                                  // Anthropic\n    text = r.content.filter(function (b) { return b && b.type === 'text'; })\n                    .map(function (b) { return b.text; }).join('\\n');\n  } else if (Array.isArray(r.choices) && r.choices.length) {       // OpenAI-compatible\n    text = (r.choices[0].message && r.choices[0].message.content) || '';\n  }\n\n  if (!String(text).trim()) { fail('Vision OCR returned no readable content for this file'); continue; }\n\n  let parsed = null;\n  try {\n    parsed = parseLoose(text);\n  } catch (err) {\n    fail('Vision OCR returned unparseable output: ' + String(err.message).slice(0, 200));\n    continue;\n  }\n\n  if (parsed.readable === false) {\n    fail('Scan is not legible enough to extract: ' + (parsed.unreadable_reason || 'illegible page'));\n    continue;\n  }\n\n  const f = mapFields(parsed);\n\n  // The model may answer in its own document shape with no is_invoice\n  // flag at all. Absent flag is not the same as \"false\" - infer it from\n  // whether an actual charge was read off the page.\n  const explicitFlag = typeof parsed.is_invoice === 'boolean';\n  const anyField = Boolean(f.vendor_name || f.invoice_number || f.total_amount !== null || f.invoice_date);\n\n  if (!explicitFlag && !anyField) {\n    fail('Vision OCR returned no usable invoice fields');\n    continue;\n  }\n\n  const isInvoice = explicitFlag\n    ? parsed.is_invoice\n    : Boolean(f.vendor_name && (f.invoice_number || f.total_amount !== null));\n\n  out.push({\n    json: Object.assign({}, base, f, {\n      is_invoice: isInvoice,\n      not_invoice_reason: isInvoice ? '' : str(parsed.not_invoice_reason),\n      is_unreadable: false,\n      extraction_error: explicitFlag ? '' : 'Model answered in a non-schema shape; fields were mapped',\n    }),\n  });\n}\n\nreturn out;"
+      },
+      "name": "Standardize OCR Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// Prepare Extraction Input                (Run Once for Each Item)\n//\n// Node name is still \"Prepare Claude Input\" so nothing has to be\n// rewired, but it now feeds BOTH extractors (Claude and Nemotron).\n//\n// Three jobs:\n//   1. cap the text we pay tokens for\n//   2. hold the extraction system prompt in ONE place, so the\n//      Information Extractor and the Nemotron HTTP node cannot drift\n//   3. give Standardize Text Result a single-output node to index against\n// ============================================================\nconst EXTRACTION_SYSTEM_PROMPT = \"You are a strict invoice-extraction assistant for Novus Realty, a property management company.\\n\\nSTEP 1 - CLASSIFY. Decide whether this document is an actual invoice, bill, statement of charges, or fee note that requests payment for goods or services supplied.\\n\\nSet is_invoice = true ONLY when the text is itself a demand for payment with charges attached to it.\\n\\nSet is_invoice = false for anything that merely talks ABOUT invoicing, including:\\n- newsletters, team updates and operational announcements, even ones that mention invoices, billing portals or cutover dates\\n- automated reminders to update a saved card or payment method\\n- payment confirmations, receipts for money already taken, and delivery notices\\n- marketing, quotes, proposals and order confirmations\\n- portal or account notifications that state that no payment is due\\n\\nWhen is_invoice is false, put a short reason in not_invoice_reason and leave every other field null.\\n\\nSTEP 2 - EXTRACT, only when is_invoice is true.\\n\\nHard rule: BLANK BEATS INVENTED. If a field is not explicitly present in the text, return null. Never derive an invoice number from the subject line, the filename, a PO number, a reference code or an account number. Never estimate a date or an amount. null is always the correct answer for a field the document does not carry.\\n\\n- vendor_name: the organisation issuing the invoice, that is the party to be paid. Never Novus Realty.\\n- invoice_number: exactly as printed. A document may label it Invoice No, Reference, Ref, Factuurnummer or Document No. Use it only when it clearly identifies THIS invoice. If there is no such identifier, return null.\\n- invoice_date and due_date: ISO YYYY-MM-DD. Convert \\\"12 August 2026\\\", \\\"12/08/2026\\\" and \\\"August 12, 2026\\\" correctly. Dutch, French and German documents use DAY/MONTH/YEAR ordering, so read them that way. If only a month is given, use the first day of that month. If a date is absent, return null. Do not compute a due date from payment terms.\\n- total_amount: the final amount payable, as a plain number, with no currency symbol and no thousands separator. Decide the decimal separator from the document's own convention: \\\"1.234,56\\\" is 1234.56 and \\\"1,234.56\\\" is also 1234.56. Prefer a line labelled Total, Total Due, Amount Due, Balance Due, Totaal or Te betalen over a subtotal or a VAT-exclusive figure.\\n- currency: 3-letter ISO code. $ becomes USD, EUR or euro or a euro sign becomes EUR, GBP or pound becomes GBP. If the document shows no currency at all, return null.\\n- description: one short line summarising what is being billed. Do not pad it.\\n- is_credit_note: true when the document is a credit note or refund rather than a charge.\\n\\nReturn every field, using null for anything absent.\";\n\nconst MAX_CHARS = 12000;\nconst text = String($json.invoice_text || '');\nconst truncated = text.length > MAX_CHARS;\n\nconst claude_input = [\n  'SOURCE: ' + ($json.source_type || 'unknown'),\n  'EMAIL SUBJECT: ' + ($json.subject || ''),\n  'SENDER: ' + ($json.sender_email || ''),\n  'ATTACHMENT: ' + ($json.attachment_filename || 'none'),\n  '',\n  '--- DOCUMENT TEXT ---',\n  truncated ? text.slice(0, MAX_CHARS) + '\\n[...truncated...]' : text,\n].join('\\n');\n\nreturn {\n  json: Object.assign({}, $json, {\n    claude_input: claude_input,\n    input_truncated: truncated,\n    extraction_system_prompt: EXTRACTION_SYSTEM_PROMPT,\n  }),\n};"
+      },
+      "name": "Prepare Claude Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.claude_input }}",
+        "schemaType": "fromJson",
+        "jsonExample": "{\n  \"is_invoice\": true,\n  \"not_invoice_reason\": null,\n  \"vendor_name\": \"Meridian Plumbing & HVAC\",\n  \"invoice_number\": \"INV-4471\",\n  \"invoice_date\": \"2026-08-10\",\n  \"due_date\": \"2026-09-09\",\n  \"total_amount\": 2480.0,\n  \"currency\": \"USD\",\n  \"description\": \"Emergency boiler repair at 14 Ashford Court and quarterly HVAC servicing\",\n  \"is_credit_note\": false\n}",
+        "options": {
+          "systemPromptTemplate": "={{ $json.extraction_system_prompt }}"
+        }
+      },
+      "name": "Claude Text Extractor",
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1,
+      "position": [
+        1580,
+        620
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "notes": "One retry only, with a 5s backoff. A retry here is a second BILLED Claude call, so this is deliberately not set higher: it is here to ride out a rate limit, not to brute-force a bad prompt."
+    },
+    {
+      "parameters": {
+        "model": "claude-haiku-4-5",
+        "options": {
+          "temperature": 0,
+          "maxTokens": 1200
+        }
+      },
+      "name": "Anthropic Chat Model (Haiku)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.2,
+      "position": [
+        1600,
+        820
+      ],
+      "notes": "Haiku: lifting labelled fields out of clean text is a small model's job. The vision path is the only place a larger model earns its price."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Standardize Text Result                 (Run Once for ALL Items)\n//\n// Accepts three response shapes so the extractor is swappable:\n//   - n8n Information Extractor -> $json.output\n//   - OpenAI-compatible API     -> $json.choices[0].message.content\n//   - already-flat JSON         -> $json\n// All are 1:1 and order-preserving with Prepare Claude Input.\n// ============================================================\nconst metas = $('Prepare Claude Input').all();\n\nconst num = function (v) {\n  if (v === null || v === undefined || v === '') return null;\n  const n = Number(String(v).replace(/[^0-9.\\-]/g, ''));\n  return Number.isFinite(n) ? n : null;\n};\nconst str = function (v) {\n  if (v === null || v === undefined) return '';\n  const s = String(v).trim();\n  return (s === '' || /^(null|n\\/a|none|unknown|not specified|not stated|not provided)$/i.test(s)) ? '' : s;\n};\nconst parseLoose = function (t) {\n  const fenced = String(t).match(/```(?:json)?\\s*([\\s\\S]*?)```/i);\n  const candidate = fenced ? fenced[1] : String(t);\n  const a = candidate.indexOf('{');\n  const b = candidate.lastIndexOf('}');\n  if (a === -1 || b === -1) throw new Error('no JSON object in the reply');\n  return JSON.parse(candidate.slice(a, b + 1));\n};\n\n\n// --- tolerant field mapper ------------------------------------\n// A vision model handed a raw invoice will often answer in its own\n// natural document shape ({from:{name}, line_items:[], total, ...})\n// instead of the requested keys. Rather than trust the prompt alone,\n// map the shapes we actually see. Only issuer-side keys are ever\n// consulted for vendor_name - bill_to / ship_to / customer are the\n// PAYER and must never be picked up as the vendor.\nconst dig = function (o, path) {\n  return path.split('.').reduce(function (a, k) {\n    return (a && typeof a === 'object') ? a[k] : undefined;\n  }, o);\n};\nconst pickStr = function (o, paths) {\n  for (const p of paths) {\n    const v = dig(o, p);\n    if (typeof v === 'string' && v.trim()) return v.trim();\n    if (typeof v === 'number' && Number.isFinite(v)) return String(v);\n  }\n  return '';\n};\nconst pickNum = function (o, paths) {\n  for (const p of paths) {\n    const n = num(dig(o, p));\n    if (n !== null) return n;\n  }\n  return null;\n};\nconst VENDOR_PATHS = ['vendor_name', 'vendor', 'from.name', 'from.company', 'seller.name',\n                      'supplier.name', 'issuer.name', 'company.name', 'from'];\nconst NUMBER_PATHS = ['invoice_number', 'invoice_no', 'invoiceNumber', 'invoice_id',\n                      'invoice.number', 'number'];\nconst IDATE_PATHS  = ['invoice_date', 'issue_date', 'issued_date', 'issued', 'date'];\nconst DDATE_PATHS  = ['due_date', 'dueDate', 'payment_due', 'due'];\nconst TOTAL_PATHS  = ['total_amount', 'balance_due', 'amount_due', 'total_due',\n                      'grand_total', 'total'];\nconst CURR_PATHS   = ['currency', 'currency_code'];\n\nconst mapFields = function (x) {\n  let desc = pickStr(x, ['description', 'summary', 'notes']);\n  if (!desc && Array.isArray(x.line_items)) {\n    desc = x.line_items\n      .map(function (li) { return li && (li.description || li.name || li.item); })\n      .filter(Boolean).join('; ');\n  }\n  return {\n    vendor_name: str(pickStr(x, VENDOR_PATHS)),\n    invoice_number: str(pickStr(x, NUMBER_PATHS)),\n    invoice_date: str(pickStr(x, IDATE_PATHS)),\n    due_date: str(pickStr(x, DDATE_PATHS)),\n    total_amount: pickNum(x, TOTAL_PATHS),\n    currency: str(pickStr(x, CURR_PATHS)).toUpperCase(),\n    description: str(desc).slice(0, 500),\n    is_credit_note: x.is_credit_note === true,\n  };\n};\n\nconst items = $input.all();\nconst out = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const r = items[i].json || {};\n  const meta = (metas[i] && metas[i].json) || {};\n\n  const base = {\n    gmail_message_id: meta.gmail_message_id || '',\n    sender_email: meta.sender_email || '',\n    subject: meta.subject || '',\n    source_type: meta.source_type || 'email_body',\n    attachment_filename: meta.attachment_filename || '',\n    extraction_method: meta.source_type === 'pdf_attachment' ? 'pdf_text_layer' : 'email_body',\n  };\n\n  const fail = function (why) {\n    out.push({\n      json: Object.assign({}, base, {\n        is_invoice: false,\n        not_invoice_reason: '',\n        is_unreadable: true,\n        extraction_error: why,\n        vendor_name: '', invoice_number: '', invoice_date: '', due_date: '',\n        total_amount: null, currency: '', description: '', is_credit_note: false,\n      }),\n    });\n  };\n\n  if (r.error && r.output === undefined && r.choices === undefined) {\n    fail('Extraction failed: ' + String(r.error.message || r.error).slice(0, 250));\n    continue;\n  }\n\n  // BYPASS GUARD.\n  // This item still carries the Prepare Claude Input payload and has no\n  // model response on it at all - no output, no choices, no error. It never\n  // reached the extractor. That happens when a wire runs from an upstream\n  // node directly into this one; n8n creates exactly such a wire on its own\n  // when you delete a node from the middle of a chain, because it joins the\n  // two neighbours together.\n  //\n  // The same email is already being handled correctly on the real path, so\n  // this is a phantom, not a second invoice. Drop it instead of writing a\n  // bogus \"no fields extracted\" row.\n  if (r.output === undefined && r.choices === undefined && !r.error &&\n      (r.claude_input !== undefined || r.invoice_text !== undefined ||\n       r.extraction_system_prompt !== undefined)) {\n    continue;\n  }\n\n  let x = null;\n  if (r.output !== undefined) {\n    x = r.output;\n  } else if (Array.isArray(r.choices) && r.choices.length) {\n    try {\n      x = parseLoose(r.choices[0].message && r.choices[0].message.content);\n    } catch (e) {\n      fail('Model returned unparseable JSON: ' + String(e.message).slice(0, 200));\n      continue;\n    }\n  } else {\n    x = r;\n  }\n\n  if (!x || typeof x !== 'object') { fail('Extractor returned no structured output'); continue; }\n\n  const f = mapFields(x);\n  const explicitFlag = typeof x.is_invoice === 'boolean';\n  const anyField = Boolean(f.vendor_name || f.invoice_number || f.total_amount !== null || f.invoice_date);\n\n  // An extractor that returns NOTHING - no flag and no fields - has\n  // malfunctioned. That is not the same as \"this is not an invoice\",\n  // and silently dropping it would hide every invoice in the batch.\n  // Surface it as a failed row instead.\n  if (!explicitFlag && !anyField) {\n    fail('Extractor returned no fields and no is_invoice flag - check the node Text and System Prompt Template fields');\n    continue;\n  }\n\n  const isInvoice = explicitFlag\n    ? x.is_invoice\n    : Boolean(f.vendor_name && (f.invoice_number || f.total_amount !== null));\n\n  out.push({\n    json: Object.assign({}, base, f, {\n      is_invoice: isInvoice,\n      not_invoice_reason: isInvoice ? '' : str(x.not_invoice_reason),\n      is_unreadable: false,\n      extraction_error: '',\n    }),\n  });\n}\n\nreturn out;"
+      },
+      "name": "Standardize Text Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// Build Unreadable Record                 (Run Once for Each Item)\n//\n// Corrupt PDFs, unsupported attachments and empty bodies land here.\n// No model call is made - that is the cost-aware choice and also the\n// only honest one: there is nothing to read. The record is still\n// LOGGED so the failure is visible in the sheet instead of vanishing.\n//\n// is_invoice is FALSE. These are failures, not invoices. They reach\n// the sheet on the is_unreadable flag.\n// ============================================================\nreturn {\n  json: {\n    gmail_message_id: $json.gmail_message_id || '',\n    sender_email: $json.sender_email || '',\n    subject: $json.subject || '',\n    source_type: $json.source_type || 'pdf_attachment',\n    attachment_filename: $json.attachment_filename || '',\n    extraction_method: 'none',\n\n    is_invoice: false,\n    not_invoice_reason: '',\n    is_unreadable: true,\n    extraction_error: $json.extraction_error || 'Attachment could not be read',\n    failure_reason: $json.failure_reason || 'unreadable',\n\n    vendor_name: '',\n    invoice_number: '',\n    invoice_date: '',\n    due_date: '',\n    total_amount: null,\n    currency: '',\n    description: '',\n    is_credit_note: false,\n  },\n};"
+      },
+      "name": "Build Unreadable Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_invoice === true || $json.is_unreadable === true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Log This Item?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2060,
+        620
+      ],
+      "notes": "True = write a row (a real invoice, or a failure worth recording). False = a genuine non-invoice email, which is ignored. Renamed from 'Is Genuine Invoice?' because failures pass through it too, and calling them genuine invoices was misleading."
+    },
+    {
+      "parameters": {},
+      "name": "Ignore Non-Invoice Email",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2280,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Validate Fields & Check Duplicates      (Run Once for ALL Items)\n//\n// Runs over the WHOLE batch in one pass so that two copies of the same\n// invoice arriving in the SAME polling window are caught. The previous\n// per-item version could only see rows already written to the sheet,\n// which is why TP-01 and TP-05 both got logged when they arrived together.\n//\n// Three duplicate keys, checked in order:\n//   1. gmail_message_id + file reference  (the same email re-processed)\n//   2. invoice_number + sender_email      (the same invoice, resent)\n//   3. vendor + amount + invoice_date     (resent with no invoice number)\n// ============================================================\n\nconst norm = function (v) { return (v === null || v === undefined) ? '' : String(v).trim().toLowerCase(); };\nconst money = function (v) {\n  if (v === null || v === undefined || v === '') return '';\n  const n = Number(String(v).replace(/[^0-9.\\-]/g, ''));\n  return Number.isFinite(n) ? String(n) : '';\n};\n\n// ---- 1. seed the sets from rows already in the sheet ---------\nconst seenMessage = new Set();\nconst seenInvoice = new Set();\nconst seenFingerprint = new Set();\nconst seenAny = new Set();\n\nlet existing = [];\ntry { existing = $('Fetch All Existing Sheet Records').all(); } catch (e) { existing = []; }\n\nfor (const it of existing) {\n  const r = it.json || {};\n  if (r.error) continue;\n  const mid = norm(r['Gmail Message ID']);\n  const file = norm(r['File Reference']);\n  const inv = norm(r['Invoice Number']);\n  const snd = norm(r['Sender Email']);\n  const ven = norm(r['Vendor Name']);\n  const amt = money(r['Total Amount']);\n  const dat = norm(r['Invoice Date']);\n\n  if (mid) seenMessage.add(mid + '|' + file);\n  if (inv && snd) seenInvoice.add(inv + '|' + snd);\n  if (ven && amt && amt !== '0') seenFingerprint.add(ven + '|' + amt + '|' + dat);\n\n  // last-resort key so a failure row with no vendor, no amount and no\n  // invoice number still cannot be appended twice\n  const kAnySeed = [mid, file, norm(r['Email Subject']), norm(r['Processing Status'])]\n    .filter(Boolean).join('|');\n  if (kAnySeed) seenAny.add(kAnySeed);\n}\n\n// ---- 2. walk this batch in arrival order --------------------\nconst out = [];\n\nfor (const item of $input.all()) {\n  const d = item.json || {};\n\n  const vendor = d.vendor_name || '';\n  const invoiceNo = d.invoice_number || '';\n  const amount = (d.total_amount === null || d.total_amount === undefined || isNaN(d.total_amount))\n    ? null : Number(d.total_amount);\n  const currency = d.currency || '';\n  const invDate = d.invoice_date || '';\n  const dueDate = d.due_date || '';\n\n  const notes = [];\n  let status;\n\n  if (d.is_unreadable) {\n    status = 'failed';\n    notes.push('Failed - ' + (d.extraction_error || 'attachment could not be read'));\n    notes.push('No fields extracted - nothing was invented. Open the email and enter it by hand.');\n  } else {\n    const missing = [];\n    if (!vendor) missing.push('vendor_name');\n    if (amount === null) missing.push('total_amount');\n    if (!currency) missing.push('currency');\n    if (!invoiceNo) missing.push('invoice_number');\n    if (!invDate && !dueDate) missing.push('invoice_date/due_date');\n\n    if (missing.length === 0) {\n      status = 'processed';\n    } else if (!vendor && amount === null) {\n      // nothing identifying and nothing payable - this row is not usable\n      status = 'failed';\n      notes.push('Failed - could not extract the fields that identify the invoice. Missing: '\n        + missing.join(', ') + '. Nothing was guessed. Open the email and enter it by hand.');\n    } else {\n      // enough to be useful, but a human has to top it up before payment\n      status = 'processed_with_warnings';\n      notes.push('Processed with warnings - logged, but incomplete. Missing: '\n        + missing.join(', ') + '. Fields left blank are fields the document did not state; '\n        + 'nothing was guessed. Fill them in before paying.');\n    }\n\n    // format checks - flag, never rewrite\n    if (invDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(invDate)) notes.push('invoice_date is not ISO YYYY-MM-DD');\n    if (dueDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate)) notes.push('due_date is not ISO YYYY-MM-DD');\n    if (currency && !/^[A-Z]{3}$/.test(currency)) notes.push('currency is not a 3-letter ISO code');\n    if (amount !== null && amount <= 0) notes.push('total_amount is not positive');\n    if (d.is_credit_note) notes.push('Document is a credit note, not a charge');\n  }\n\n  // ---- duplicate keys ---------------------------------------\n  const mid = norm(d.gmail_message_id);\n  const file = norm(d.attachment_filename);\n  const kMsg = mid ? mid + '|' + file : '';\n  const kInv = (invoiceNo && d.sender_email) ? norm(invoiceNo) + '|' + norm(d.sender_email) : '';\n  const amtKey = money(amount);\n  const kFp = (vendor && amtKey && amtKey !== '0') ? norm(vendor) + '|' + amtKey + '|' + norm(invDate) : '';\n\n  const kAny = [mid, file, norm(d.subject), status].filter(Boolean).join('|');\n\n  // Stable identity for this invoice. Written to the sheet as Row Key and\n  // used by Google Sheets \"Append or Update\" as the matching column.\n  // This is the safety net that makes the write idempotent: a retry after\n  // a partial write, a re-run, or n8n splitting a branch into several runs\n  // all land on the SAME row instead of adding another one.\n  let rowKey;\n  if (kInv) rowKey = 'inv:' + kInv;\n  else if (kFp) rowKey = 'fp:' + kFp;\n  else rowKey = 'msg:' + (mid || norm(d.subject)) + '|' + file;\n\n  let isDup = false;\n  let dupReason = '';\n  if (kMsg && seenMessage.has(kMsg)) {\n    isDup = true; dupReason = 'same Gmail message and file already logged';\n  } else if (kInv && seenInvoice.has(kInv)) {\n    isDup = true; dupReason = 'invoice ' + invoiceNo + ' from ' + d.sender_email + ' already logged';\n  } else if (kFp && seenFingerprint.has(kFp)) {\n    isDup = true; dupReason = 'same vendor, amount and date already logged (no invoice number to match on)';\n  } else if (kAny && seenAny.has(kAny)) {\n    isDup = true; dupReason = 'identical row already logged for this message and file';\n  }\n\n  // claim the keys immediately, so the 2nd copy in THIS batch is a duplicate\n  if (kMsg) seenMessage.add(kMsg);\n  if (kInv) seenInvoice.add(kInv);\n  if (kFp) seenFingerprint.add(kFp);\n  if (kAny) seenAny.add(kAny);\n\n  out.push({\n    json: {\n      'Vendor Name': vendor,\n      'Sender Email': d.sender_email || '',\n      'Invoice Number': invoiceNo,\n      'Invoice Date': invDate,\n      'Due Date': dueDate,\n      'Total Amount': amount === null ? '' : amount,\n      'Currency': currency,\n      'Description': d.description || '',\n      'Source Type': d.source_type || '',\n      'File Reference': d.attachment_filename || '',\n      'Extraction Method': d.extraction_method || '',\n      'Processing Status': status,\n      'Error Note': notes.join('; '),\n      'Gmail Message ID': d.gmail_message_id || '',\n      'Email Subject': d.subject || '',\n      'Row Key': rowKey,\n      'Processed At': new Date().toISOString(),\n      _is_duplicate: isDup,\n      _duplicate_reason: dupReason,\n      _message_id: d.gmail_message_id || '',\n    },\n  });\n}\n\nreturn out;"
+      },
+      "name": "Validate Fields & Check Duplicates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2300,
+        400
+      ],
+      "notes": "Sets Processing Status to one of processed / processed_with_warnings / failed. processed_with_warnings means the row IS logged but named fields were absent from the document - Error Note lists exactly which ones. Blank means the document did not say, never a guess."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json._is_duplicate }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2520,
+        400
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "Ignore Duplicate Invoice",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2740,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Invoices",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "Row Key"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "name": "Append Invoice Row to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2740,
+        500
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "Append or Update matching on Row Key, NOT plain Append. This is what makes retrying a write safe: a retry after a partial write re-targets the same row instead of adding a second one."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Collect Message IDs (Unique)            (Run Once for ALL Items)\n//\n// Every terminal branch feeds in here:\n//   - Append Invoice Row to Sheet  (processed / warnings / failed)\n//   - Ignore Duplicate Invoice     (duplicate_skipped)\n//   - Ignore Non-Invoice Email     (not_an_invoice)\n//\n// Jobs:\n//   1. Drop items with blank / missing Gmail message ID\n//   2. Deduplicate: 1 Gmail call per message (even if multi-attachment)\n//   3. Outcome hierarchy: if any attachment was an invoice, the email\n//      is treated as an invoice ('processed' beats 'not_an_invoice')\n//   4. Pass `is_invoice: boolean` explicitly so 'Was It an Invoice?' works!\n// ============================================================\nconst RANK = { processed: 4, processed_with_warnings: 4, failed: 4, duplicate_skipped: 3, not_an_invoice: 1 };\n\nconst best = new Map();\n\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const id = j._message_id || j['Gmail Message ID'] || j.gmail_message_id || j.message_id || j.id || '';\n  if (!id || typeof id !== 'string' || !id.trim()) continue;\n  const key = id.trim();\n\n  let outcome = 'processed';\n  if (j._is_duplicate === true) {\n    outcome = 'duplicate_skipped';\n  } else if (j.is_invoice === false && !j['Processing Status']) {\n    outcome = 'not_an_invoice';\n  } else if (j['Processing Status']) {\n    outcome = j['Processing Status'];\n  } else if (j.is_invoice === true) {\n    outcome = 'processed';\n  }\n\n  const rank = RANK[outcome] || 2;\n  const prev = best.get(key);\n  if (prev && prev.rank >= rank) continue;\n\n  const isInvoice = outcome !== 'not_an_invoice';\n\n  best.set(key, {\n    rank: rank,\n    json: {\n      message_id: key,\n      subject: j['Email Subject'] || j.subject || '',\n      outcome: outcome,\n      is_invoice: isInvoice,\n    },\n  });\n}\n\nreturn Array.from(best.values()).map(function (e) {\n  return { json: e.json };\n});"
+      },
+      "name": "Collect Message IDs (Unique)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2980,
+        400
+      ],
+      "alwaysOutputData": true,
+      "notes": "Deduplicates to one Gmail call per message and decides which label the message earns. If any attachment on an email produced a row, the whole email counts as processed - an invoice is never filed away as not-an-invoice because a flyer rode along with it."
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.message_id }}",
+        "labelIds": [
+          "Label_REPLACE_WITH_YOUR_LABEL_ID"
+        ]
+      },
+      "name": "Add Processed Label",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3420,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "labelIds must be a Gmail LABEL ID (Label_xxxxxxxx), never the display name. Pick it from the dropdown."
+    },
+    {
+      "parameters": {
+        "operation": "markAsRead",
+        "messageId": "={{ $('Collect Message IDs (Unique)').item.json.message_id }}"
+      },
+      "name": "Mark Message as Read",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3640,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "Takes the id from the collector rather than from the label node's output, so a label failure cannot poison this step."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_invoice }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Was It an Invoice?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        3200,
+        400
+      ],
+      "notes": "True = an invoice, a failure or a duplicate: file it under Processed and mark it read. False = not an invoice: label it Novus/Not-Invoice and LEAVE IT UNREAD, so it still shows up for an admin but can never be pulled back into the workflow."
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.message_id }}",
+        "labelIds": [
+          "Label_REPLACE_WITH_NOT_INVOICE_LABEL_ID"
+        ]
+      },
+      "name": "Add Not-Invoice Label",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3420,
+        540
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "Create the label in Gmail as 'novus-not-invoice' and pick its ID from the dropdown - the name must match the -label: term in the Gmail search node. Terminal on purpose: there is no mark-as-read after it, so the mail stays unread in the admin's inbox. If this call fails the mail is simply picked up again next run - it is never lost."
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch All Existing Sheet Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch All Existing Sheet Records": {
+      "main": [
+        [
+          {
+            "node": "Search Unread Invoice Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Unread Invoice Emails": {
+      "main": [
+        [
+          {
+            "node": "Unroll Attachments & Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unroll Attachments & Normalize": {
+      "main": [
+        [
+          {
+            "node": "Has PDF Attachment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has PDF Attachment?": {
+      "main": [
+        [
+          {
+            "node": "Extract From PDF File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Non-PDF Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract From PDF File": {
+      "main": [
+        [
+          {
+            "node": "Inspect Text Layer & Classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inspect Text Layer & Classify": {
+      "main": [
+        [
+          {
+            "node": "Needs OCR?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Non-PDF Source": {
+      "main": [
+        [
+          {
+            "node": "Needs OCR?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs OCR?": {
+      "main": [
+        [
+          {
+            "node": "Re-attach PDF Binary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Unreadable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Unreadable?": {
+      "main": [
+        [
+          {
+            "node": "Build Unreadable Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Claude Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Re-attach PDF Binary": {
+      "main": [
+        [
+          {
+            "node": "PDF to Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF to Base64": {
+      "main": [
+        [
+          {
+            "node": "Claude Vision OCR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Vision OCR": {
+      "main": [
+        [
+          {
+            "node": "Standardize OCR Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Standardize OCR Result": {
+      "main": [
+        [
+          {
+            "node": "Log This Item?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Claude Input": {
+      "main": [
+        [
+          {
+            "node": "Claude Text Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model (Haiku)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Claude Text Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Text Extractor": {
+      "main": [
+        [
+          {
+            "node": "Standardize Text Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Standardize Text Result": {
+      "main": [
+        [
+          {
+            "node": "Log This Item?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Unreadable Record": {
+      "main": [
+        [
+          {
+            "node": "Validate Fields & Check Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log This Item?": {
+      "main": [
+        [
+          {
+            "node": "Validate Fields & Check Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignore Non-Invoice Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Fields & Check Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Is Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Ignore Duplicate Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append Invoice Row to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ignore Non-Invoice Email": {
+      "main": [
+        [
+          {
+            "node": "Collect Message IDs (Unique)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ignore Duplicate Invoice": {
+      "main": [
+        [
+          {
+            "node": "Collect Message IDs (Unique)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Invoice Row to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Collect Message IDs (Unique)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Message IDs (Unique)": {
+      "main": [
+        [
+          {
+            "node": "Was It an Invoice?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Processed Label": {
+      "main": [
+        [
+          {
+            "node": "Mark Message as Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was It an Invoice?": {
+      "main": [
+        [
+          {
+            "node": "Add Processed Label",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add Not-Invoice Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "novus-invoice-processor"
+  },
+  "tags": []
+}
