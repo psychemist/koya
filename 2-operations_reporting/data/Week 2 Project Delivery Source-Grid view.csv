@@ -1,0 +1,75 @@
+﻿project_id,project_name,team,owner,kickoff_date,due_date,completed_date,status,budgeted_cost,actual_cost
+PROJ-2001,Client Ops Automation 1,Automation,Ada,2025-01-06,2025-01-20,,Blocked,1800,1550
+PROJ-2002,Client Ops Automation 2,Data,Mide,2025-01-13,2025-01-30,2025-01-30,Completed,2050,2050
+PROJ-2003,Client Ops Automation 3,AI Apps,Tola,2025-01-20,2025-02-09,2025-02-11,Completed,2300,2420
+PROJ-2004,Client Ops Automation 4,Client Ops,Sam,2025-01-27,2025-02-19,2025-02-24,Completed,2550,2950
+PROJ-2005,Client Ops Automation 5,Automation,Ada,2025-02-03,2025-03-01,2025-02-28,Completed,2800,2700
+PROJ-2006,Client Ops Automation 6,Data,Mide,2025-02-10,2025-02-24,2025-03-04,Completed,3050,3700
+PROJ-2007,Client Ops Automation 7,AI Apps,Tola,2025-02-17,2025-03-06,2025-03-03,Completed,3300,3050
+PROJ-2008,Client Ops Automation 8,Client Ops,Sam,2025-02-24,2025-03-16,2025-03-16,Completed,3550,3550
+PROJ-2009,Client Ops Automation 9,Automation,Ada,2025-03-03,2025-03-26,2025-03-28,Completed,1800,1920
+PROJ-2010,Client Ops Automation 10,Data,Mide,2025-03-10,2025-04-05,,In Progress,2050,2450
+PROJ-2011,Client Ops Automation 11,AI Apps,Tola,2025-03-17,2025-03-31,2025-03-30,Completed,2300,2200
+PROJ-2012,Client Ops Automation 12,Client Ops,Sam,2025-03-24,2025-04-10,2025-04-18,Completed,2550,3200
+PROJ-2013,Client Ops Automation 13,Automation,Ada,2025-03-31,2025-04-20,2025-04-17,Completed,2800,2550
+PROJ-2014,Client Ops Automation 14,Data,Mide,2025-04-07,2025-04-30,2025-04-30,Completed,3050,3050
+PROJ-2015,Client Ops Automation 15,AI Apps,Tola,2025-04-14,2025-05-10,2025-05-12,Completed,3300,3420
+PROJ-2016,Client Ops Automation 16,Client Ops,Sam,2025-04-21,2025-05-05,2025-05-10,Completed,3550,3950
+PROJ-2017,Client Ops Automation 17,Automation,Ada,2025-04-28,2025-05-15,2025-05-14,Completed,1800,1700
+PROJ-2018,Client Ops Automation 18,Data,Mide,2025-05-05,2025-05-25,,Blocked,2050,2700
+PROJ-2019,Client Ops Automation 19,AI Apps,Tola,2025-05-12,2025-06-04,,In Progress,2300,2050
+PROJ-2020,Client Ops Automation 20,Client Ops,Sam,2025-05-19,2025-06-14,2025-06-14,Completed,2550,2550
+PROJ-2021,Client Ops Automation 21,Automation,Ada,2025-05-26,2025-06-09,2025-06-11,Completed,2800,2920
+PROJ-2022,Client Ops Automation 22,Data,Mide,2025-06-02,2025-06-19,2025-06-24,Completed,3050,3450
+PROJ-2023,Client Ops Automation 23,AI Apps,Tola,2025-06-09,2025-06-29,2025-06-28,Completed,3300,3200
+PROJ-2024,Client Ops Automation 24,Client Ops,Sam,2025-06-16,2025-07-09,2025-07-17,Completed,3550,4200
+PROJ-2025,Client Ops Automation 25,Automation,Ada,2025-06-23,2025-07-19,2025-07-16,Completed,1800,1550
+PROJ-2026,Client Ops Automation 26,Data,Mide,2025-06-30,2025-07-14,2025-07-14,Completed,2050,2050
+PROJ-2027,Client Ops Automation 27,AI Apps,Tola,2025-07-07,2025-07-24,2025-07-26,Completed,2300,2420
+PROJ-2028,Client Ops Automation 28,Client Ops,Sam,2025-07-14,2025-08-03,,In Progress,2550,2950
+PROJ-2029,Client Ops Automation 29,Automation,Ada,2025-07-21,2025-08-13,2025-08-12,Completed,2800,2700
+PROJ-2030,Client Ops Automation 30,Data,Mide,2025-07-28,2025-08-23,2025-08-31,Completed,3050,3700
+PROJ-2031,Client Ops Automation 31,AI Apps,Tola,2025-08-04,2025-08-18,2025-08-15,Completed,3300,3050
+PROJ-2032,Client Ops Automation 32,Client Ops,Sam,2025-08-11,2025-08-28,2025-08-28,Completed,3550,3550
+PROJ-2033,Client Ops Automation 33,Automation,Ada,2025-08-18,2025-09-07,2025-09-09,Completed,1800,1920
+PROJ-2034,Client Ops Automation 34,Data,Mide,2025-08-25,2025-09-17,2025-09-22,Completed,2050,2450
+PROJ-2035,Client Ops Automation 35,AI Apps,Tola,2025-09-01,2025-09-27,,Blocked,2300,2200
+PROJ-2036,Client Ops Automation 36,Client Ops,Sam,2025-09-08,2025-09-22,2025-09-30,Completed,2550,3200
+PROJ-2037,Client Ops Automation 37,Automation,Ada,2025-09-15,2025-10-02,,In Progress,2800,2550
+PROJ-2038,Client Ops Automation 38,Data,Mide,2025-09-22,2025-10-12,2025-10-12,Completed,3050,3050
+PROJ-2039,Client Ops Automation 39,AI Apps,Tola,2025-09-29,2025-10-22,2025-10-24,Completed,3300,3420
+PROJ-2040,Client Ops Automation 40,Client Ops,Sam,2025-10-06,2025-11-01,2025-11-06,Completed,3550,3950
+PROJ-2041,Client Ops Automation 41,Automation,Ada,2025-10-13,2025-10-27,2025-10-26,Completed,1800,1700
+PROJ-2042,Client Ops Automation 42,Data,Mide,2025-10-20,2025-11-06,2025-11-14,Completed,2050,2700
+PROJ-2043,Client Ops Automation 43,AI Apps,Tola,2025-10-27,2025-11-16,2025-11-13,Completed,2300,2050
+PROJ-2044,Client Ops Automation 44,Client Ops,Sam,2025-11-03,2025-11-26,2025-11-26,Completed,2550,2550
+PROJ-2045,Client Ops Automation 45,Automation,Ada,2025-11-10,2025-12-06,2025-12-08,Completed,2800,2920
+PROJ-2046,Client Ops Automation 46,Data,Mide,2025-11-17,2025-12-01,,In Progress,3050,3450
+PROJ-2047,Client Ops Automation 47,AI Apps,Tola,2025-11-24,2025-12-11,2025-12-10,Completed,3300,3200
+PROJ-2048,Client Ops Automation 48,Client Ops,Sam,2025-12-01,2025-12-21,2025-12-29,Completed,3550,4200
+PROJ-2049,Client Ops Automation 49,Automation,Ada,2025-12-08,2025-12-31,2025-12-28,Completed,1800,1550
+PROJ-2050,Client Ops Automation 50,Data,Mide,2025-12-15,2026-01-10,2026-01-10,Completed,2050,2050
+PROJ-2051,Client Ops Automation 51,AI Apps,Tola,2025-12-22,2026-01-05,2026-01-07,Completed,2300,2420
+PROJ-2052,Client Ops Automation 52,Client Ops,Sam,2025-12-29,2026-01-15,,Blocked,2550,2950
+PROJ-2053,Client Ops Automation 53,Automation,Ada,2026-01-05,2026-01-25,2026-01-24,Completed,2800,2700
+PROJ-2054,Client Ops Automation 54,Data,Mide,2026-01-12,2026-02-04,2026-02-12,Completed,3050,3700
+PROJ-2055,Client Ops Automation 55,AI Apps,Tola,2026-01-19,2026-02-14,,In Progress,3300,3050
+PROJ-2056,Client Ops Automation 56,Client Ops,Sam,2026-01-26,2026-02-09,2026-02-09,Completed,3550,3550
+PROJ-2057,Client Ops Automation 57,Automation,Ada,2026-02-02,2026-02-19,2026-02-21,Completed,1800,1920
+PROJ-2058,Client Ops Automation 58,Data,Mide,2026-02-09,2026-03-01,2026-03-06,Completed,2050,2450
+PROJ-2059,Client Ops Automation 59,AI Apps,Tola,2026-02-16,2026-03-11,2026-03-10,Completed,2300,2200
+PROJ-2060,Client Ops Automation 60,Client Ops,Sam,2026-02-23,2026-03-21,2026-03-29,Completed,2550,3200
+PROJ-2061,Client Ops Automation 61,Automation,Ada,2026-03-02,2026-03-16,2026-03-13,Completed,2800,2550
+PROJ-2062,Client Ops Automation 62,Data,Mide,2026-03-09,2026-03-26,2026-03-26,Completed,3050,3050
+PROJ-2063,Client Ops Automation 63,AI Apps,Tola,2026-03-16,2026-04-05,2026-04-07,Completed,3300,3420
+PROJ-2064,Client Ops Automation 64,Client Ops,Sam,2026-03-23,2026-04-15,,In Progress,3550,3950
+PROJ-2065,Client Ops Automation 65,Automation,Ada,2026-03-30,2026-04-25,2026-04-24,Completed,1800,1700
+PROJ-2066,Client Ops Automation 66,Data,Mide,2026-04-06,2026-04-20,2026-04-28,Completed,2050,2700
+PROJ-2067,Client Ops Automation 67,AI Apps,Tola,2026-04-13,2026-04-30,2026-04-27,Completed,2300,2050
+PROJ-2068,Client Ops Automation 68,Client Ops,Sam,2026-04-20,2026-05-10,2026-05-10,Completed,2550,2550
+PROJ-2069,Client Ops Automation 69,Automation,Ada,2026-04-27,2026-05-20,,Blocked,2800,2920
+PROJ-2070,Client Ops Automation 70,Data,Mide,2026-05-04,2026-05-30,2026-06-04,Completed,3050,3450
+PROJ-2071,Client Ops Automation 71,AI Apps,Tola,2026-05-11,2026-05-25,2026-05-24,Completed,3300,3200
+PROJ-2072,Client Ops Automation 72,Client Ops,Sam,2026-05-18,2026-06-04,2026-06-12,Completed,3550,4200
+PROJ-MISS-DUE,Missing Due Date Test,Automation,Ada,2026-03-10,,2026-03-22,Completed,2400,2600
+PROJ-MISS-COST,Missing Actual Cost Test,AI Apps,Tola,2026-05-05,2026-05-20,2026-05-19,Completed,3200,

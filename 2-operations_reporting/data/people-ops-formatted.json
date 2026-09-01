@@ -1,0 +1,943 @@
+{
+  "source": "people_ops",
+  "record_count": 92,
+  "total_available_records": 92,
+  "query": {
+    "start": null,
+    "end": null,
+    "department": null,
+    "status": null
+  },
+  "schema": {
+    "employee_id": "string",
+    "department": "string",
+    "role": "string",
+    "application_date": "YYYY-MM-DD",
+    "offer_accepted_date": "YYYY-MM-DD or blank",
+    "start_date": "YYYY-MM-DD or blank",
+    "exit_date": "YYYY-MM-DD or blank",
+    "status": "Active, Exited, Candidate, or blank"
+  },
+  "records": [
+    {
+      "employee_id": "EMP-3001",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-01-08",
+      "offer_accepted_date": "2025-01-18",
+      "start_date": "2025-01-25",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3002",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-01-14",
+      "offer_accepted_date": "2025-01-25",
+      "start_date": "2025-02-02",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3003",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-01-20",
+      "offer_accepted_date": "2025-02-01",
+      "start_date": "2025-02-10",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3004",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-01-26",
+      "offer_accepted_date": "2025-02-08",
+      "start_date": "2025-02-18",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3005",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-02-01",
+      "offer_accepted_date": "2025-02-15",
+      "start_date": "2025-02-26",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3006",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-02-07",
+      "offer_accepted_date": "2025-02-22",
+      "start_date": "2025-03-06",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3007",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-02-13",
+      "offer_accepted_date": "2025-03-01",
+      "start_date": "2025-03-14",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3008",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-02-19",
+      "offer_accepted_date": "2025-03-08",
+      "start_date": "2025-03-22",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3009",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-02-25",
+      "offer_accepted_date": "2025-03-15",
+      "start_date": "2025-03-30",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3010",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-03-03",
+      "offer_accepted_date": "2025-03-22",
+      "start_date": "2025-04-07",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3011",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-03-09",
+      "offer_accepted_date": "2025-03-29",
+      "start_date": "2025-04-05",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3012",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-03-15",
+      "offer_accepted_date": "2025-04-05",
+      "start_date": "2025-04-13",
+      "exit_date": "2025-08-12",
+      "status": "Exited"
+    },
+    {
+      "employee_id": "EMP-3013",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-03-21",
+      "offer_accepted_date": "2025-04-12",
+      "start_date": "2025-04-21",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3014",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-03-27",
+      "offer_accepted_date": "2025-04-19",
+      "start_date": "2025-04-29",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3015",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-04-02",
+      "offer_accepted_date": "2025-04-26",
+      "start_date": "2025-05-07",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3016",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-04-08",
+      "offer_accepted_date": "2025-05-03",
+      "start_date": "2025-05-15",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3017",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-04-14",
+      "offer_accepted_date": "2025-05-10",
+      "start_date": "2025-05-23",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3018",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-04-20",
+      "offer_accepted_date": "2025-05-17",
+      "start_date": "2025-05-31",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3019",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-04-26",
+      "offer_accepted_date": "2025-05-06",
+      "start_date": "2025-05-21",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3020",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-05-02",
+      "offer_accepted_date": "2025-05-13",
+      "start_date": "2025-05-29",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3021",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-05-08",
+      "offer_accepted_date": "2025-05-20",
+      "start_date": "2025-05-27",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3022",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-05-14",
+      "offer_accepted_date": "2025-05-27",
+      "start_date": "2025-06-04",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3023",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-05-20",
+      "offer_accepted_date": "2025-06-03",
+      "start_date": "2025-06-12",
+      "exit_date": "2025-10-22",
+      "status": "Exited"
+    },
+    {
+      "employee_id": "EMP-3024",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-05-26",
+      "offer_accepted_date": "2025-06-10",
+      "start_date": "2025-06-20",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3025",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-06-01",
+      "offer_accepted_date": "2025-06-17",
+      "start_date": "2025-06-28",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3026",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-06-07",
+      "offer_accepted_date": "2025-06-24",
+      "start_date": "2025-07-06",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3027",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-06-13",
+      "offer_accepted_date": "2025-07-01",
+      "start_date": "2025-07-14",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3028",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-06-19",
+      "offer_accepted_date": "2025-07-08",
+      "start_date": "2025-07-22",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3029",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-06-25",
+      "offer_accepted_date": "2025-07-15",
+      "start_date": "2025-07-30",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3030",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-07-01",
+      "offer_accepted_date": "2025-07-22",
+      "start_date": "2025-08-07",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3031",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-07-07",
+      "offer_accepted_date": "2025-07-29",
+      "start_date": "2025-08-05",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3032",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-07-13",
+      "offer_accepted_date": "2025-08-05",
+      "start_date": "2025-08-13",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3033",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-07-19",
+      "offer_accepted_date": "2025-08-12",
+      "start_date": "2025-08-21",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3034",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-07-25",
+      "offer_accepted_date": "2025-08-19",
+      "start_date": "2025-08-29",
+      "exit_date": "2026-01-19",
+      "status": "Exited"
+    },
+    {
+      "employee_id": "EMP-3035",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-07-31",
+      "offer_accepted_date": "2025-08-26",
+      "start_date": "2025-09-06",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3036",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-08-06",
+      "offer_accepted_date": "2025-09-02",
+      "start_date": "2025-09-14",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3037",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-08-12",
+      "offer_accepted_date": "2025-08-22",
+      "start_date": "2025-09-04",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3038",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-08-18",
+      "offer_accepted_date": "2025-08-29",
+      "start_date": "2025-09-12",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3039",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-08-24",
+      "offer_accepted_date": "2025-09-05",
+      "start_date": "2025-09-20",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3040",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-08-30",
+      "offer_accepted_date": "2025-09-12",
+      "start_date": "2025-09-28",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3041",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-09-05",
+      "offer_accepted_date": "2025-09-19",
+      "start_date": "2025-09-26",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3042",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-09-11",
+      "offer_accepted_date": "2025-09-26",
+      "start_date": "2025-10-04",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3043",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-09-17",
+      "offer_accepted_date": "2025-10-03",
+      "start_date": "2025-10-12",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3044",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-09-23",
+      "offer_accepted_date": "2025-10-10",
+      "start_date": "2025-10-20",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3045",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-09-29",
+      "offer_accepted_date": "2025-10-17",
+      "start_date": "2025-10-28",
+      "exit_date": "2026-03-31",
+      "status": "Exited"
+    },
+    {
+      "employee_id": "EMP-3046",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-10-05",
+      "offer_accepted_date": "2025-10-24",
+      "start_date": "2025-11-05",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3047",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-10-11",
+      "offer_accepted_date": "2025-10-31",
+      "start_date": "2025-11-13",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3048",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-10-17",
+      "offer_accepted_date": "2025-11-07",
+      "start_date": "2025-11-21",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3049",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-10-23",
+      "offer_accepted_date": "2025-11-14",
+      "start_date": "2025-11-29",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3050",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-10-29",
+      "offer_accepted_date": "2025-11-21",
+      "start_date": "2025-12-07",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3051",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-11-04",
+      "offer_accepted_date": "2025-11-28",
+      "start_date": "2025-12-05",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3052",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-11-10",
+      "offer_accepted_date": "2025-12-05",
+      "start_date": "2025-12-13",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3053",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-11-16",
+      "offer_accepted_date": "2025-12-12",
+      "start_date": "2025-12-21",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3054",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-11-22",
+      "offer_accepted_date": "2025-12-19",
+      "start_date": "2025-12-29",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3055",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-11-28",
+      "offer_accepted_date": "2025-12-08",
+      "start_date": "2025-12-19",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3056",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2025-12-04",
+      "offer_accepted_date": "2025-12-15",
+      "start_date": "2025-12-27",
+      "exit_date": "2026-06-10",
+      "status": "Exited"
+    },
+    {
+      "employee_id": "EMP-3057",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2025-12-10",
+      "offer_accepted_date": "2025-12-22",
+      "start_date": "2026-01-04",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3058",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2025-12-16",
+      "offer_accepted_date": "2025-12-29",
+      "start_date": "2026-01-12",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3059",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2025-12-22",
+      "offer_accepted_date": "2026-01-05",
+      "start_date": "2026-01-20",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3060",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2025-12-28",
+      "offer_accepted_date": "2026-01-12",
+      "start_date": "2026-01-28",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3061",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2026-01-03",
+      "offer_accepted_date": "2026-01-19",
+      "start_date": "2026-01-26",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3062",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2026-01-09",
+      "offer_accepted_date": "2026-01-26",
+      "start_date": "2026-02-03",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3063",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2026-01-15",
+      "offer_accepted_date": "2026-02-02",
+      "start_date": "2026-02-11",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3064",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2026-01-21",
+      "offer_accepted_date": "2026-02-09",
+      "start_date": "2026-02-19",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3065",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2026-01-27",
+      "offer_accepted_date": "2026-02-16",
+      "start_date": "2026-02-27",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3066",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2026-02-02",
+      "offer_accepted_date": "2026-02-23",
+      "start_date": "2026-03-07",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3067",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2026-02-08",
+      "offer_accepted_date": "2026-03-02",
+      "start_date": "2026-03-15",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3068",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2026-02-14",
+      "offer_accepted_date": "2026-03-09",
+      "start_date": "2026-03-23",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3069",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2026-02-20",
+      "offer_accepted_date": "2026-03-16",
+      "start_date": "2026-03-31",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3070",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2026-02-26",
+      "offer_accepted_date": "2026-03-23",
+      "start_date": "2026-04-08",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3071",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2026-03-04",
+      "offer_accepted_date": "2026-03-30",
+      "start_date": "2026-04-06",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3072",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2026-03-10",
+      "offer_accepted_date": "2026-04-06",
+      "start_date": "2026-04-14",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3073",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2026-03-16",
+      "offer_accepted_date": "2026-03-26",
+      "start_date": "2026-04-04",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3074",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2026-03-22",
+      "offer_accepted_date": "2026-04-02",
+      "start_date": "2026-04-12",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3075",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2026-03-28",
+      "offer_accepted_date": "2026-04-09",
+      "start_date": "2026-04-20",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3076",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2026-04-03",
+      "offer_accepted_date": "2026-04-16",
+      "start_date": "2026-04-28",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3077",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2026-04-09",
+      "offer_accepted_date": "2026-04-23",
+      "start_date": "2026-05-06",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3078",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2026-04-15",
+      "offer_accepted_date": "2026-04-30",
+      "start_date": "2026-05-14",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3079",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2026-04-21",
+      "offer_accepted_date": "2026-05-07",
+      "start_date": "2026-05-22",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3080",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2026-04-27",
+      "offer_accepted_date": "2026-05-14",
+      "start_date": "2026-05-30",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3081",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2026-05-03",
+      "offer_accepted_date": "2026-05-21",
+      "start_date": "2026-05-28",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3082",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2026-05-09",
+      "offer_accepted_date": "2026-05-28",
+      "start_date": "2026-06-05",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3083",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2026-05-15",
+      "offer_accepted_date": "2026-06-04",
+      "start_date": "2026-06-13",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3084",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2026-05-21",
+      "offer_accepted_date": "2026-06-11",
+      "start_date": "2026-06-21",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3085",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2026-05-27",
+      "offer_accepted_date": "2026-06-18",
+      "start_date": "2026-06-29",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3086",
+      "department": "Sales",
+      "role": "Associate",
+      "application_date": "2026-06-02",
+      "offer_accepted_date": "2026-06-25",
+      "start_date": "2026-07-07",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3087",
+      "department": "Delivery",
+      "role": "Manager",
+      "application_date": "2026-06-08",
+      "offer_accepted_date": "2026-07-02",
+      "start_date": "2026-07-15",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3088",
+      "department": "People Ops",
+      "role": "Specialist",
+      "application_date": "2026-06-14",
+      "offer_accepted_date": "2026-07-09",
+      "start_date": "2026-07-23",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3089",
+      "department": "Engineering",
+      "role": "Lead",
+      "application_date": "2026-06-20",
+      "offer_accepted_date": "2026-07-16",
+      "start_date": "2026-07-31",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-3090",
+      "department": "Customer Success",
+      "role": "Analyst",
+      "application_date": "2026-06-26",
+      "offer_accepted_date": "2026-07-23",
+      "start_date": "2026-08-08",
+      "exit_date": "",
+      "status": "Active"
+    },
+    {
+      "employee_id": "EMP-MISS-OFFER",
+      "department": "Delivery",
+      "role": "Specialist",
+      "application_date": "2026-04-02",
+      "offer_accepted_date": "",
+      "start_date": "",
+      "exit_date": "",
+      "status": "Candidate"
+    },
+    {
+      "employee_id": "EMP-BAD-STATUS",
+      "department": "Engineering",
+      "role": "Analyst",
+      "application_date": "2026-05-12",
+      "offer_accepted_date": "2026-05-30",
+      "start_date": "2026-06-08",
+      "exit_date": "",
+      "status": ""
+    }
+  ]
+}
