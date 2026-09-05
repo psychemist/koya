@@ -1,0 +1,57 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 1 - Collect, then normalize\nThree sources, fetched **in parallel** off one trigger and joined by a 3-input Merge, so a run costs the slowest source rather than the sum of all three.\n\nEvery fetch gets **3 attempts** and then **continues on error**: a dead source becomes an error-level data quality warning and a report marked `partial`, not a red execution and an empty dashboard.\n\nA source that answers with nothing is reported as **unknown, not zero**. \"0 active projects\" is a measurement; what happened is that nobody measured, and the dashboard says which system did not answer.",
+        "height": 280,
+        "width": 1180,
+        "color": 4
+      },
+      "id": "bbdc2217-2f62-4bc1-87e6-6836929079c4",
+      "name": "Note 27",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2256,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2 - Calculate, then think\nEvery figure is computed here, in code. Claude receives the finished numbers, their prior-period comparisons, the per-team breakdowns and a bucketed series across the window - never the 314 raw rows. It interprets; it is never asked to count.\n\n**Report Changed?** compares a fingerprint of the *computed figures* against the last published run. Unchanged means no model call and no writes: the run stops at **Nothing To Update** and the existing report is left exactly as it is.\n\n**Any Data To Report?** short-circuits when every source is dead, so the model is never paid to analyse nothing.",
+        "height": 280,
+        "width": 1340,
+        "color": 5
+      },
+      "id": "c3f43dee-0f29-47f1-b8d2-28d0c7b7c208",
+      "name": "Note 28",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -944,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3 - Validate, then publish\nNothing the model writes reaches the dashboard unchecked. Every number in its prose is matched against the figures it was given; unverified ones are named on the page and the confidence badge is forced down, whatever confidence the model claimed for itself.\n\nOne RPC - `publish_report()` - writes the whole report in **one transaction**: run, metrics, breakdowns, insights, data quality and the cleaned records. It commits everything or nothing, and it **deletes** the run's old child rows rather than merging into them, so a re-run cannot leave a stale warning behind.\n\n`run_id = run_<period>_<start>_<end>_<reference date>` - derived from the window, never from the clock and never from an execution id. Running this ten times on unchanged data rewrites the same row ten times: **one report per period**, not a pile of versions to choose between.\n\nn8n writes with the **secret** key (`service_role`) held in a credential. The dashboard reads with the **publishable** key (`anon`) under RLS that grants SELECT and nothing else - and grants nothing at all on `people_records`.",
+        "height": 340,
+        "width": 1480,
+        "color": 3
+      },
+      "id": "b0a00c02-fb13-4587-9df0-e0bfee425b5a",
+      "name": "Note 29",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        512,
+        -288
+      ]
+    }
+  ],
+  "connections": {},
+  "pinData": {},
+  "meta": {
+    "instanceId": "4c7399d63283ab23b038107b3d9551ef4ce9469e21819dd4d80f7395ea107ece"
+  }
+}
