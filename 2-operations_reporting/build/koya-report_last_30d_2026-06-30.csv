@@ -1,0 +1,150 @@
+# Koya Talent — operations report
+field,value
+run_id,run_last_30d_2026-05-31_2026-06-30_2026-06-30
+period,Last 30 days
+period_key,last_30d
+period_start,2026-05-31
+period_end,2026-06-30
+period_days,31
+compared_with,Preceding 31 days
+reference_date,2026-06-30
+run_status,succeeded
+failed_sources,
+insight_source,claude
+model,claude-sonnet-5
+confidence,medium
+grounded,false
+updated_at,2026-09-03T18:18:46.986+00:00
+exported_at,2026-09-04T22:08:06.045Z
+
+# Metrics
+domain,metric,value,available,unavailable_reason,previous_value,change,percent_change,direction
+people_ops,accepted_offers_not_yet_started,5,true,,,,,
+people_ops,active_headcount,81,true,,77,4,0.0519,up
+people_ops,applications,5,true,,6,-1,-0.1667,down
+people_ops,attrition_rate,0.013,true,,0,0.013,,up
+people_ops,exits,1,true,,0,1,,up
+people_ops,new_hires,5,true,,5,0,0,flat
+people_ops,offer_acceptance_days,21.5,true,,17.2,4.3,0.25,up
+people_ops,offers_accepted,4,true,,6,-2,-0.3333,down
+people_ops,opening_headcount,77,true,,,,,
+people_ops,time_to_hire_days,29.4,true,,29,0.4,0.0138,stable
+project_delivery,active_projects,12,true,,12,0,0,flat
+project_delivery,actual_cost_total,7650,true,,,,,
+project_delivery,average_delay_days,6.5,true,,,,,not_comparable
+project_delivery,blocked_projects,5,true,,5,0,0,flat
+project_delivery,budget_variance,1050,true,,-100,1150,,up
+project_delivery,budgeted_cost_total,6600,true,,,,,
+project_delivery,completed_projects,2,true,,3,-1,-0.3333,down
+project_delivery,on_time_completion_rate,0,true,,1,-1,-1,down
+project_delivery,over_budget_projects,2,true,,0,2,,up
+sales,average_won_deal_value,11400,true,,11050,350,0.0317,up
+sales,closed_lost_deals,2,true,,2,0,0,flat
+sales,closed_won_deals,3,true,,3,0,0,flat
+sales,cost_per_lead,318.64,true,,264.03,54.61,0.2068,up
+sales,marketing_spend,2867.74,true,,2112.26,755.48,0.3577,up
+sales,pipeline_value,40040,true,,31220,8820,0.2825,up
+sales,revenue_won,34200,true,,33150,1050,0.0317,up
+sales,total_leads,9,true,,8,1,0.125,up
+sales,win_rate,0.6,true,,0.6,0,0,flat
+
+# Breakdowns
+domain,breakdown,item,field,value
+people_ops,headcount_by_department,Engineering,exits,0
+people_ops,headcount_by_department,Engineering,new_hires,2
+people_ops,headcount_by_department,Engineering,department,Engineering
+people_ops,headcount_by_department,Engineering,applications,1
+people_ops,headcount_by_department,Engineering,active_headcount,17
+people_ops,headcount_by_department,Customer Success,exits,0
+people_ops,headcount_by_department,Customer Success,new_hires,1
+people_ops,headcount_by_department,Customer Success,department,Customer Success
+people_ops,headcount_by_department,Customer Success,applications,1
+people_ops,headcount_by_department,Customer Success,active_headcount,16
+people_ops,headcount_by_department,Delivery,exits,0
+people_ops,headcount_by_department,Delivery,new_hires,1
+people_ops,headcount_by_department,Delivery,department,Delivery
+people_ops,headcount_by_department,Delivery,applications,1
+people_ops,headcount_by_department,Delivery,active_headcount,16
+people_ops,headcount_by_department,People Ops,exits,0
+people_ops,headcount_by_department,People Ops,new_hires,1
+people_ops,headcount_by_department,People Ops,department,People Ops
+people_ops,headcount_by_department,People Ops,applications,1
+people_ops,headcount_by_department,People Ops,active_headcount,16
+people_ops,headcount_by_department,Sales,exits,1
+people_ops,headcount_by_department,Sales,new_hires,0
+people_ops,headcount_by_department,Sales,department,Sales
+people_ops,headcount_by_department,Sales,applications,1
+people_ops,headcount_by_department,Sales,active_headcount,16
+project_delivery,delivery_load_by_owner,Mide,owner,Mide
+project_delivery,delivery_load_by_owner,Mide,active,3
+project_delivery,delivery_load_by_owner,Mide,completed,1
+project_delivery,delivery_load_by_owner,Sam,owner,Sam
+project_delivery,delivery_load_by_owner,Sam,active,3
+project_delivery,delivery_load_by_owner,Sam,completed,1
+project_delivery,delivery_load_by_owner,Tola,owner,Tola
+project_delivery,delivery_load_by_owner,Tola,active,3
+project_delivery,delivery_load_by_owner,Tola,completed,0
+project_delivery,delivery_load_by_owner,Ada,owner,Ada
+project_delivery,delivery_load_by_owner,Ada,active,3
+project_delivery,delivery_load_by_owner,Ada,completed,0
+project_delivery,delivery_load_by_team,Client Ops,team,Client Ops
+project_delivery,delivery_load_by_team,Client Ops,active,3
+project_delivery,delivery_load_by_team,Client Ops,blocked,1
+project_delivery,delivery_load_by_team,Client Ops,completed,1
+project_delivery,delivery_load_by_team,Client Ops,total_load,4
+project_delivery,delivery_load_by_team,Data,team,Data
+project_delivery,delivery_load_by_team,Data,active,3
+project_delivery,delivery_load_by_team,Data,blocked,1
+project_delivery,delivery_load_by_team,Data,completed,1
+project_delivery,delivery_load_by_team,Data,total_load,4
+project_delivery,delivery_load_by_team,AI Apps,team,AI Apps
+project_delivery,delivery_load_by_team,AI Apps,active,3
+project_delivery,delivery_load_by_team,AI Apps,blocked,1
+project_delivery,delivery_load_by_team,AI Apps,completed,0
+project_delivery,delivery_load_by_team,AI Apps,total_load,3
+project_delivery,delivery_load_by_team,Automation,team,Automation
+project_delivery,delivery_load_by_team,Automation,active,3
+project_delivery,delivery_load_by_team,Automation,blocked,2
+project_delivery,delivery_load_by_team,Automation,completed,0
+project_delivery,delivery_load_by_team,Automation,total_load,3
+sales,revenue_by_lead_source,Partner,leads,2
+sales,revenue_by_lead_source,Partner,closed_won,1
+sales,revenue_by_lead_source,Partner,lead_source,Partner
+sales,revenue_by_lead_source,Partner,revenue_won,13350
+sales,revenue_by_lead_source,Partner,deals_missing_amount,0
+sales,revenue_by_lead_source,Inbound,leads,1
+sales,revenue_by_lead_source,Inbound,closed_won,1
+sales,revenue_by_lead_source,Inbound,lead_source,Inbound
+sales,revenue_by_lead_source,Inbound,revenue_won,11400
+sales,revenue_by_lead_source,Inbound,deals_missing_amount,0
+sales,revenue_by_lead_source,Outbound,leads,2
+sales,revenue_by_lead_source,Outbound,closed_won,1
+sales,revenue_by_lead_source,Outbound,lead_source,Outbound
+sales,revenue_by_lead_source,Outbound,revenue_won,9450
+sales,revenue_by_lead_source,Outbound,deals_missing_amount,0
+sales,revenue_by_lead_source,Event,leads,2
+sales,revenue_by_lead_source,Event,closed_won,0
+sales,revenue_by_lead_source,Event,lead_source,Event
+sales,revenue_by_lead_source,Event,revenue_won,0
+sales,revenue_by_lead_source,Event,deals_missing_amount,0
+sales,revenue_by_lead_source,Referral,leads,1
+sales,revenue_by_lead_source,Referral,closed_won,0
+sales,revenue_by_lead_source,Referral,lead_source,Referral
+sales,revenue_by_lead_source,Referral,revenue_won,0
+sales,revenue_by_lead_source,Referral,deals_missing_amount,0
+sales,revenue_by_lead_source,Unattributed,leads,1
+sales,revenue_by_lead_source,Unattributed,closed_won,0
+sales,revenue_by_lead_source,Unattributed,lead_source,Unattributed
+sales,revenue_by_lead_source,Unattributed,revenue_won,0
+sales,revenue_by_lead_source,Unattributed,deals_missing_amount,0
+
+# Data quality (scoped to this reporting period)
+severity,code,scope,source,record_id,record_date,message
+warning,MISSING_STATUS,,sales,LEAD-MISS-STATUS,,"Lead LEAD-MISS-STATUS has no status. It still counts as a lead but is excluded from win rate, pipeline value and revenue."
+warning,MISSING_AMOUNT,,sales,LEAD-MISS-AMOUNT,,"Lead LEAD-MISS-AMOUNT is ""Closed Won"" but has no deal amount. It is counted in the deal count and excluded from revenue won."
+warning,INVALID_DATE,,sales,LEAD-BAD-DATE,,"Lead LEAD-BAD-DATE has an invalid date ""2026-02-30"" (not a real calendar date in YYYY-MM-DD). Excluded from every period metric."
+warning,MISSING_LEAD_SOURCE,,sales,LEAD-MISS-SOURCE,,"Lead LEAD-MISS-SOURCE has no lead source. Grouped under ""Unattributed"" so its revenue is not lost from the source breakdown."
+warning,MISSING_ACTUAL_COST,,project_delivery,PROJ-MISS-COST,,"Project PROJ-MISS-COST completed with no actual cost. Counted as completed, excluded from budget variance and the over-budget count."
+warning,MISSING_DUE_DATE,,project_delivery,PROJ-MISS-DUE,,"Project PROJ-MISS-DUE completed without a due date. Counted as completed, excluded from the on-time completion rate (which has no baseline to measure against)."
+warning,MISSING_STATUS,,people_ops,EMP-BAD-STATUS,,"Employee EMP-BAD-STATUS has a blank status. Headcount is derived from start and exit dates, so this record is still counted correctly, but its lifecycle stage cannot be confirmed."
+info,FUTURE_START_DATE,,people_ops,,,"5 record(s) have a start date after 2026-06-30. They are accepted offers, not headcount, and are excluded from active headcount for this period."

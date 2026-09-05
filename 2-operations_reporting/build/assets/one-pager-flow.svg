@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 830" width="1000" height="830" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b9098"/>
+    </marker>
+    <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b0b5bc"/>
+    </marker>
+    <style>
+      .bx  { fill:#ffffff; stroke:#c2c7ce; stroke-width:1.6; rx:8; }
+      .bnd { fill:#f4f6f8; stroke:#e0e4e8; stroke-width:1.4; rx:10; }
+      .ai  { fill:#eaf2fb; stroke:#2f6ea8; stroke-width:2; rx:8; }
+      .sk  { fill:#f7f8f9; stroke:#c2c7ce; stroke-width:1.6; stroke-dasharray:5 4; rx:8; }
+      .dec { fill:#fdf6e8; stroke:#c9a227; stroke-width:1.8; rx:8; }
+      .t   { font-size:14px; fill:#16191d; font-weight:600; }
+      .s   { font-size:12.2px; fill:#5d646d; }
+      .lbl { font-size:11.8px; fill:#8b9098; font-style:italic; }
+      .ln  { stroke:#8b9098; stroke-width:1.6; fill:none; marker-end:url(#a); }
+      .lnd { stroke:#b0b5bc; stroke-width:1.5; fill:none; stroke-dasharray:5 4; marker-end:url(#ad); }
+      .hd  { font-size:11px; fill:#8b9098; font-weight:600; letter-spacing:.08em; }
+    </style>
+  </defs>
+
+  <!-- TRIGGERS -->
+  <rect class="bnd" x="240" y="14" width="520" height="52"/>
+  <text class="hd" x="256" y="34">TRIGGERS</text>
+  <text class="t" x="376" y="48" font-size="13">Daily schedule</text>
+  <text class="t" x="512" y="48" font-size="13">Webhook (on demand)</text>
+  <text class="t" x="672" y="48" font-size="13">Manual</text>
+
+  <path class="ln" d="M500,66 L500,92"/>
+
+  <!-- RESOLVE PERIOD + FRESHNESS -->
+  <rect class="bx" x="330" y="94" width="230" height="50"/>
+  <text class="t" x="445" y="115" text-anchor="middle">Resolve Reporting Period</text>
+  <text class="s" x="445" y="132" text-anchor="middle">period + comparison window</text>
+
+  <rect class="bx" x="620" y="94" width="230" height="50"/>
+  <text class="t" x="735" y="115" text-anchor="middle">Fetch Previous Run</text>
+  <text class="s" x="735" y="132" text-anchor="middle">the freshness fingerprint</text>
+  <path class="ln" d="M560,119 L616,119"/>
+
+  <!-- SOURCES -->
+  <path class="ln" d="M445,144 L445,166 L150,166 L150,190"/>
+  <path class="ln" d="M445,144 L445,190"/>
+  <path class="ln" d="M445,144 L445,166 L740,166 L740,190"/>
+
+  <rect class="bx" x="30" y="192" width="240" height="62"/>
+  <text class="t" x="150" y="214" text-anchor="middle">Google Sheets — Sales</text>
+  <text class="s" x="150" y="233" text-anchor="middle">fetch → normalize</text>
+  <text class="s" x="150" y="247" text-anchor="middle">148 records</text>
+
+  <rect class="bx" x="325" y="192" width="240" height="62"/>
+  <text class="t" x="445" y="214" text-anchor="middle">Airtable — Delivery</text>
+  <text class="s" x="445" y="233" text-anchor="middle">fetch → normalize</text>
+  <text class="s" x="445" y="247" text-anchor="middle">74 records</text>
+
+  <rect class="bx" x="620" y="192" width="240" height="62"/>
+  <text class="t" x="740" y="214" text-anchor="middle">People Ops API</text>
+  <text class="s" x="740" y="233" text-anchor="middle">fetch → normalize</text>
+  <text class="s" x="740" y="247" text-anchor="middle">92 records</text>
+
+  <text class="lbl" x="884" y="218">in parallel</text>
+  <text class="lbl" x="884" y="234">retried 3×</text>
+  <text class="lbl" x="884" y="250">bad rows kept,</text>
+  <text class="lbl" x="884" y="264">reason attached</text>
+
+  <path class="ln" d="M150,254 L150,278 L445,278 L445,300"/>
+  <path class="ln" d="M445,254 L445,300"/>
+  <path class="ln" d="M740,254 L740,278 L445,278 L445,300"/>
+
+  <!-- COMPUTE -->
+  <rect class="bx" x="300" y="302" width="290" height="50"/>
+  <text class="t" x="445" y="323" text-anchor="middle">Compute Metrics</text>
+  <text class="s" x="445" y="340" text-anchor="middle">28 metrics × 2 windows — no model</text>
+  <path class="ln" d="M445,352 L445,378"/>
+
+  <!-- DECISION 1 -->
+  <rect class="dec" x="345" y="380" width="200" height="42"/>
+  <text class="t" x="445" y="406" text-anchor="middle">Report changed?</text>
+
+  <path class="ln" d="M345,401 L200,401"/>
+  <text class="lbl" x="256" y="394">no</text>
+  <rect class="sk" x="30" y="376" width="168" height="52"/>
+  <text class="t" x="114" y="397" text-anchor="middle" font-size="13">Nothing to update</text>
+  <text class="s" x="114" y="414" text-anchor="middle">no call, no writes</text>
+
+  <path class="ln" d="M445,422 L445,448"/>
+  <text class="lbl" x="453" y="440">yes</text>
+
+  <!-- DECISION 2 -->
+  <rect class="dec" x="335" y="450" width="220" height="42"/>
+  <text class="t" x="445" y="476" text-anchor="middle">Any data to report?</text>
+
+  <path class="ln" d="M555,471 L700,471"/>
+  <text class="lbl" x="618" y="464">no</text>
+  <rect class="sk" x="702" y="446" width="168" height="52"/>
+  <text class="t" x="786" y="467" text-anchor="middle" font-size="13">No usable data</text>
+  <text class="s" x="786" y="484" text-anchor="middle">fallback commentary</text>
+
+  <path class="ln" d="M445,492 L445,518"/>
+  <text class="lbl" x="453" y="510">yes</text>
+
+  <!-- CLAUDE -->
+  <rect class="bx" x="215" y="520" width="200" height="50"/>
+  <text class="t" x="315" y="541" text-anchor="middle">Build Claude Brief</text>
+  <text class="s" x="315" y="558" text-anchor="middle">~40 finished numbers</text>
+
+  <path class="ln" d="M415,545 L471,545"/>
+
+  <rect class="ai" x="473" y="520" width="212" height="50"/>
+  <text class="t" x="579" y="541" text-anchor="middle" fill="#1c4e7d">Claude — claude-sonnet-5</text>
+  <text class="s" x="579" y="558" text-anchor="middle" fill="#2f6ea8">interpretation only</text>
+
+  <text class="lbl" x="700" y="541">judgement,</text>
+  <text class="lbl" x="700" y="556">never arithmetic</text>
+
+  <path class="ln" d="M579,570 L579,588 L445,588 L445,606"/>
+  <path class="lnd" d="M786,498 L786,588 L600,588"/>
+
+  <!-- VALIDATE -->
+  <rect class="bx" x="275" y="608" width="340" height="60"/>
+  <text class="t" x="445" y="630" text-anchor="middle">Parse &amp; Validate</text>
+  <text class="s" x="445" y="649" text-anchor="middle">every figure matched to the brief</text>
+  <text class="s" x="445" y="663" text-anchor="middle">confidence is set here, never the model's claim</text>
+  <path class="ln" d="M445,668 L445,688"/>
+
+  <!-- PUBLISH -->
+  <rect class="bx" x="285" y="690" width="320" height="50"/>
+  <text class="t" x="445" y="711" text-anchor="middle">Publish to Supabase</text>
+  <text class="s" x="445" y="728" text-anchor="middle">8 idempotent upserts → respond</text>
+  <path class="ln" d="M445,740 L445,766"/>
+
+  <rect class="bnd" x="285" y="768" width="320" height="44"/>
+  <text class="t" x="445" y="795" text-anchor="middle">Dashboard reads Supabase</text>
+
+  <path class="ln" d="M114,428 L114,790 L281,790"/>
+
+  <!-- ERROR LANE -->
+  <rect class="sk" x="700" y="690" width="270" height="60"/>
+  <text class="t" x="835" y="712" text-anchor="middle" font-size="13">On workflow error</text>
+  <text class="s" x="835" y="730" text-anchor="middle">build failure record →</text>
+  <text class="s" x="835" y="744" text-anchor="middle">record failed run, never a report</text>
+</svg>
