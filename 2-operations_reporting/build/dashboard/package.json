@@ -1,0 +1,10 @@
+{
+  "name": "koya-ops-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Static operations dashboard for the Koya Talent reporting workflow. The build step writes config.js from the environment; there is nothing to bundle.",
+  "scripts": {
+    "build": "node build-config.js",
+    "check": "node build-config.js --check"
+  }
+}

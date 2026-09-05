@@ -1,0 +1,2597 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Koya Talent Operations Report</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#2a78d6">
+<style>
+/* ============================================================
+   Palette: the validated categorical slots 1-3 (blue / orange / aqua),
+   stepped separately for the dark surface rather than flipped, plus the
+   blue<->red diverging pair for signed quantities (hires above the line,
+   exits below) and the reserved status colours for run health.
+
+   Aqua sits below 3:1 on the light surface, so nothing rests on it alone:
+   every chart carries direct labels, a legend, and a table view.
+   ============================================================ */
+:root {
+  color-scheme: light;
+  --page:        #f9f9f7;
+  --surface:     #fcfcfb;
+  --surface-2:   #f4f3ef;
+  --ink:         #0b0b0b;
+  --ink-2:       #52514e;
+  --muted:       #898781;
+  --grid:        #e1e0d9;
+  --baseline:    #c3c2b7;
+  --border:      rgba(11,11,11,0.10);
+  --series-1:    #2a78d6;
+  --series-2:    #eb6834;
+  --series-3:    #1baf7a;
+  --series-4:    #eda100;
+  /* Entity hues. Slots 1-5 and 7 of the same validated categorical order the
+     charts use; green and red are skipped because they are the reserved status
+     colours and a lead source tinted red reads as a failing one. Validated as a
+     six-slot set in both modes: worst adjacent CVD dE 9.1 light / 8.4 dark,
+     normal-vision 19.6 / 19.3. Three light steps sit under 3:1 on the surface,
+     which is why the hue is never the only thing carrying identity - every pill
+     shows its name in ink and the colour rides a dot beside it. */
+  --cat-1:       #2a78d6;
+  --cat-2:       #eb6834;
+  --cat-3:       #1baf7a;
+  --cat-4:       #eda100;
+  --cat-5:       #e87ba4;
+  --cat-6:       #4a3aa7;
+  --de-emphasis: #c3c2b7;
+  --diverge-pos: #2a78d6;
+  --diverge-neg: #e34948;
+  --accent-2:    #4a3aa7;
+  --accent-2-ink:#ffffff;
+  --track:       #ebeae5;
+  --good:        #0ca30c;
+  --good-text:   #006300;
+  --warning:     #fab219;
+  --serious:     #ec835a;
+  --critical:    #d03b3b;
+  --shadow:      0 1px 2px rgba(11,11,11,.05), 0 4px 12px rgba(11,11,11,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232322; --ink: #fff; --ink-2: #c3c2b7;
+    --muted: #898781; --grid: #2c2c2a; --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70;
+    --cat-4: #c98500; --cat-5: #d55181; --cat-6: #9085e9;
+    --de-emphasis: #52514e;
+    --diverge-pos: #3987e5; --diverge-neg: #e66767;
+    --accent-2: #9085e9; --accent-2-ink: #0b0b0b;
+    --track: #2c2c2a; --good: #0ca30c; --good-text: #0ca30c;
+    --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232322; --ink: #fff; --ink-2: #c3c2b7;
+  --muted: #898781; --grid: #2c2c2a; --baseline: #383835;
+  --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70;
+  --cat-4: #c98500; --cat-5: #d55181; --cat-6: #9085e9;
+  --de-emphasis: #52514e;
+  --diverge-pos: #3987e5; --diverge-neg: #e66767;
+  --accent-2: #9085e9; --accent-2-ink: #0b0b0b;
+  --track: #2c2c2a; --good: #0ca30c; --good-text: #0ca30c;
+  --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --shadow: none;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1320px; margin: 0 auto; padding: 24px 20px 72px; }
+h1 { font-size: 21px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 15px; margin: 0 0 2px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink-2); }
+h3 { font-size: 13px; margin: 24px 0 10px; color: var(--ink-2); font-weight: 600; }
+h4 { font-size: 13px; margin: 0 0 6px; color: var(--ink-2); font-weight: 600; }
+a { color: inherit; }
+
+/* ---- header + controls ---- */
+header.top { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+.sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 3px; }
+.seg button { border: none; background: none; border-radius: 7px; padding: 6px 11px; }
+.seg button[aria-pressed="true"] { background: var(--series-1); color: #fff; font-weight: 600; }
+
+button, select, input[type=date] {
+  font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; cursor: pointer;
+}
+button:hover:not(:disabled), select:hover { border-color: var(--baseline); }
+.seg button:hover:not([aria-pressed="true"]) { background: var(--track); border-color: transparent; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--series-1); outline-offset: 2px;
+}
+button.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; font-weight: 600; }
+button.primary:hover:not(:disabled) { filter: brightness(1.06); }
+button.primary:disabled { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.icon-btn { padding: 7px 10px; }
+.spinner {
+  width: 12px; height: 12px; border-radius: 50%; display: inline-block; vertical-align: -1px;
+  border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; margin-right: 7px;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+
+/* the export menu: a plain details element, so it needs no outside-click
+   handling and closes on Escape for free */
+.menu { position: relative; }
+/* Export is a filled accent, not chrome. */
+.menu > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; border: 1px solid var(--accent-2);
+  background: var(--accent-2); color: var(--accent-2-ink);
+  border-radius: 8px; padding: 7px 13px; cursor: pointer; user-select: none; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu > summary:hover { filter: brightness(1.12); }
+.menu > summary:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.menu[open] > summary { filter: brightness(0.94); }
+.menu > summary .caret { font-size: 10px; opacity: .8; }
+.menu-body {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 232px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 6px 22px rgba(11,11,11,.13); padding: 5px; text-align: left;
+}
+.menu-body button { display: block; width: 100%; text-align: left; border: none; background: none; padding: 8px 10px; border-radius: 7px; }
+.menu-body button:hover { background: var(--surface-2); }
+.menu-body .hint { font-size: 11.5px; color: var(--muted); padding: 6px 10px 8px; line-height: 1.45; }
+
+/* The custom range drops down into the page, where there is room to read it,
+   and CLOSES ON USE: once a range has been run, or the last custom run loaded,
+   the pickers are furniture sitting between the reader and the answer, so they
+   fold back up and the Custom button in the nav is all that is left. */
+#customPanel[hidden] { display: none; }
+#customPanel .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+#customPanel .hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 9px; }
+@media (prefers-reduced-motion: no-preference) {
+  #customPanel:not([hidden]) { animation: dropIn .16s ease-out; }
+}
+@keyframes dropIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* ---- shell: sidebar + content ---- */
+.shell { display: grid; gap: 18px; align-items: start; }
+@media (min-width: 1000px) { .shell { grid-template-columns: 254px minmax(0, 1fr); } }
+
+nav.side {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 8px; box-shadow: var(--shadow);
+}
+@media (min-width: 1000px) { nav.side { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; } }
+/* Below the two-column breakpoint the nav sits ABOVE the report, where a
+   full-length list of every team and department pushes the numbers off the
+   first screen entirely. Capped and scrolled in place: everything is still
+   reachable, and the report starts where the reader is looking. */
+@media (max-width: 999px) { nav.side { max-height: 46vh; overflow-y: auto; } }
+.side-group { padding: 6px 4px 10px; }
+.side-group + .side-group { border-top: 1px solid var(--grid); }
+.side-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; padding: 4px 8px 6px; }
+.side-item {
+  display: flex; gap: 8px; align-items: baseline; justify-content: space-between;
+  width: 100%; text-align: left; border: none; background: none; border-radius: 8px;
+  padding: 7px 9px; font-size: 13.5px; color: var(--ink-2); cursor: pointer; line-height: 1.35;
+}
+.side-item:hover { background: var(--surface-2); }
+.side-item[aria-current="true"] { background: var(--series-1); color: #fff; font-weight: 600; }
+.side-item .n { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.side-item[aria-current="true"] .n { color: rgba(255,255,255,.82); }
+.side-item .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-item.dead { opacity: .55; }
+
+/* ---- cards ---- */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.card.tight { padding: 16px 18px; }
+.grid { display: grid; gap: 16px; }
+@media (min-width: 900px) { .grid.cols-2 { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1180px) { .grid.cols-3 { grid-template-columns: repeat(3, 1fr); } }
+.section-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
+
+/* ---- trust strip ---- */
+.trust { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink-2);
+}
+.badge .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.badge.good .dot { background: var(--good); }
+.badge.warning .dot { background: var(--warning); }
+.badge.serious .dot { background: var(--serious); }
+.badge.critical .dot { background: var(--critical); }
+.badge.neutral .dot { background: var(--muted); }
+
+/* ---- stat tiles ---- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px 14px; min-height: 92px; }
+.tile .label { font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.tile .value { font-size: 25px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+.tile .value.na { font-size: 14.5px; font-weight: 500; color: var(--muted); line-height: 1.35; }
+.tile .delta { font-size: 12px; margin-top: 5px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.tile .delta .arrow { font-weight: 700; }
+.tile .delta.up { color: var(--good-text); }
+.tile .delta.down { color: var(--critical); }
+.tile .why { font-size: 11.5px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+.hero { font-size: 34px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; }
+
+/* ---- charts ---- */
+.chart-card { border: 1px solid var(--border); border-radius: 11px; padding: 14px 16px 10px; background: var(--surface); }
+.chart-head { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; margin-bottom: 2px; }
+.chart-title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.chart-note { font-size: 11.5px; color: var(--muted); margin: 2px 0 8px; line-height: 1.4; }
+.chart-caption { font-size: 11px; color: var(--muted); margin-top: 5px; }
+.chart-host { width: 100%; }
+.chart-host svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-host text { font-family: inherit; }
+.tick-label { font-size: 10.5px; fill: var(--muted); }
+.axis-label { font-size: 11px; fill: var(--ink-2); }
+.value-label { font-size: 11px; fill: var(--ink-2); font-weight: 600; }
+.value-label.inbar { font-weight: 600; }
+.gridline { stroke: var(--grid); stroke-width: 1; }
+.baseline { stroke: var(--baseline); stroke-width: 1; }
+.crosshair { stroke: var(--baseline); stroke-width: 1; }
+.hit { fill: transparent; cursor: default; }
+.mark:hover, .mark:focus-visible { filter: brightness(1.12); }
+.legend { display: flex; flex-wrap: wrap; gap: 13px; margin: 4px 0 10px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.swatch.line { height: 3px; width: 14px; border-radius: 2px; }
+.linkish { border: none; background: none; color: var(--ink-2); font-size: 11.5px; text-decoration: underline; text-underline-offset: 2px; padding: 2px 4px; cursor: pointer; }
+.linkish:hover { color: var(--ink); }
+.table-view { margin-top: 10px; }
+.empty { color: var(--muted); font-size: 13px; padding: 14px 0; }
+
+/* the tooltip is one element reused by every chart */
+#tip {
+  position: fixed; z-index: 60; pointer-events: none; opacity: 0; transition: opacity .08s;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+  box-shadow: 0 6px 22px rgba(11,11,11,.16); padding: 9px 11px; font-size: 12px;
+  color: var(--ink-2); max-width: 280px;
+}
+#tip.on { opacity: 1; }
+#tip .t-head { font-size: 11.5px; color: var(--muted); margin-bottom: 5px; }
+#tip .t-row { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; }
+#tip .t-key { width: 12px; height: 3px; border-radius: 2px; flex: none; transform: translateY(-3px); }
+#tip .t-val { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+#tip .t-name { color: var(--muted); }
+
+/* ---- insights ---- */
+.summary { font-size: 16.5px; line-height: 1.6; margin: 0; }
+.dept-card { border: 1px solid var(--border); border-radius: 11px; padding: 16px 17px; background: var(--surface); }
+.dept-card .kicker { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.dept-card .headline { font-size: 15px; font-weight: 600; margin: 6px 0 8px; line-height: 1.35; }
+.dept-card p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
+.pt { display: flex; gap: 8px; margin: 8px 0; font-size: 13px; line-height: 1.5; }
+.pt .pt-key { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); flex: none; width: 74px; padding-top: 2px; }
+.pt .pt-val { color: var(--ink-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip {
+  font-size: 11.5px; border: 1px solid var(--border); background: var(--surface-2);
+  border-radius: 999px; padding: 3px 9px; color: var(--ink-2); cursor: pointer;
+}
+.chip:hover { border-color: var(--baseline); color: var(--ink); }
+.chip.static { cursor: default; }
+
+/* Identity by hue, restrained: a dot carries the colour, a 10% wash ties the
+   pill to it, and the LABEL STAYS IN INK. Text in the series colour is what
+   makes a coloured pill look cheap, and it fails contrast on half the palette. */
+.chip .swatch {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  display: inline-block; margin-right: 6px; vertical-align: 1px;
+  background: var(--chip-hue, var(--muted));
+}
+.chip[data-hue] {
+  background: color-mix(in oklab, var(--chip-hue) 10%, var(--surface-2));
+  border-color: color-mix(in oklab, var(--chip-hue) 30%, var(--border));
+}
+.chip[data-hue]:hover { border-color: var(--chip-hue); color: var(--ink); }
+.chip[data-hue="1"] { --chip-hue: var(--cat-1); }
+.chip[data-hue="2"] { --chip-hue: var(--cat-2); }
+.chip[data-hue="3"] { --chip-hue: var(--cat-3); }
+.chip[data-hue="4"] { --chip-hue: var(--cat-4); }
+.chip[data-hue="5"] { --chip-hue: var(--cat-5); }
+.chip[data-hue="6"] { --chip-hue: var(--cat-6); }
+@media print { .chip[data-hue] { background: none; } }
+.item { border-left: 3px solid var(--muted); padding: 2px 0 2px 13px; margin: 13px 0; }
+.item.high { border-color: var(--critical); }
+.item.medium { border-color: var(--serious); }
+.item.low { border-color: var(--warning); }
+.item .head { font-weight: 600; font-size: 14px; }
+.item .meta { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 3px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.item .ev { font-size: 13px; color: var(--ink-2); margin-top: 3px; }
+
+/* ---- tables ---- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--grid); vertical-align: top; color: var(--ink-2); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; padding-right: 0; }
+td.sev { white-space: nowrap; font-weight: 600; }
+td.sev.error { color: var(--critical); }
+td.sev.warning { color: var(--serious); }
+td.sev.info { color: var(--muted); }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--track); padding: 1px 5px; border-radius: 4px; }
+.scroll { overflow-x: auto; }
+
+/* ---- notices ---- */
+.notice { padding: 13px 15px; border-radius: 9px; font-size: 13.5px; line-height: 1.5; margin-bottom: 12px; border: 1px solid var(--border); background: var(--surface); }
+.notice.alert { border-left: 3px solid var(--critical); }
+.notice.warn { border-left: 3px solid var(--serious); }
+.notice.info { border-left: 3px solid var(--series-1); }
+.notice.ok { border-left: 3px solid var(--good); }
+.notice strong { display: block; margin-bottom: 3px; color: var(--ink); }
+.source-down {
+  border: 1px dashed var(--critical); border-radius: 10px; padding: 16px 17px;
+  background: color-mix(in srgb, var(--critical) 5%, var(--surface));
+}
+.source-down .sd-title { font-weight: 600; color: var(--ink); margin-bottom: 4px; font-size: 14px; }
+.source-down .sd-body { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.muted { color: var(--muted); }
+.hidden { display: none !important; }
+.stale { opacity: .45; transition: opacity .15s; }
+footer { margin-top: 26px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.crumb { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12.5px; color: var(--muted); }
+
+@media print {
+  nav.side, .controls, .linkish, .chip { display: none !important; }
+  .card, .chart-card { break-inside: avoid; box-shadow: none; }
+  body { background: #fff; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>Koya Talent Operations Report</h1>
+      <div class="sub" id="periodLine">Loading…</div>
+    </div>
+    <div class="controls" id="controls">
+      <div class="seg" id="periodSeg">
+        <button data-period="last_7d" aria-pressed="false">7 days</button>
+        <button data-period="last_30d" aria-pressed="true">30 days</button>
+        <button data-period="last_90d" aria-pressed="false">90 days</button>
+        <button data-period="ytd" aria-pressed="false">Year to date</button>
+        <button data-period="custom" aria-pressed="false" aria-expanded="false" aria-controls="customPanel">Custom</button>
+      </div>
+      <button id="runBtn" class="primary" title="Rebuild this report from the sources">Run now</button>
+      <details class="menu" id="exportMenu">
+        <summary>Export<span class="caret" aria-hidden="true">▾</span></summary>
+        <div class="menu-body">
+          <button data-export="csv">Download figures (CSV)</button>
+          <button data-export="json">Download full report (JSON)</button>
+          <button data-export="print">Print / Save as PDF</button>
+          <div class="hint" id="exportHint"></div>
+        </div>
+      </details>
+      <button class="icon-btn" id="themeBtn" title="Toggle light and dark" aria-label="Toggle light and dark">◐</button>
+    </div>
+  </header>
+
+  <div id="trust" class="trust"></div>
+  <div id="customPanel" class="notice info" hidden></div>
+  <div id="notices"></div>
+
+  <div class="shell">
+    <nav class="side" id="sidebar" aria-label="Report sections"></nav>
+    <main id="report" class="hidden"></main>
+  </div>
+
+  <footer>
+    <div id="footNote"></div>
+    <div style="margin-top:6px">
+      Figures are calculated by the n8n workflow and stored in Supabase;
+      the commentary is written by Claude from those figures and is checked against them before it is shown.
+    </div>
+  </footer>
+</div>
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script src="config.js"></script>
+<script>
+/* ============================================================
+   CONFIGURATION 
+   config.js is GENERATED, and there are two ways it gets written:
+
+     locally   node harness/build-dashboard-config.js  (reads the repo .env)
+     on Vercel npm run build in dashboard/             (reads the project's
+               Environment Variables — SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY,
+               N8N_WEBHOOK_URL)
+
+   Either way this file never changes and no key is committed. Rotating a key
+   is an edit to .env or to the Vercel environment plus a rebuild.
+
+   ============================================================ */
+const CONFIG = (typeof window !== 'undefined' && window.KOYA_CONFIG) || {};
+
+const SUPABASE_URL = String(CONFIG.SUPABASE_URL || '').replace(/\/+$/, '');
+
+const SUPABASE_PUBLISHABLE_KEY = String(
+  CONFIG.SUPABASE_PUBLISHABLE_KEY || CONFIG.SUPABASE_ANON_KEY || '');
+
+const N8N_WEBHOOK_URL = String(CONFIG.N8N_WEBHOOK_URL || '');
+
+/* A secret key here is checked for by shape rather than trusted not to happen. */
+function isSecretKey(k) {
+  if (/^sb_secret_/.test(k)) return true;
+  if (!/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\./.test(k)) return false;
+  try {
+    return JSON.parse(atob(k.split('.')[1])).role === 'service_role';
+  } catch (e) { return false; }
+}
+
+// ---- small helpers ------------------------------------------
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+const clear = (node) => { while (node.firstChild) node.removeChild(node.firstChild); return node; };
+
+const fmtNum = (n) => n === null || n === undefined ? '—' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: 2 });
+const fmtInt = (n) => n === null || n === undefined ? '—' : Math.round(Number(n)).toLocaleString('en-GB');
+const fmtMoney = (n) => n === null || n === undefined ? '—' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: 0 });
+const fmtPct = (n) => n === null || n === undefined ? '—' : (Number(n) * 100).toFixed(1) + '%';
+
+const fmtDays = (n) => {
+  if (n === null || n === undefined) return '—';
+  const v = Math.round(Number(n));
+  return v + (Math.abs(v) === 1 ? ' day' : ' days');
+};
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const fmtDate = (s) => {
+  if (!s) return '—';
+  const p = String(s).slice(0, 10).split('-');
+  if (p.length !== 3) return String(s);
+  return Number(p[2]) + ' ' + MONTHS[Number(p[1]) - 1] + ' ' + p[0];
+};
+const fmtDateShort = (s) => {
+  if (!s) return '';
+  const p = String(s).slice(0, 10).split('-');
+  return Number(p[2]) + ' ' + MONTHS[Number(p[1]) - 1];
+};
+const fmtDateTime = (s) => {
+  if (!s) return '—';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return String(s);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) +
+    ', ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+};
+
+function bucketLabelLines(b) {
+  if (!b) return [''];
+  const p = String(b.bucket_start).split('-');
+  if (b.grain === 'month') return [MONTHS[Number(p[1]) - 1], p[0]];
+  return [String(Number(p[2])), MONTHS[Number(p[1]) - 1]];
+}
+
+
+const GRAIN_WORD = { day: 'Daily', week: 'Weekly', month: 'Monthly' };
+function grainCaption(buckets) {
+  const grain = buckets && buckets[0] && buckets[0].grain;
+  if (!grain || !GRAIN_WORD[grain]) return null;
+  return GRAIN_WORD[grain] + ' buckets' +
+    (grain === 'month' ? '.' : ', labelled by the first day.');
+}
+
+function labelStride(buckets, band, gutter) {
+  const widest = Math.max.apply(null, buckets.map((b) => linesWidth(bucketLabelLines(b), 10.5)));
+  return Math.max(1, Math.ceil((widest + (gutter || 10)) / Math.max(1, band)));
+}
+
+// A bucket's label, in the grain it was cut at. No decimals, no ISO strings.
+function bucketLabel(b) {
+  if (!b) return '';
+  if (b.grain === 'month') {
+    const p = String(b.bucket_start).split('-');
+    return MONTHS[Number(p[1]) - 1] + ' ' + p[0];
+  }
+  if (b.grain === 'day') return fmtDateShort(b.bucket_start);
+  const a = String(b.bucket_start).split('-');
+  const z = String(b.bucket_end).split('-');
+  return a[1] === z[1]
+    ? Number(a[2]) + '–' + Number(z[2]) + ' ' + MONTHS[Number(z[1]) - 1]
+    : fmtDateShort(b.bucket_start) + '–' + fmtDateShort(b.bucket_end);
+}
+
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// Which direction is good, per metric. Without this, "exits up 40%" would
+// be painted the same green as "revenue up 40%".
+const GOOD_WHEN = {
+  revenue_won: 'up', pipeline_value: 'up', win_rate: 'up', closed_won_deals: 'up',
+  total_leads: 'up', average_won_deal_value: 'up', cost_per_lead: 'down',
+  completed_projects: 'up', on_time_completion_rate: 'up', blocked_projects: 'down',
+  average_delay_days: 'down', budget_variance: 'down', over_budget_projects: 'down',
+  applications: 'up', new_hires: 'up', offers_accepted: 'up', active_headcount: 'up',
+  exits: 'down', attrition_rate: 'down', time_to_hire_days: 'down', offer_acceptance_days: 'down',
+};
+
+// The three sources, named the way the people who own them name them. A
+// failure that says "delivery failed" sends someone to the wrong system.
+const SOURCES = {
+  sales: { label: 'Sales', system: 'Google Sheets', domain: 'sales' },
+  delivery: { label: 'Project Delivery', system: 'Airtable', domain: 'project_delivery' },
+  people_ops: { label: 'People Ops', system: 'the People Ops API', domain: 'people_ops' },
+};
+const DOMAIN_TO_SOURCE = { sales: 'sales', project_delivery: 'delivery', people_ops: 'people_ops' };
+const DOMAIN_LABEL = { sales: 'Sales', project_delivery: 'Project Delivery', people_ops: 'People Ops' };
+
+let state = { period: 'last_30d', data: null, model: null, view: { kind: 'overview' }, loading: false };
+
+// ---- theme --------------------------------------------------
+// Three states: an explicit choice is stamped on the root element and stored;
+// no choice leaves NO attribute, so the OS setting decides through
+// prefers-color-scheme. Every colour token is defined for both, under the
+// media query and under [data-theme], so the toggle wins in both directions.
+try {
+  const saved = localStorage.getItem('koya-theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+} catch (e) { /* private window, or site data blocked — the OS setting still applies */ }
+
+$('themeBtn').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const dark = cur ? cur === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const next = dark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('koya-theme', next); } catch (e) { /* non-fatal */ }
+  drawAllCharts(); // the marks read their colours from the tokens
+});
+
+// ---- data ---------------------------------------------------
+async function loadPeriod(periodKey) {
+  state.period = periodKey;
+  state.loading = true;
+  closeCustom();
+  document.querySelectorAll('#controls button[data-period]').forEach((b) =>
+    b.setAttribute('aria-pressed', String(b.dataset.period === periodKey)));
+
+  clear($('notices'));
+  // The previous render is HELD at reduced opacity rather than blanked. A
+  // skeleton here would throw the layout away and put it back a moment later,
+  // which reads as a page reloading rather than a figure updating.
+  $('report').classList.add('stale');
+  $('periodLine').textContent = 'Loading…';
+
+  if (isSecretKey(SUPABASE_PUBLISHABLE_KEY)) {
+    state.loading = false;
+    return notice('alert', 'Secret key in the dashboard config — request blocked',
+      'config.js holds a SECRET key (sb_secret_… / service_role). It bypasses row level ' +
+      'security, so publishing it gives every visitor of this page full read and write ' +
+      'access to the database. Nothing was sent. Put the publishable key ' +
+      '(sb_publishable_…) in SUPABASE_PUBLISHABLE_KEY — in .env locally, or in the ' +
+      'Vercel project environment — rebuild, and rotate the exposed secret key in ' +
+      'Supabase under Project Settings → API Keys.');
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY ||
+      SUPABASE_URL.includes('YOUR-PROJECT-REF') ||
+      SUPABASE_PUBLISHABLE_KEY.includes('YOUR_PUBLISHABLE_KEY')) {
+    state.loading = false;
+    return notice('alert', 'Not configured yet',
+      'This page reads its project URL and key from config.js, which is generated rather ' +
+      'than committed. Locally: copy .env.example to .env at the repo root, fill in ' +
+      'SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY, then run ' +
+      'node harness/build-dashboard-config.js. On Vercel: set the same names as ' +
+      'Environment Variables on the project and redeploy — the build step writes ' +
+      'config.js from them. Both values are in Supabase under Project Settings (Data API ' +
+      'for the URL, API Keys for the key). Use the publishable key, never a secret key.');
+  }
+
+  const url = SUPABASE_URL.replace(/\/+$/, '') +
+    '/rest/v1/dashboard_latest?period_key=eq.' + encodeURIComponent(periodKey) + '&limit=1';
+
+  let rows;
+  try {
+    const res = await fetch(url, {
+      // `apikey` is what identifies the key to Supabase and selects the
+      // Postgres role. Authorization is sent too because it is what a legacy
+      // anon JWT was matched on, so one header set works for either key type
+      // during the migration; with no user session both resolve to `anon`.
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: 'Bearer ' + SUPABASE_PUBLISHABLE_KEY,
+        Accept: 'application/json',
+      },
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      state.loading = false;
+      $('report').classList.remove('stale');
+      return notice('alert', 'Supabase returned ' + res.status,
+        (body || 'No detail returned.').slice(0, 400) +
+        (res.status === 401 || res.status === 404
+          ? ' — check the publishable key, and that schema.sql has been run (it creates the dashboard_latest view and its read policies for the anon role).'
+          : ''));
+    }
+    rows = await res.json();
+  } catch (err) {
+    state.loading = false;
+    $('report').classList.remove('stale');
+    return notice('alert', 'Could not reach Supabase',
+      String(err && err.message || err) + ' — check the project URL and that this page is served over https.');
+  }
+
+  state.loading = false;
+  $('report').classList.remove('stale');
+
+  if (!rows || !rows.length) {
+    $('periodLine').textContent = 'No report stored for this period yet.';
+    $('report').classList.add('hidden');
+    clear($('trust'));
+    clear($('sidebar'));
+    return notice('info', 'No report yet for this period',
+      'The workflow has not produced a run for "' + periodKey + '". Press Run now, or ' +
+      'trigger it in n8n — POST {"period":"' + periodKey + '"} to the webhook.');
+  }
+
+  state.data = rows[0];
+  render(rows[0]);
+}
+
+function notice(kind, title, body) {
+  const n = el('div', 'notice ' + (['alert', 'warn', 'ok'].indexOf(kind) >= 0 ? kind : 'info'));
+  n.appendChild(el('strong', null, title));
+  n.appendChild(el('div', null, body));
+  $('notices').appendChild(n);
+  return n;
+}
+
+// ---- the model ----------------------------------------------
+// One pass over the Supabase row, so no renderer has to know how the tables
+// are shaped. Everything below reads `state.model`.
+function buildModel(d) {
+  const metrics = {};
+  (d.metrics || []).forEach((m) => { metrics[m.domain + '.' + m.metric_key] = m; });
+
+  const breakdowns = {};
+  (d.breakdowns || []).forEach((b) => {
+    const k = b.domain + '.' + b.breakdown_key;
+    (breakdowns[k] = breakdowns[k] || []).push(b.values);
+  });
+
+  const failed = Array.isArray(d.failed_sources) ? d.failed_sources : [];
+  const health = d.source_health || {};
+
+  const model = {
+    row: d,
+    metrics: metrics,
+    breakdowns: breakdowns,
+    failedSources: failed,
+    // A source that failed did not report zero — it reported nothing. Every
+    // renderer asks this before drawing a figure, so a dead source can never
+    // be drawn as a flat line at the bottom of a chart.
+    //
+    // Takes either spelling. The run row names SOURCES (sales, delivery,
+    // people_ops) and the metric rows name DOMAINS (sales, project_delivery,
+    // people_ops); the two agree on two names out of three.
+    domainDown: (key) => failed.indexOf(DOMAIN_TO_SOURCE[key] || key) >= 0,
+    sourceHealth: health,
+    insights: {
+      summary: d.executive_summary || '',
+      departments: Array.isArray(d.department_insights) ? d.department_insights : [],
+      risks: Array.isArray(d.risks_and_anomalies) ? d.risks_and_anomalies : [],
+      actions: Array.isArray(d.recommended_actions) ? d.recommended_actions : [],
+      aiDq: Array.isArray(d.ai_data_quality_warnings) ? d.ai_data_quality_warnings : [],
+    },
+    dq: Array.isArray(d.data_quality) ? d.data_quality : [],
+    entities: {
+      sales: (breakdowns['sales.revenue_by_lead_source'] || []).map((x) => x.lead_source),
+      project_delivery: (breakdowns['project_delivery.delivery_load_by_team'] || []).map((x) => x.team),
+      people_ops: (breakdowns['people_ops.headcount_by_department'] || []).map((x) => x.department),
+    },
+  };
+
+  registerHues('sales', model.entities.sales);
+  registerHues('project_delivery', model.entities.project_delivery);
+  registerHues('people_ops', model.entities.people_ops);
+  return model;
+}
+
+const metric = (key) => state.model.metrics[key] || null;
+const breakdown = (key) => state.model.breakdowns[key] || [];
+const entityRow = (domain, name) => {
+  const key = domain === 'sales' ? 'lead_source' : domain === 'project_delivery' ? 'team' : 'department';
+  const list = domain === 'sales' ? breakdown('sales.revenue_by_lead_source')
+    : domain === 'project_delivery' ? breakdown('project_delivery.delivery_load_by_team')
+    : breakdown('people_ops.headcount_by_department');
+  return list.filter((x) => x[key] === name)[0] || null;
+};
+
+// ---- render -------------------------------------------------
+function render(d) {
+  state.data = d;
+  state.model = buildModel(d);
+
+  // A view pinned to a team that this period has no rows for must not stick.
+  if (state.view.kind === 'entity') {
+    const names = state.model.entities[state.view.domain] || [];
+    if (names.indexOf(state.view.name) === -1) state.view = { kind: 'overview' };
+  }
+
+  const comparedWith = d.period_key === 'ytd' && d.compare_label
+    ? d.compare_label.charAt(0).toLowerCase() + d.compare_label.slice(1)
+    : 'the preceding period';
+
+  const periodParts = [
+    d.period_label,
+    fmtDate(d.period_start) + ' to ' + fmtDate(d.period_end),
+  ];
+  if (d.period_key === 'custom') periodParts.push(d.period_days + ' days');
+  periodParts.push('compared with ' + comparedWith);
+
+  $('periodLine').textContent = periodParts.join(' · ');
+
+  renderTrust(d);
+  renderNotices(d);
+  renderSidebar();
+  renderView();
+
+  clear($('footNote'));
+  $('footNote').appendChild(document.createTextNode(
+    'Run ' + d.run_id + ' · last updated ' + fmtDateTime(d.updated_at) +
+    ' · reporting anchor ' + fmtDate(d.reference_date)));
+
+  $('report').classList.remove('hidden');
+  drawAllCharts();
+}
+
+// "medium" -> "Medium". Tolerates null rather than throwing, and returns an
+// empty string so the caller supplies its own fallback ('Unknown', 'Claude')
+// instead of this deciding what a missing value should read as.
+function titleCase(s) {
+  return String(s == null ? '' : s).trim().replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+// "claude-sonnet-5" -> "Claude Sonnet 5"; "claude-haiku-4-5" -> "Claude Haiku 4.5".
+// A hyphen BETWEEN TWO DIGITS is a version separator, not a word break, so it
+// becomes a point. Turning every hyphen into a space renders a 4.5-series model
+// as "Claude Haiku 4 5", which reads as two numbers and looks like a bug in the
+// dashboard rather than in the string handling.
+function parseModelName(name) {
+  return titleCase(String(name == null ? '' : name)
+    .replace(/(\d)-(\d)/g, '$1.$2')
+    .replace(/-/g, ' '));
+}
+
+function renderTrust(d) {
+  const t = clear($('trust'));
+  const add = (cls, label) => { const b = el('span', 'badge ' + cls); b.appendChild(el('i', 'dot')); b.appendChild(el('span', null, label)); t.appendChild(b); };
+
+  const failed = Array.isArray(d.failed_sources) ? d.failed_sources : [];
+  add(d.run_status === 'succeeded' ? 'good' : d.run_status === 'partial' ? 'serious' : 'critical',
+    d.run_status === 'succeeded' ? 'All three sources loaded'
+      : failed.length
+        ? (failed.length === 1 ? 'Source failed: ' : 'Sources failed: ') +
+          failed.map((f) => (SOURCES[f] || { label: f }).label).join(', ')
+        : (d.run_status === 'partial' ? 'Partial run — a source failed' : 'Run failed'));
+
+  const model = parseModelName(d.model);
+
+  add(d.insight_source === 'claude' ? 'good' : 'warning',
+    d.insight_source === 'claude' ? 'Analysis by ' + (model || 'Claude') : 'AI commentary unavailable — figures only');
+
+  if (d.insight_source === 'claude') {
+    add(d.grounded ? 'good' : 'critical',
+      d.grounded ? 'Every figure traced to the data' : 'Contains unverified figures');
+  }
+
+  add(d.confidence === 'high' ? 'good' : d.confidence === 'medium' ? 'warning' : 'serious',
+    'Confidence: ' + (titleCase(d.confidence) || 'Unknown'));
+
+  if (d.dq_errors > 0) add('critical', d.dq_errors + ' data error' + (d.dq_errors === 1 ? '' : 's') + ' in this period');
+  else if (d.dq_warnings > 0) add('warning', d.dq_warnings + ' data warning' + (d.dq_warnings === 1 ? '' : 's') + ' in this period');
+  else add('good', 'No data quality issues in this period');
+}
+
+function renderNotices(d) {
+  // Staleness first, because it changes how everything below should be read.
+  if (d.last_failure_at) {
+    const when = new Date(d.last_failure_at);
+    const age = Math.round((Date.now() - when.getTime()) / 3600000);
+    notice('warn', 'This report is stale — the last refresh failed',
+      'Shown below is the last report that published successfully, and it is complete. ' +
+      'The most recent attempt to refresh it failed ' +
+      (Number.isFinite(age) && age >= 1 ? age + ' hour' + (age === 1 ? '' : 's') + ' ago' : 'recently') +
+      ' (' + fmtDateTime(d.last_failure_at) + '): ' +
+      (d.last_failure_reason || 'no reason recorded') + '. ' +
+      'Nothing here is wrong; it is just older than it should be.');
+  }
+
+  const failed = Array.isArray(d.failed_sources) ? d.failed_sources : [];
+  if (d.run_status !== 'succeeded' || failed.length) {
+    const named = failed.map((f) => {
+      const s = SOURCES[f] || { label: f, system: 'its source system' };
+      return s.label + ' (' + s.system + ')';
+    });
+    notice('alert', failed.length === 1
+      ? 'One source could not be read: ' + (SOURCES[failed[0]] || { label: failed[0] }).label
+      : 'This report is incomplete',
+      (named.length
+        ? 'No records came back from ' + named.join(' and ') + '. '
+        : 'At least one source could not be read. ') +
+      'Every figure for ' + (named.length ? 'that area' : 'the affected area') +
+      ' is shown as unavailable rather than as zero, and the section says so where the numbers would have been. ' +
+      (d.failure_reason || 'Check the source credential and the node output in the n8n execution log.'));
+  }
+
+  if (d.insight_source && d.insight_source !== 'claude') {
+    notice('warn', 'AI commentary could not be generated',
+      (d.failure_reason || 'The Claude call did not complete.') +
+      ' The figures below are unaffected — they are calculated by the workflow, not by the model. ' +
+      'What you are reading in the analysis section is a plain rules-based fallback.');
+  }
+
+  if (d.grounded === false && d.insight_source === 'claude') {
+    const figs = Array.isArray(d.unverified_figures) ? d.unverified_figures.join(', ') : '';
+    notice('alert', 'Some figures in the commentary could not be verified',
+      'These numbers appear in the analysis but not in the data it was given: ' + figs +
+      '. Treat those sentences with caution. The metric tiles are calculated independently and are unaffected.');
+  }
+}
+
+// ---- sidebar ------------------------------------------------
+function renderSidebar() {
+  const nav = clear($('sidebar'));
+  const m = state.model;
+
+  const group = (title) => {
+    const g = el('div', 'side-group');
+    g.appendChild(el('div', 'side-title', title));
+    nav.appendChild(g);
+    return g;
+  };
+
+  const item = (host, opts) => {
+    const b = el('button', 'side-item' + (opts.dead ? ' dead' : ''));
+    b.type = 'button';
+    b.appendChild(el('span', 'nm', opts.label));
+    if (opts.note !== undefined && opts.note !== null) b.appendChild(el('span', 'n', opts.note));
+    b.setAttribute('aria-current', String(Boolean(opts.current)));
+    if (opts.title) b.title = opts.title;
+    b.addEventListener('click', opts.onClick);
+    host.appendChild(b);
+    return b;
+  };
+
+  const top = group('Report');
+  item(top, {
+    label: 'Overview',
+    note: '',
+    current: state.view.kind === 'overview',
+    onClick: () => setView({ kind: 'overview' }),
+  });
+
+  const domains = [
+    { domain: 'sales', title: 'Sales — by lead source', key: 'lead_source',
+      rows: breakdown('sales.revenue_by_lead_source'),
+      note: (x) => fmtMoney(x.revenue_won) },
+    { domain: 'project_delivery', title: 'Project Delivery — by team', key: 'team',
+      rows: breakdown('project_delivery.delivery_load_by_team'),
+      note: (x) => x.total_load + ' live' },
+    { domain: 'people_ops', title: 'People Ops — by department', key: 'department',
+      rows: breakdown('people_ops.headcount_by_department'),
+      note: (x) => x.active_headcount + ' staff' },
+  ];
+
+  domains.forEach((cfg) => {
+    const g = group(cfg.title);
+    if (m.domainDown(cfg.domain)) {
+      const dead = el('div', 'side-item dead');
+      dead.appendChild(el('span', 'nm', 'Source unavailable'));
+      g.appendChild(dead);
+      return;
+    }
+    if (!cfg.rows.length) {
+      const none = el('div', 'side-item dead');
+      none.appendChild(el('span', 'nm', 'Nothing in this period'));
+      g.appendChild(none);
+      return;
+    }
+    cfg.rows.forEach((x) => {
+      const name = x[cfg.key];
+      item(g, {
+        label: name,
+        note: cfg.note(x),
+        title: name,
+        current: state.view.kind === 'entity' && state.view.domain === cfg.domain && state.view.name === name,
+        onClick: () => setView({ kind: 'entity', domain: cfg.domain, name: name }),
+      });
+    });
+  });
+}
+
+function setView(view) {
+  state.view = view;
+  renderSidebar();
+  renderView();
+  drawAllCharts();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ============================================================
+   CHARTS
+
+   Hand-drawn SVG rather than a library: this page has no build step and no
+   network access beyond Supabase, and the four forms it needs are small.
+   ============================================================ */
+const SVGNS = 'http://www.w3.org/2000/svg';
+const charts = [];
+
+function sv(tag, attrs) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, String(attrs[k]));
+  return n;
+}
+function svText(x, y, text, cls, anchor) {
+  const t = sv('text', { x: x, y: y, class: cls || 'tick-label', 'text-anchor': anchor || 'start' });
+  t.textContent = text;
+  return t;
+}
+
+/* An axis label on two lines. SVG text does not wrap, so the wrapping is
+   done here: one <tspan> per line, each re-anchored to the same x.*/
+function svTextLines(x, y, lines, cls, anchor) {
+  const t = sv('text', { x: x, y: y, class: cls || 'tick-label', 'text-anchor': anchor || 'middle' });
+  lines.forEach((line, i) => {
+    const span = sv('tspan', { x: x, dy: i === 0 ? 0 : 12 });
+    span.textContent = line;
+    t.appendChild(span);
+  });
+  return t;
+}
+
+const approxWidth = (text, size) => String(text).length * size * 0.575;
+// The widest line of a wrapped label — what actually has to fit in the band.
+const linesWidth = (lines, size) => Math.max.apply(null, lines.map((l) => approxWidth(l, size)));
+
+// A rounded ceiling for the axis, so ticks land on numbers a person would
+// choose. 1 / 1.5 / 2 / 2.5 / 3 / 4 / 5 / 7.5 / 10 times a power of ten.
+function niceMax(v) {
+  if (!Number.isFinite(v) || v <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const steps = [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10];
+  for (const s of steps) if (v <= s * mag * 1.0001) return s * mag;
+  return 10 * mag;
+}
+function ticksTo(max, count) {
+  const n = count || 4;
+  const out = [];
+  for (let i = 0; i <= n; i++) out.push((max / n) * i);
+  return out;
+}
+
+/* Counts need a whole-number axis. */
+const INT_CEILINGS = [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 30, 40, 50, 60, 80, 100, 120, 160, 200, 300, 400, 500];
+function niceMaxInt(v) {
+  const m = Math.max(1, Math.ceil(v));
+  for (const c of INT_CEILINGS) if (m <= c) return c;
+  return Math.ceil(m / 100) * 100;
+}
+function axisScale(rawMax, isInt) {
+  if (!isInt) { const max = niceMax(rawMax); return { max: max, ticks: ticksTo(max, 4) }; }
+  const max = niceMaxInt(rawMax);
+  const n = max % 4 === 0 ? 4 : max % 3 === 0 ? 3 : max % 2 === 0 ? 2 : 1;
+  return { max: max, ticks: ticksTo(max, n) };
+}
+const isCountFormat = (fmt) => (fmt || fmtInt) === fmtInt;
+
+// ---- tooltip ------------------------------------------------
+// One element, reused. Series names come from the source data, so every
+// insertion is textContent — never innerHTML.
+const tipEl = $('tip');
+function showTip(evt, spec) {
+  clear(tipEl);
+  if (spec.head) tipEl.appendChild(el('div', 't-head', spec.head));
+  (spec.rows || []).forEach((r) => {
+    const row = el('div', 't-row');
+    if (r.color) {
+      const k = el('i', 't-key');
+      k.style.background = r.color;
+      row.appendChild(k);
+    }
+    row.appendChild(el('span', 't-val', r.value));
+    if (r.name) row.appendChild(el('span', 't-name', r.name));
+    tipEl.appendChild(row);
+  });
+  if (spec.foot) tipEl.appendChild(el('div', 't-head', spec.foot));
+  tipEl.classList.add('on');
+  positionTip(evt);
+}
+function positionTip(evt) {
+  const pad = 14;
+  const r = tipEl.getBoundingClientRect();
+  let x = (evt.clientX || 0) + pad;
+  let y = (evt.clientY || 0) + pad;
+  if (x + r.width > window.innerWidth - 8) x = (evt.clientX || 0) - r.width - pad;
+  if (y + r.height > window.innerHeight - 8) y = (evt.clientY || 0) - r.height - pad;
+  tipEl.style.left = Math.max(8, x) + 'px';
+  tipEl.style.top = Math.max(8, y) + 'px';
+}
+function hideTip() { tipEl.classList.remove('on'); }
+
+// Hover and keyboard focus show the same thing. A focusable mark gets its
+// tooltip anchored to itself, since a keyboard user has no pointer.
+function interactive(node, spec) {
+  node.addEventListener('pointerenter', (e) => showTip(e, spec()));
+  node.addEventListener('pointermove', positionTip);
+  node.addEventListener('pointerleave', hideTip);
+  node.setAttribute('tabindex', '0');
+  node.setAttribute('role', 'img');
+  node.setAttribute('aria-label', spec().aria || '');
+  node.addEventListener('focus', () => {
+    const b = node.getBoundingClientRect();
+    showTip({ clientX: b.left + b.width / 2, clientY: b.top + b.height / 2 }, spec());
+  });
+  node.addEventListener('blur', hideTip);
+}
+
+// ---- the card a chart lives in ------------------------------
+function chartCard(parent, spec) {
+  const card = el('div', 'chart-card');
+  const head = el('div', 'chart-head');
+  head.appendChild(el('div', 'chart-title', spec.title));
+
+  const host = el('div', 'chart-host');
+  const tableHost = el('div', 'table-view hidden');
+
+  if (spec.table) {
+    const toggle = el('button', 'linkish', 'Table');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.addEventListener('click', () => {
+      const open = tableHost.classList.toggle('hidden');
+      toggle.textContent = open ? 'Table' : 'Hide table';
+      toggle.setAttribute('aria-expanded', String(!open));
+      if (!open && !tableHost.firstChild) tableHost.appendChild(buildTable(spec.table()));
+    });
+    head.appendChild(toggle);
+  }
+  card.appendChild(head);
+
+  if (spec.note) {
+    // The first sentence is the one a reader needs while looking at the
+    // chart; the rest is the caveat they need only when they doubt it.
+    const full = spec.note;
+    const cut = full.indexOf('. ');
+    const lead = cut > 0 ? full.slice(0, cut + 1) : full;
+    const note = el('div', 'chart-note', lead);
+    if (lead !== full) note.title = full;
+    card.appendChild(note);
+  }
+  if (spec.legend) card.appendChild(buildLegend(spec.legend));
+  card.appendChild(host);
+  card.appendChild(tableHost);
+  parent.appendChild(card);
+
+  charts.push({ host: host, draw: spec.draw });
+  return card;
+}
+
+function buildLegend(items) {
+  const l = el('div', 'legend');
+  items.forEach((it) => {
+    const s = el('span');
+    const sw = el('i', 'swatch' + (it.line ? ' line' : ''));
+    sw.style.background = it.color;
+    s.appendChild(sw);
+    s.appendChild(document.createTextNode(it.label));
+    l.appendChild(s);
+  });
+  return l;
+}
+
+// The table twin every chart carries. It is the accessible equivalent, and
+// it is also what makes the light-mode aqua legal — nothing is reachable
+// only by distinguishing two fills.
+function buildTable(spec) {
+  const wrap = el('div', 'scroll');
+  const t = document.createElement('table');
+  const thead = document.createElement('thead');
+  const tr = document.createElement('tr');
+  spec.columns.forEach((c, i) => {
+    const th = document.createElement('th');
+    th.textContent = c;
+    if (i > 0) th.className = 'num';
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr);
+  t.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  spec.rows.forEach((r) => {
+    const row = document.createElement('tr');
+    r.forEach((cell, i) => {
+      const td = document.createElement('td');
+      td.textContent = cell === null || cell === undefined ? '—' : String(cell);
+      if (i > 0) td.className = 'num';
+      row.appendChild(td);
+    });
+    tbody.appendChild(row);
+  });
+  t.appendChild(tbody);
+  wrap.appendChild(t);
+  return wrap;
+}
+
+let redrawTimer = null;
+function drawAllCharts() {
+  charts.forEach((c) => {
+    if (!c.host.isConnected) return;
+    clear(c.host);
+    try { c.draw(c.host, Math.max(260, c.host.clientWidth || 640)); }
+    catch (err) { c.host.appendChild(el('div', 'empty', 'This chart could not be drawn.')); }
+  });
+}
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(() => {
+    clearTimeout(redrawTimer);
+    redrawTimer = setTimeout(drawAllCharts, 120);
+  });
+  ro.observe($('report'));
+}
+
+/* ---- horizontal bars ---------------------------------------
+   For ranked magnitude across nominal categories: one hue for every bar,
+   because bar LENGTH already carries the value and a darker-is-bigger ramp
+   would spend the only free channel restating it.
+ */
+function hBars(host, width, spec) {
+  const rows = spec.rows || [];
+  if (!rows.length) { host.appendChild(el('div', 'empty', spec.empty || 'Nothing to show for this period.')); return; }
+
+  const fmt = spec.format || fmtInt;
+  const labelW = Math.min(150, Math.max(64, ...rows.map((r) => approxWidth(r.label, 12) + 6)));
+  const valueW = Math.max(58, ...rows.map((r) => approxWidth(fmt(r.value), 11) + 14));
+  const rowH = 30;
+  const barH = 18;
+  const axisH = 20;
+  const plotX = labelW + 12;
+  const plotW = Math.max(60, width - plotX - valueW);
+  const height = rows.length * rowH + axisH + 6;
+
+  const scale = axisScale(Math.max(...rows.map((r) => Math.max(0, r.value || 0)), 0), isCountFormat(spec.format));
+  const max = scale.max;
+  const svg = sv('svg', { viewBox: '0 0 ' + width + ' ' + height, width: width, height: height, role: 'presentation' });
+
+  scale.ticks.forEach((t) => {
+    const x = plotX + (t / max) * plotW;
+    svg.appendChild(sv('line', { x1: x, y1: 0, x2: x, y2: rows.length * rowH, class: t === 0 ? 'baseline' : 'gridline' }));
+    svg.appendChild(svText(x, rows.length * rowH + 14, fmt(t), 'tick-label', t === 0 ? 'start' : 'middle'));
+  });
+
+  rows.forEach((r, i) => {
+    const y = i * rowH + (rowH - barH) / 2;
+    const value = Math.max(0, r.value || 0);
+    const w = max > 0 ? (value / max) * plotW : 0;
+    const isHi = !spec.highlight || spec.highlight === r.label;
+    const colour = isHi ? (r.color || cssVar('--series-1')) : cssVar('--de-emphasis');
+
+    svg.appendChild(svText(plotX - 10, i * rowH + rowH / 2 + 4, r.label, 'axis-label', 'end'));
+
+    if (value > 0) {
+      // Square at the baseline, rounded at the data end: the shape says
+      // which end is the measurement.
+      const rr = Math.min(4, w);
+      const path = 'M' + plotX + ',' + y +
+        'h' + Math.max(0, w - rr) + 'a' + rr + ',' + rr + ' 0 0 1 ' + rr + ',' + rr +
+        'v' + (barH - 2 * rr) + 'a' + rr + ',' + rr + ' 0 0 1 ' + (-rr) + ',' + rr +
+        'H' + plotX + 'z';
+      svg.appendChild(sv('path', { d: w > 4 ? path : '', fill: colour, class: 'mark' }));
+      if (w <= 4) svg.appendChild(sv('rect', { x: plotX, y: y, width: Math.max(w, 2), height: barH, fill: colour, class: 'mark' }));
+    }
+
+    svg.appendChild(svText(plotX + w + 8, i * rowH + rowH / 2 + 4, fmt(r.value), 'value-label', 'start'));
+
+    const hit = sv('rect', { x: 0, y: i * rowH, width: width, height: rowH, class: 'hit' });
+    interactive(hit, () => ({
+      head: r.label,
+      rows: [{ color: colour, value: fmt(r.value), name: spec.valueName || '' }].concat(
+        (r.detail || []).map((dd) => ({ value: dd.value, name: dd.name }))),
+      aria: r.label + ': ' + fmt(r.value),
+    }));
+    svg.appendChild(hit);
+  });
+
+  host.appendChild(svg);
+}
+
+/* ---- stacked horizontal bars -------------------------------
+   Part-to-whole across categories with long names. Every bar is drawn on
+   ONE shared scale, so a team carrying eight projects is twice the bar of a
+   team carrying four. */
+function stackedHBars(host, width, spec) {
+  const rows = spec.rows || [];
+  if (!rows.length) { host.appendChild(el('div', 'empty', spec.empty || 'Nothing to show for this period.')); return; }
+
+  const totals = rows.map((r) => r.parts.reduce((a, p) => a + Math.max(0, p.value || 0), 0));
+  const scale = axisScale(Math.max(...totals, 0), true);
+  const max = scale.max;
+  const labelW = Math.min(150, Math.max(64, ...rows.map((r) => approxWidth(r.label, 12) + 6)));
+  const valueW = Math.max(56, ...totals.map((t) => approxWidth(String(t) + ' total', 11) + 14));
+  const rowH = 30;
+  const barH = 18;
+  const axisH = 20;
+  const plotX = labelW + 12;
+  const plotW = Math.max(60, width - plotX - valueW);
+  const height = rows.length * rowH + axisH + 6;
+  const gap = 2;                       // the surface gap, in the surface colour
+  const surface = cssVar('--surface');
+
+  const svg = sv('svg', { viewBox: '0 0 ' + width + ' ' + height, width: width, height: height, role: 'presentation' });
+
+  scale.ticks.forEach((t) => {
+    const x = plotX + (t / max) * plotW;
+    svg.appendChild(sv('line', { x1: x, y1: 0, x2: x, y2: rows.length * rowH, class: t === 0 ? 'baseline' : 'gridline' }));
+    svg.appendChild(svText(x, rows.length * rowH + 14, fmtInt(t), 'tick-label', t === 0 ? 'start' : 'middle'));
+  });
+
+  rows.forEach((r, i) => {
+    const y = i * rowH + (rowH - barH) / 2;
+    svg.appendChild(svText(plotX - 10, i * rowH + rowH / 2 + 4, r.label, 'axis-label', 'end'));
+
+    let x = plotX;
+    const live = r.parts.filter((p) => (p.value || 0) > 0);
+    live.forEach((p, j) => {
+      const w = (p.value / max) * plotW;
+      const last = j === live.length - 1;
+      const drawW = Math.max(1, last ? w : w - gap);
+      const rr = Math.min(4, drawW / 2);
+      // Rounded on the outer end of the whole bar only; the interior joins
+      // stay square so the stack reads as one length.
+      const d = last
+        ? 'M' + x + ',' + y + 'h' + Math.max(0, drawW - rr) + 'a' + rr + ',' + rr + ' 0 0 1 ' + rr + ',' + rr +
+          'v' + (barH - 2 * rr) + 'a' + rr + ',' + rr + ' 0 0 1 ' + (-rr) + ',' + rr + 'H' + x + 'z'
+        : 'M' + x + ',' + y + 'h' + drawW + 'v' + barH + 'H' + x + 'z';
+      const seg = sv('path', { d: d, fill: p.color, class: 'mark' });
+      interactive(seg, () => ({
+        head: r.label,
+        rows: r.parts.map((q) => ({ color: q.color, value: fmtInt(q.value), name: q.name })),
+        aria: r.label + ', ' + p.name + ': ' + p.value,
+      }));
+      svg.appendChild(seg);
+
+      // Only label inside a segment when the text genuinely fits, with
+      // padding on both sides. Anything tighter goes to the tooltip and the
+      // table, never to overflow: hidden.
+      const label = String(p.value);
+      if (drawW > approxWidth(label, 11) + 14) {
+        const t = svText(x + drawW / 2, y + barH / 2 + 4, label, 'value-label inbar', 'middle');
+        t.setAttribute('fill', p.onDark === false ? cssVar('--ink') : '#fff');
+        t.setAttribute('pointer-events', 'none');
+        svg.appendChild(t);
+      }
+      x += w;
+    });
+
+    if (!live.length) {
+      svg.appendChild(sv('rect', { x: plotX, y: y + barH / 2 - 1, width: 14, height: 2, fill: cssVar('--baseline') }));
+    }
+    svg.appendChild(svText(plotX + (totals[i] / max) * plotW + 8, i * rowH + rowH / 2 + 4,
+      totals[i] + (spec.totalWord ? ' ' + spec.totalWord : ''), 'value-label', 'start'));
+  });
+
+  host.appendChild(svg);
+}
+
+/* ---- columns over time -------------------------------------
+   Grouped or stacked, one bucket per column. Buckets come from the
+   workflow already cut to the right grain for the window, and the FIRST one
+   is the short one when the window does not divide evenly */
+function columns(host, width, spec) {
+  const buckets = spec.buckets || [];
+  if (!buckets.length) { host.appendChild(el('div', 'empty', spec.empty || 'No trend available for this period.')); return; }
+
+  const fmt = spec.format || fmtInt;
+  const series = spec.series;
+  const stacked = Boolean(spec.stacked);
+
+  const totals = buckets.map((b) => stacked
+    ? series.reduce((a, s) => a + Math.max(0, b[s.key] || 0), 0)
+    : Math.max(...series.map((s) => Math.max(0, b[s.key] || 0))));
+  const scale = axisScale(Math.max(...totals, 0), isCountFormat(spec.format));
+  const max = scale.max;
+
+  const padLeft = Math.max(38, approxWidth(fmt(max), 10.5) + 12);
+  const padRight = 10;
+  const padTop = 12;
+  const plotH = spec.height || 148;
+  // Two lines of label plus the gap above them. Sizing the band for one line
+  // and then drawing two is how an axis ends up clipped by its own card.
+  const axisH = 40;
+  const height = padTop + plotH + axisH;
+  const plotW = Math.max(60, width - padLeft - padRight);
+  const band = plotW / buckets.length;
+  const groupW = Math.min(stacked ? 24 : 24 * series.length + 4, band * 0.68);
+  const colW = stacked ? groupW : Math.max(4, (groupW - 2 * (series.length - 1)) / series.length);
+  const yOf = (v) => padTop + plotH - (max > 0 ? (v / max) * plotH : 0);
+  const surface = cssVar('--surface');
+
+  const svg = sv('svg', { viewBox: '0 0 ' + width + ' ' + height, width: width, height: height, role: 'presentation' });
+
+  scale.ticks.forEach((t) => {
+    const y = yOf(t);
+    svg.appendChild(sv('line', { x1: padLeft, y1: y, x2: padLeft + plotW, y2: y, class: t === 0 ? 'baseline' : 'gridline' }));
+    svg.appendChild(svText(padLeft - 8, y + 4, fmt(t), 'tick-label', 'end'));
+  });
+
+  // x labels: every bucket while they fit, otherwise every other one, with
+  // the last always kept
+  const labelEvery = labelStride(buckets, band, 12);
+  buckets.forEach((b, i) => {
+    const cx = padLeft + band * i + band / 2;
+    if (i % labelEvery === 0 || i === buckets.length - 1) {
+      svg.appendChild(svTextLines(cx, padTop + plotH + 15, bucketLabelLines(b), 'tick-label', 'middle'));
+    }
+
+    const opacity = b.partial ? 0.55 : 1;
+    if (stacked) {
+      let top = padTop + plotH;
+      series.forEach((s, j) => {
+        const v = Math.max(0, b[s.key] || 0);
+        if (v <= 0) return;
+        const h = (v / max) * plotH;
+        const isTop = series.slice(j + 1).every((q) => !(b[q.key] > 0));
+        const drawH = Math.max(1, isTop ? h : h - 2);   // 2px surface gap
+        const y = top - h;
+        const rr = Math.min(4, drawH / 2, groupW / 2);
+        const d = isTop
+          ? 'M' + (cx - groupW / 2) + ',' + (y + drawH) + 'v' + (-(drawH - rr)) +
+            'a' + rr + ',' + rr + ' 0 0 1 ' + rr + ',' + (-rr) + 'h' + (groupW - 2 * rr) +
+            'a' + rr + ',' + rr + ' 0 0 1 ' + rr + ',' + rr + 'v' + (drawH - rr) + 'z'
+          : 'M' + (cx - groupW / 2) + ',' + (y + 2) + 'h' + groupW + 'v' + drawH + 'h' + (-groupW) + 'z';
+        svg.appendChild(sv('path', { d: d, fill: s.color, opacity: opacity, class: 'mark' }));
+        top -= h;
+      });
+    } else {
+      series.forEach((s, j) => {
+        const v = Math.max(0, b[s.key] || 0);
+        const h = max > 0 ? (v / max) * plotH : 0;
+        const x = cx - groupW / 2 + j * (colW + 2);
+        if (h <= 0) {
+          svg.appendChild(sv('rect', { x: x, y: padTop + plotH - 1, width: colW, height: 1.5, fill: cssVar('--baseline') }));
+          return;
+        }
+        const rr = Math.min(4, h / 2, colW / 2);
+        const d = 'M' + x + ',' + (padTop + plotH) + 'v' + (-(h - rr)) +
+          'a' + rr + ',' + rr + ' 0 0 1 ' + rr + ',' + (-rr) + 'h' + (colW - 2 * rr) +
+          'a' + rr + ',' + rr + ' 0 0 1 ' + rr + ',' + rr + 'v' + (h - rr) + 'z';
+        svg.appendChild(sv('path', { d: d, fill: s.color, opacity: opacity, class: 'mark' }));
+      });
+    }
+
+    // The last bucket is direct-labelled.
+    if (i === buckets.length - 1 && spec.labelLast !== false) {
+      const v = stacked ? totals[i] : (b[series[0].key] || 0);
+      if (v > 0) svg.appendChild(svText(cx, yOf(v) - 7, fmt(v), 'value-label', 'middle'));
+    }
+
+    const hit = sv('rect', { x: padLeft + band * i, y: padTop, width: band, height: plotH, class: 'hit' });
+    interactive(hit, () => ({
+      head: bucketLabel(b) + (b.partial ? ' · partial' : ''),
+      rows: series.map((s) => ({ color: s.color, value: fmt(b[s.key] || 0), name: s.label })),
+      foot: b.partial ? 'Covers ' + b.days + ' days, fewer than the other buckets.' : null,
+      aria: bucketLabel(b) + ': ' + series.map((s) => s.label + ' ' + fmt(b[s.key] || 0)).join(', '),
+    }));
+    svg.appendChild(hit);
+  });
+
+  host.appendChild(svg);
+  const caption = spec.caption === false ? null : grainCaption(buckets);
+  if (caption) host.appendChild(el('div', 'chart-caption', caption));
+}
+
+/* ---- line over time ----------------------------------------
+   For a stock rather than a flow — headcount is a level, not a count of
+   events, and columns would imply it resets each bucket. */
+function lineChart(host, width, spec) {
+  const buckets = spec.buckets || [];
+  if (!buckets.length) { host.appendChild(el('div', 'empty', spec.empty || 'No trend available for this period.')); return; }
+
+  const fmt = spec.format || fmtInt;
+  const series = spec.series;
+  const values = [].concat.apply([], series.map((s) => buckets.map((b) => b[s.key] || 0)));
+  const rawMax = Math.max.apply(null, values.concat([0]));
+  const rawMin = values.length ? Math.min.apply(null, values) : 0;
+  const NICE_STEPS = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
+  const niceStep = (x) => {
+    for (const c of NICE_STEPS) if (x <= c) return c;
+    return Math.ceil(x / 5000) * 5000;
+  };
+  const spread = Math.max(1, rawMax - rawMin);
+  const step = niceStep(Math.ceil((spread * 1.5) / 4));
+  const floor = spec.zeroBased ? 0 : Math.max(0, Math.floor((rawMin - spread * 0.25) / step) * step);
+  let max = floor + step * 4;
+  while (max < rawMax) max += step;
+
+  const padLeft = Math.max(38, approxWidth(fmt(max), 10.5) + 12);
+  const padRight = Math.max(16, approxWidth(fmt(rawMax), 11) + 10);
+  const padTop = 14;
+  const plotH = spec.height || 148;
+  const axisH = 40;
+  const height = padTop + plotH + axisH;
+  const plotW = Math.max(60, width - padLeft - padRight);
+  const span = Math.max(1, max - floor);
+  const xOf = (i) => padLeft + (buckets.length === 1 ? plotW / 2 : (plotW / (buckets.length - 1)) * i);
+  const yOf = (v) => padTop + plotH - ((v - floor) / span) * plotH;
+
+  const svg = sv('svg', { viewBox: '0 0 ' + width + ' ' + height, width: width, height: height, role: 'presentation' });
+
+  for (let v = floor; v <= max + 0.001; v += step) {
+    const y = yOf(v);
+    svg.appendChild(sv('line', { x1: padLeft, y1: y, x2: padLeft + plotW, y2: y, class: v === floor ? 'baseline' : 'gridline' }));
+    svg.appendChild(svText(padLeft - 8, y + 4, fmt(v), 'tick-label', 'end'));
+  }
+
+  const labelEvery = labelStride(buckets, plotW / Math.max(1, buckets.length - 1), 14);
+  buckets.forEach((b, i) => {
+    if (i % labelEvery === 0 || i === buckets.length - 1) {
+      svg.appendChild(svTextLines(xOf(i), padTop + plotH + 15, bucketLabelLines(b), 'tick-label', 'middle'));
+    }
+  });
+
+  series.forEach((s) => {
+    const pts = buckets.map((b, i) => [xOf(i), yOf(b[s.key] || 0)]);
+    if (series.length === 1) {
+      const area = 'M' + pts[0][0] + ',' + (padTop + plotH) + pts.map((p) => 'L' + p[0] + ',' + p[1]).join('') +
+        'L' + pts[pts.length - 1][0] + ',' + (padTop + plotH) + 'z';
+      svg.appendChild(sv('path', { d: area, fill: s.color, opacity: 0.1 }));
+    }
+    svg.appendChild(sv('path', {
+      d: 'M' + pts.map((p) => p[0] + ',' + p[1]).join('L'),
+      fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+    }));
+    const last = pts[pts.length - 1];
+    svg.appendChild(sv('circle', { cx: last[0], cy: last[1], r: 4, fill: s.color, stroke: cssVar('--surface'), 'stroke-width': 2 }));
+    svg.appendChild(svText(last[0] + 9, last[1] + 4, fmt(buckets[buckets.length - 1][s.key] || 0), 'value-label', 'start'));
+  });
+
+  // The crosshair finds the X: readers aim at a date, never at a 2px line.
+  const cross = sv('line', { x1: 0, y1: padTop, x2: 0, y2: padTop + plotH, class: 'crosshair', opacity: 0 });
+  svg.appendChild(cross);
+  buckets.forEach((b, i) => {
+    const w = plotW / Math.max(1, buckets.length);
+    const hit = sv('rect', { x: xOf(i) - w / 2, y: padTop, width: w, height: plotH, class: 'hit' });
+    hit.addEventListener('pointerenter', () => { cross.setAttribute('x1', xOf(i)); cross.setAttribute('x2', xOf(i)); cross.setAttribute('opacity', 1); });
+    hit.addEventListener('pointerleave', () => cross.setAttribute('opacity', 0));
+    interactive(hit, () => ({
+      head: bucketLabel(b) + (b.partial ? ' · partial' : ''),
+      rows: series.map((s) => ({ color: s.color, value: fmt(b[s.key] || 0), name: s.label })),
+      aria: bucketLabel(b) + ': ' + series.map((s) => s.label + ' ' + fmt(b[s.key] || 0)).join(', '),
+    }));
+    svg.appendChild(hit);
+  });
+
+  host.appendChild(svg);
+  const caption = spec.caption === false ? null : grainCaption(buckets);
+  if (caption) host.appendChild(el('div', 'chart-caption', caption));
+}
+
+/* ---- signed columns ----------------------------------------
+   Two opposed flows around a zero line — people joining above it, people
+   leaving below. This is the one place a diverging pair is right: the
+   colours carry polarity, not identity. */
+function divergingColumns(host, width, spec) {
+  const buckets = spec.buckets || [];
+  if (!buckets.length) { host.appendChild(el('div', 'empty', spec.empty || 'No trend available for this period.')); return; }
+
+  const up = spec.up;
+  const down = spec.down;
+  const max = niceMaxInt(Math.max(1, ...buckets.map((b) => Math.max(b[up.key] || 0, b[down.key] || 0))));
+  const padLeft = Math.max(30, approxWidth(String(max), 10.5) + 12);
+  const padRight = 10;
+  const padTop = 12;
+  const half = spec.height ? spec.height / 2 : 62;
+  const axisH = 40;
+  const height = padTop + half * 2 + axisH;
+  const plotW = Math.max(60, width - padLeft - padRight);
+  const band = plotW / buckets.length;
+  const colW = Math.min(24, band * 0.6);
+  const zeroY = padTop + half;
+
+  const svg = sv('svg', { viewBox: '0 0 ' + width + ' ' + height, width: width, height: height, role: 'presentation' });
+
+  const half4 = max % 2 === 0 ? [max, max / 2, 0, -max / 2, -max] : [max, 0, -max];
+  half4.forEach((t) => {
+    const y = zeroY - (t / max) * half;
+    svg.appendChild(sv('line', { x1: padLeft, y1: y, x2: padLeft + plotW, y2: y, class: t === 0 ? 'baseline' : 'gridline' }));
+    svg.appendChild(svText(padLeft - 8, y + 4, fmtInt(Math.abs(t)), 'tick-label', 'end'));
+  });
+
+  const labelEvery = labelStride(buckets, band, 12);
+  buckets.forEach((b, i) => {
+    const cx = padLeft + band * i + band / 2;
+    const opacity = b.partial ? 0.55 : 1;
+
+    [[up, 1], [down, -1]].forEach(([s, dir]) => {
+      const v = Math.max(0, b[s.key] || 0);
+      if (v <= 0) return;
+      const h = (v / max) * half;
+      const rr = Math.min(4, h / 2, colW / 2);
+      const d = dir > 0
+        ? 'M' + (cx - colW / 2) + ',' + zeroY + 'v' + (-(h - rr)) + 'a' + rr + ',' + rr + ' 0 0 1 ' + rr + ',' + (-rr) +
+          'h' + (colW - 2 * rr) + 'a' + rr + ',' + rr + ' 0 0 1 ' + rr + ',' + rr + 'v' + (h - rr) + 'z'
+        : 'M' + (cx - colW / 2) + ',' + zeroY + 'v' + (h - rr) + 'a' + rr + ',' + rr + ' 0 0 0 ' + rr + ',' + rr +
+          'h' + (colW - 2 * rr) + 'a' + rr + ',' + rr + ' 0 0 0 ' + rr + ',' + (-rr) + 'v' + (-(h - rr)) + 'z';
+      svg.appendChild(sv('path', { d: d, fill: s.color, opacity: opacity, class: 'mark' }));
+    });
+
+    if (i % labelEvery === 0 || i === buckets.length - 1) {
+      svg.appendChild(svTextLines(cx, padTop + half * 2 + 15, bucketLabelLines(b), 'tick-label', 'middle'));
+    }
+
+    const hit = sv('rect', { x: padLeft + band * i, y: padTop, width: band, height: half * 2, class: 'hit' });
+    interactive(hit, () => ({
+      head: bucketLabel(b) + (b.partial ? ' · partial' : ''),
+      rows: [
+        { color: up.color, value: fmtInt(b[up.key] || 0), name: up.label },
+        { color: down.color, value: fmtInt(b[down.key] || 0), name: down.label },
+      ],
+      aria: bucketLabel(b) + ': ' + up.label + ' ' + (b[up.key] || 0) + ', ' + down.label + ' ' + (b[down.key] || 0),
+    }));
+    svg.appendChild(hit);
+  });
+
+  host.appendChild(svg);
+  const caption = spec.caption === false ? null : grainCaption(buckets);
+  if (caption) host.appendChild(el('div', 'chart-caption', caption));
+}
+
+// ---- views --------------------------------------------------
+function renderView() {
+  charts.length = 0;
+  const main = clear($('report'));
+  if (state.view.kind === 'entity') renderEntity(main);
+  else renderOverview(main);
+}
+
+function card(parent, title, note) {
+  const c = el('section', 'card');
+  if (title) {
+    const head = el('div', 'section-head');
+    head.appendChild(el('h2', null, title));
+    c.appendChild(head);
+  }
+  if (note) c.appendChild(el('div', 'sub', note));
+  parent.appendChild(c);
+  return c;
+}
+
+function sourceDownPanel(host, sourceKey) {
+  const s = SOURCES[sourceKey] || { label: sourceKey, system: 'its source system' };
+  const health = (state.model.sourceHealth || {})[sourceKey] || {};
+  const box = el('div', 'source-down');
+  box.appendChild(el('div', 'sd-title', s.label + ' could not be read from ' + s.system));
+  box.appendChild(el('div', 'sd-body',
+    'No records came back for this window, so every ' + s.label + ' figure in this report is ' +
+    'unavailable rather than zero — the workflow could not tell whether anything happened. ' +
+    (health.records_received === 0 ? 'The node returned an empty result. ' : '') +
+    (state.data.failure_reason ? state.data.failure_reason + ' ' : '') +
+    'Open the run in n8n and check the ' + s.label + ' node; the rest of this report is unaffected.'));
+  host.appendChild(box);
+}
+
+function tiles(host, defs) {
+  const wrap = el('div', 'tiles');
+  defs.forEach(([label, m, fmt]) => {
+    const t = el('div', 'tile');
+    t.appendChild(el('div', 'label', label));
+
+    if (!m) { t.appendChild(el('div', 'value na', 'Not reported')); wrap.appendChild(t); return; }
+
+    // A metric that could not be calculated must never render as zero.
+    if (!m.is_available) {
+      t.appendChild(el('div', 'value na', 'Not available'));
+      t.appendChild(el('div', 'why', m.unavailable_reason || ''));
+      wrap.appendChild(t);
+      return;
+    }
+
+    t.appendChild(el('div', 'value', fmt(m.metric_value)));
+
+    if (m.previous_value !== null && m.previous_value !== undefined && m.direction &&
+        m.direction !== 'not_comparable' && m.direction !== 'flat' && m.direction !== 'stable') {
+      const goodWhen = GOOD_WHEN[m.metric_key];
+      const isUp = m.direction === 'up';
+      const cls = !goodWhen ? '' : ((isUp && goodWhen === 'up') || (!isUp && goodWhen === 'down')) ? 'up' : 'down';
+      const d = el('div', 'delta ' + cls);
+      d.appendChild(el('span', 'arrow', isUp ? '▲' : '▼'));
+
+      // A rate moves in PERCENTAGE POINTS, not in percent-of-percent.
+      // Rendering "on-time completion down 100.0% vs 100.0%" puts two
+      // different quantities in identical units next to each other and
+      // reads as a typo; "down 100.0 pts vs 100.0%" does not.
+      let move;
+      if (fmt === fmtPct) move = Math.abs(m.change * 100).toFixed(1) + ' pts';
+      else if (m.percent_change === null || m.percent_change === undefined) move = fmt(Math.abs(m.change));
+      else move = Math.abs(m.percent_change * 100).toFixed(1) + '%';
+
+      d.appendChild(el('span', null, move + ' vs ' + fmt(m.previous_value)));
+      t.appendChild(d);
+    } else if (m.direction === 'flat' || m.direction === 'stable') {
+      const d = el('div', 'delta');
+      d.appendChild(el('span', null, 'Stable vs ' + fmt(m.previous_value)));
+      t.appendChild(d);
+    }
+    wrap.appendChild(t);
+  });
+  host.appendChild(wrap);
+}
+
+function renderOverview(main) {
+  const metrics = state.model.metrics;
+  const breakdowns = state.model.breakdowns;
+  const S1 = () => cssVar('--series-1');
+  const S2 = () => cssVar('--series-2');
+  const S3 = () => cssVar('--series-3');
+
+  // ================= SALES =================
+  const sales = card(main, 'Sales');
+  if (state.model.domainDown('sales')) {
+    sourceDownPanel(sales, 'sales');
+  } else {
+    tiles(sales, [
+      ['Total leads', metrics['sales.total_leads'], fmtInt],
+      ['Closed won', metrics['sales.closed_won_deals'], fmtInt],
+      ['Closed lost', metrics['sales.closed_lost_deals'], fmtInt],
+      ['Win rate', metrics['sales.win_rate'], fmtPct],
+      ['Revenue won', metrics['sales.revenue_won'], fmtMoney],
+      ['Pipeline value', metrics['sales.pipeline_value'], fmtMoney],
+      ['Marketing spend', metrics['sales.marketing_spend'], fmtMoney],
+      ['Cost per lead', metrics['sales.cost_per_lead'], fmtMoney],
+    ]);
+
+    const salesSeries = breakdowns['sales.trend_series'] || [];
+    const g1 = el('div', 'grid cols-2');
+    g1.style.marginTop = '18px';
+    sales.appendChild(g1);
+
+    chartCard(g1, {
+      title: 'Revenue won',
+      note: 'Closed-won value, by the date the lead was created. Marketing spend is one budget figure per calendar month, pro-rated across the days this period covers — not a sum of the spend column.',
+      draw: (host, w) => columns(host, w, {
+        buckets: salesSeries,
+        series: [{ key: 'revenue_won', label: 'Revenue won', color: S1() }],
+        format: fmtMoney,
+      }),
+      table: () => ({
+        columns: ['Period', 'Revenue won', 'Leads', 'Closed won'],
+        rows: salesSeries.map((b) => [bucketLabel(b) + (b.partial ? ' (partial)' : ''), fmtMoney(b.revenue_won), b.leads, b.closed_won]),
+      }),
+    });
+
+    chartCard(g1, {
+      title: 'Leads and how they closed',
+      note: 'Counts of leads created in each bucket, and how many of those were won or lost.',
+      legend: [
+        { color: S1(), label: 'Leads' },
+        { color: S2(), label: 'Closed won' },
+        { color: S3(), label: 'Closed lost' },
+      ],
+      draw: (host, w) => columns(host, w, {
+        buckets: salesSeries,
+        series: [
+          { key: 'leads', label: 'Leads', color: S1() },
+          { key: 'closed_won', label: 'Closed won', color: S2() },
+          { key: 'closed_lost', label: 'Closed lost', color: S3() },
+        ],
+        format: fmtInt,
+        caption: false,
+      }),
+      table: () => ({
+        columns: ['Period', 'Leads', 'Closed won', 'Closed lost'],
+        rows: salesSeries.map((b) => [bucketLabel(b) + (b.partial ? ' (partial)' : ''), b.leads, b.closed_won, b.closed_lost]),
+      }),
+    });
+
+    const bySource = breakdowns['sales.revenue_by_lead_source'] || [];
+    const g2 = el('div', 'grid');
+    g2.style.marginTop = '16px';
+    sales.appendChild(g2);
+    chartCard(g2, {
+      title: 'Revenue won by lead source',
+      note: 'Every source that produced a lead in this window is listed, including the ones that produced no revenue — a source generating leads and no revenue is the finding, and dropping it would hide it.',
+      draw: (host, w) => hBars(host, w, {
+        rows: bySource.map((x) => ({
+          label: x.lead_source,
+          value: x.revenue_won,
+          detail: [
+            { name: 'leads', value: String(x.leads) },
+            { name: 'closed won', value: String(x.closed_won) },
+            { name: 'win rate', value: fmtPct(x.win_rate) },
+            { name: 'open pipeline', value: fmtMoney(x.pipeline_value) },
+          ],
+        })),
+        format: fmtMoney,
+        valueName: 'revenue won',
+        empty: 'No leads in this period, so there is no source breakdown.',
+      }),
+      table: () => ({
+        columns: ['Lead source', 'Revenue won', 'Leads', 'Won', 'Lost', 'Win rate', 'Open pipeline'],
+        rows: bySource.map((x) => [x.lead_source, fmtMoney(x.revenue_won), x.leads, x.closed_won, x.closed_lost, fmtPct(x.win_rate), fmtMoney(x.pipeline_value)]),
+      }),
+    });
+  }
+
+  // ================= DELIVERY =================
+  const del = card(main, 'Project delivery');
+  if (state.model.domainDown('delivery')) {
+    sourceDownPanel(del, 'delivery');
+  } else {
+    tiles(del, [
+      ['Active projects', metrics['project_delivery.active_projects'], fmtInt],
+      ['Completed', metrics['project_delivery.completed_projects'], fmtInt],
+      ['Blocked', metrics['project_delivery.blocked_projects'], fmtInt],
+      ['On-time completion', metrics['project_delivery.on_time_completion_rate'], fmtPct],
+      ['Average delay', metrics['project_delivery.average_delay_days'], fmtDays],
+      ['Budget variance', metrics['project_delivery.budget_variance'], fmtMoney],
+      ['Over budget', metrics['project_delivery.over_budget_projects'], fmtInt],
+    ]);
+
+    const delSeries = breakdowns['project_delivery.trend_series'] || [];
+    const g1 = el('div', 'grid cols-2');
+    g1.style.marginTop = '18px';
+    del.appendChild(g1);
+
+    chartCard(g1, {
+      title: 'Completions, on time and late',
+      note: 'Projects finished in each bucket, split by whether they met their due date. Projects with no due date cannot be placed in either column and are counted only in the total.',
+      legend: [
+        { color: S3(), label: 'On time' },
+        { color: S2(), label: 'Late' },
+      ],
+      draw: (host, w) => columns(host, w, {
+        buckets: delSeries,
+        stacked: true,
+        series: [
+          { key: 'completed_on_time', label: 'On time', color: S3() },
+          { key: 'completed_late', label: 'Late', color: S2() },
+        ],
+        format: fmtInt,
+      }),
+      table: () => ({
+        columns: ['Period', 'Completed', 'On time', 'Late', 'Average delay'],
+        rows: delSeries.map((b) => [bucketLabel(b) + (b.partial ? ' (partial)' : ''), b.completed, b.completed_on_time, b.completed_late, fmtDays(b.average_delay_days)]),
+      }),
+    });
+
+    chartCard(g1, {
+      title: 'Work started',
+      note: 'Projects that kicked off in each bucket. Blocked counts are a point-in-time status and cannot be placed in a bucket, so they are not drawn here.',
+      draw: (host, w) => columns(host, w, {
+        buckets: delSeries,
+        series: [{ key: 'kickoffs', label: 'Projects started', color: S1() }],
+        format: fmtInt,
+        caption: false,
+      }),
+      table: () => ({
+        columns: ['Period', 'Projects started'],
+        rows: delSeries.map((b) => [bucketLabel(b) + (b.partial ? ' (partial)' : ''), b.kickoffs]),
+      }),
+    });
+
+    const byTeam = breakdowns['project_delivery.delivery_load_by_team'] || [];
+    const g2 = el('div', 'grid');
+    g2.style.marginTop = '16px';
+    del.appendChild(g2);
+    chartCard(g2, {
+      title: 'Delivery load by team',
+      note: 'Bar length is the team’s total load in this window, so a team carrying eight projects draws twice the bar of a team carrying four. Status is a point-in-time snapshot: “active” means open now and running at some point inside the window.',
+      legend: [
+        { color: S1(), label: 'Active, not blocked' },
+        { color: S2(), label: 'Blocked' },
+        { color: S3(), label: 'Completed' },
+      ],
+      draw: (host, w) => stackedHBars(host, w, {
+        rows: byTeam.map((x) => ({
+          label: x.team,
+          parts: [
+            { name: 'Active, not blocked', value: Math.max(0, x.active - x.blocked), color: S1() },
+            { name: 'Blocked', value: x.blocked, color: S2() },
+            { name: 'Completed', value: x.completed, color: S3() },
+          ],
+        })),
+        totalWord: 'total',
+        empty: 'No projects were active or completed in this period.',
+      }),
+      table: () => ({
+        columns: ['Team', 'Active', 'Blocked', 'Completed', 'On-time rate', 'Average delay', 'Budget variance'],
+        rows: byTeam.map((x) => [x.team, x.active, x.blocked, x.completed, fmtPct(x.on_time_rate), fmtDays(x.average_delay_days), x.budget_variance === null ? '—' : fmtMoney(x.budget_variance)]),
+      }),
+    });
+  }
+
+  // ================= PEOPLE =================
+  const ppl = card(main, 'People Ops');
+  if (state.model.domainDown('people_ops')) {
+    sourceDownPanel(ppl, 'people_ops');
+  } else {
+    tiles(ppl, [
+      ['Applications', metrics['people_ops.applications'], fmtInt],
+      ['Offers accepted', metrics['people_ops.offers_accepted'], fmtInt],
+      ['New hires', metrics['people_ops.new_hires'], fmtInt],
+      ['Exits', metrics['people_ops.exits'], fmtInt],
+      ['Active headcount', metrics['people_ops.active_headcount'], fmtInt],
+      ['Attrition rate', metrics['people_ops.attrition_rate'], fmtPct],
+      ['Time to hire', metrics['people_ops.time_to_hire_days'], fmtDays],
+      ['Offer acceptance time', metrics['people_ops.offer_acceptance_days'], fmtDays],
+      ['Accepted, not started', metrics['people_ops.accepted_offers_not_yet_started'], fmtInt],
+    ]);
+
+    const pplSeries = breakdowns['people_ops.trend_series'] || [];
+    const g1 = el('div', 'grid cols-2');
+    g1.style.marginTop = '18px';
+    ppl.appendChild(g1);
+
+    chartCard(g1, {
+      title: 'Active headcount',
+      note: 'Measured at the end of each bucket from start and exit dates, not from the status field — so a record with a blank status is still counted correctly. The axis starts near the data, not at zero, so movement is visible.',
+      draw: (host, w) => lineChart(host, w, {
+        buckets: pplSeries,
+        series: [{ key: 'active_headcount', label: 'Active headcount', color: S1() }],
+        format: fmtInt,
+      }),
+      table: () => ({
+        columns: ['Period', 'Active headcount', 'New hires', 'Exits', 'Applications'],
+        rows: pplSeries.map((b) => [bucketLabel(b) + (b.partial ? ' (partial)' : ''), b.active_headcount, b.new_hires, b.exits, b.applications]),
+      }),
+    });
+
+    chartCard(g1, {
+      title: 'Joiners and leavers',
+      legend: [
+        { color: cssVar('--diverge-pos'), label: 'New hires' },
+        { color: cssVar('--diverge-neg'), label: 'Exits' },
+      ],
+      note: 'People who started above the line, people who left below it, by the date it happened.',
+      draw: (host, w) => divergingColumns(host, w, {
+        buckets: pplSeries,
+        up: { key: 'new_hires', label: 'New hires', color: cssVar('--diverge-pos') },
+        down: { key: 'exits', label: 'Exits', color: cssVar('--diverge-neg') },
+        caption: false,
+      }),
+      table: () => ({
+        columns: ['Period', 'New hires', 'Exits', 'Offers accepted'],
+        rows: pplSeries.map((b) => [bucketLabel(b) + (b.partial ? ' (partial)' : ''), b.new_hires, b.exits, b.offers_accepted]),
+      }),
+    });
+
+    const byDept = breakdowns['people_ops.headcount_by_department'] || [];
+    const g2 = el('div', 'grid');
+    g2.style.marginTop = '16px';
+    ppl.appendChild(g2);
+    chartCard(g2, {
+      title: 'Active headcount by department',
+      note: 'Headcount at the end of the period. Accepted offers with a start date after the period are not counted as headcount — they are shown separately above.',
+      draw: (host, w) => hBars(host, w, {
+        rows: byDept.map((x) => ({
+          label: x.department,
+          value: x.active_headcount,
+          detail: [
+            { name: 'new hires', value: String(x.new_hires) },
+            { name: 'exits', value: String(x.exits) },
+            { name: 'applications', value: String(x.applications) },
+          ],
+        })),
+        format: fmtInt,
+        valueName: 'active headcount',
+        empty: 'No People Ops records in this period.',
+      }),
+      table: () => ({
+        columns: ['Department', 'Headcount', 'Opening', 'Hires', 'Exits', 'Attrition', 'Time to hire'],
+        rows: byDept.map((x) => [x.department, x.active_headcount, x.opening_headcount, x.new_hires, x.exits, fmtPct(x.attrition_rate), fmtDays(x.time_to_hire_days)]),
+      }),
+    });
+  }
+
+  renderInsights(main);
+  renderDataQuality(main, null);
+}
+
+// ---- insights -----------------------------------------------
+function entityDomain(name) {
+  const e = state.model.entities;
+  for (const d of ['sales', 'project_delivery', 'people_ops']) {
+    if ((e[d] || []).indexOf(name) >= 0) return d;
+  }
+  return null;
+}
+
+// ---- entity colour ------------------------------------------
+// COLOUR FOLLOWS THE ENTITY, NEVER ITS RANK. Slots are handed out in
+// ALPHABETICAL order within a scope, so a lead source overtaking another - or a
+// period with fewer teams in it - never repaints the ones that remain. A hue
+// that moves between renders is worse than no hue at all: it teaches the reader
+// a mapping and then breaks it.
+//
+// Six slots, and the seventh distinct value onward gets none. That is the
+// "fold to Other" rule rather than a limitation: past six, adjacent hues stop
+// being reliably separable under colour vision deficiency, and a wall of
+// near-identical pills is less readable than a wall of plain ones.
+const HUE_SLOTS = 6;
+const hueScopes = {};
+
+// "Unattributed" is the bucket for records with no lead source, not a lead
+// source. It stays grey so it never reads as a channel someone is running.
+const UNATTRIBUTED = 'Unattributed';
+
+function registerHues(scope, names) {
+  const clean = (names || []).filter(Boolean).filter((n) => n !== UNATTRIBUTED);
+  hueScopes[scope] = Array.from(new Set(clean)).sort((a, b) => a.localeCompare(b));
+}
+
+function hueFor(scope, name) {
+  const reg = hueScopes[scope];
+  if (!reg || !name) return null;
+  const i = reg.indexOf(name);
+  return i >= 0 && i < HUE_SLOTS ? String(i + 1) : null;
+}
+
+function chipEl(name, scope, cls) {
+  const chip = el(cls ? 'span' : 'button', 'chip' + (cls ? ' ' + cls : ''));
+  const hue = hueFor(scope, name);
+  if (hue) chip.setAttribute('data-hue', hue);
+  if (hue || scope) chip.appendChild(el('i', 'swatch'));
+  chip.appendChild(el('span', null, name));
+  return chip;
+}
+
+function entityChip(name, host) {
+  const domain = entityDomain(name);
+  const chip = chipEl(name, domain, domain ? null : 'static');
+  if (chip.tagName === 'BUTTON') chip.type = 'button';
+  if (domain) {
+    chip.title = 'Open the ' + name + ' report';
+    chip.addEventListener('click', () => setView({ kind: 'entity', domain: domain, name: name }));
+  } else {
+    chip.disabled = true;
+  }
+  host.appendChild(chip);
+}
+
+function insightItem(host, opts) {
+  const n = el('div', 'item ' + (opts.level || 'low'));
+  const meta = el('div', 'meta');
+  meta.appendChild(el('span', null, opts.metaText));
+  n.appendChild(meta);
+  n.appendChild(el('div', 'head', opts.head));
+  if (opts.body) n.appendChild(el('div', 'ev', opts.body));
+  if (opts.entity) {
+    const chips = el('div', 'chips');
+    entityChip(opts.entity, chips);
+    n.appendChild(chips);
+  }
+  host.appendChild(n);
+}
+
+function departmentCard(host, dep) {
+  const c = el('div', 'dept-card');
+  c.appendChild(el('div', 'kicker', DOMAIN_LABEL[dep.area] || dep.area));
+  c.appendChild(el('div', 'headline', dep.headline || ''));
+  c.appendChild(el('p', null, dep.assessment || ''));
+
+  const point = (key, val) => {
+    if (!val) return;
+    const row = el('div', 'pt');
+    row.appendChild(el('div', 'pt-key', key));
+    row.appendChild(el('div', 'pt-val', val));
+    c.appendChild(row);
+  };
+  point('Working', dep.what_is_working);
+  point('Watch', dep.what_needs_attention);
+  point('Do next', dep.priority_action);
+
+  if (Array.isArray(dep.focus_entities) && dep.focus_entities.length) {
+    const chips = el('div', 'chips');
+    dep.focus_entities.forEach((name) => entityChip(name, chips));
+    c.appendChild(chips);
+  }
+  host.appendChild(c);
+}
+
+function renderInsights(main, filter) {
+  const d = state.data;
+  const ins = state.model.insights;
+  const c = card(main, filter ? 'What the analysis says' : 'AI analysis');
+
+  const model = parseModelName(d.model);
+
+  c.appendChild(el('div', 'sub', d.insight_source === 'claude'
+    ? 'Written by ' + model + ' from the calculated figures above. Every number below was checked against those figures before this page rendered.'
+    : 'Generated by the workflow’s rules-based fallback, because the model call did not complete.'));
+
+  if (!filter) {
+    const p = el('p', 'summary', ins.summary || 'No summary was produced for this run.');
+    p.style.marginTop = '12px';
+    c.appendChild(p);
+
+    c.appendChild(el('h3', null, 'Read this if you run…'));
+    const grid = el('div', 'grid cols-3');
+    if (!ins.departments.length) {
+      grid.appendChild(el('div', 'empty', 'No department sections were returned for this run.'));
+    }
+    ins.departments.forEach((dep) => departmentCard(grid, dep));
+    c.appendChild(grid);
+  } else {
+    const dep = ins.departments.filter((x) => x.area === filter.domain)[0];
+    if (dep) {
+      const grid = el('div', 'grid');
+      grid.style.marginTop = '12px';
+      departmentCard(grid, dep);
+      c.appendChild(grid);
+    }
+  }
+
+  const match = (x) => {
+    if (!filter) return true;
+    if (x.entity && x.entity === filter.entity) return true;
+    return x.area === filter.domain && !x.entity;
+  };
+
+  const risks = ins.risks.filter(match);
+  const actions = ins.actions.filter(match);
+
+  c.appendChild(el('h3', null, filter ? 'Risks that touch ' + filter.entity : 'Operational risks and anomalies'));
+  if (!risks.length) {
+    c.appendChild(el('div', 'muted', filter
+      ? 'Nothing was raised against ' + filter.entity + ' for this period.'
+      : 'No operational risks or anomalies were identified for this period.'));
+  }
+  risks.forEach((r) => insightItem(c, {
+    level: r.severity || 'low',
+    metaText: (r.severity || '') + ' · ' + (DOMAIN_LABEL[r.area] || String(r.area).replace(/_/g, ' ')),
+    head: r.finding,
+    body: r.evidence,
+    entity: filter ? null : r.entity,
+  }));
+
+  c.appendChild(el('h3', null, filter ? 'Actions for ' + filter.entity : 'Recommended actions'));
+  if (!actions.length) {
+    c.appendChild(el('div', 'muted', filter
+      ? 'No actions were recommended for ' + filter.entity + '.'
+      : 'No actions were recommended for this period.'));
+  }
+  actions.forEach((a) => insightItem(c, {
+    level: a.priority || 'low',
+    metaText: (a.priority || '') + ' priority · ' + (DOMAIN_LABEL[a.area] || String(a.area).replace(/_/g, ' ')),
+    head: a.action,
+    body: a.rationale,
+    entity: filter ? null : a.entity,
+  }));
+
+  if (!filter && ins.aiDq.length) {
+    c.appendChild(el('h3', null, 'Where the analyst is less confident'));
+    ins.aiDq.forEach((w) => insightItem(c, {
+      level: 'low',
+      metaText: DOMAIN_LABEL[w.source] || String(w.source || '').replace(/_/g, ' '),
+      head: w.issue,
+      body: w.impact,
+    }));
+  }
+}
+
+// ---- data quality -------------------------------------------
+const SCOPE_LABEL = {
+  in_period: 'In this window',
+  undated_record: 'Undated record',
+  run: 'This run',
+  out_of_period: 'Outside this window',
+};
+
+function renderDataQuality(main, domainFilter) {
+  const rows = state.model.dq.filter((w) => !domainFilter || w.source === domainFilter);
+  const c = card(main, domainFilter ? 'Data quality for this source' : 'Data quality');
+
+  const outside = rows.filter((w) => w.code === 'OUTSIDE_SELECTED_PERIOD').length;
+  c.appendChild(el('div', 'sub', rows.length
+    ? rows.length + ' issue(s) bear on ' + (domainFilter ? 'this source in ' : '') + 'the selected window. ' +
+      'Warnings are matched to the reporting period using the dates on the records they came from, so an issue in a ' +
+      'record this window never touched is not counted here' + (outside ? ' — it is summarised in the last row instead.' : '.') +
+      ' Every affected record is still counted wherever it legitimately can be; nothing is silently dropped.'
+    : 'No issues detected in the source data for this window.'));
+
+  if (!rows.length) return;
+
+  const scroll = el('div', 'scroll');
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const htr = document.createElement('tr');
+  ['Severity', 'Issue', 'Scope', 'Record', 'Date', 'What it means for the numbers'].forEach((h, i) => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    if (i === 0) th.style.width = '84px';
+    if (i === 1) th.style.width = '176px';
+    if (i === 2) th.style.width = '124px';
+    if (i === 3) th.style.width = '128px';
+    if (i === 4) th.style.width = '104px';
+    htr.appendChild(th);
+  });
+  thead.appendChild(htr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  rows.forEach((w) => {
+    const tr = document.createElement('tr');
+    tr.appendChild(el('td', 'sev ' + w.severity, w.severity));
+    const codeCell = document.createElement('td');
+    codeCell.appendChild(el('code', null, w.code));
+    tr.appendChild(codeCell);
+    tr.appendChild(el('td', null, SCOPE_LABEL[w.scope] || 'This run'));
+    tr.appendChild(el('td', null, w.record_id || '—'));
+    tr.appendChild(el('td', null, w.record_date ? fmtDate(w.record_date) : '—'));
+    tr.appendChild(el('td', null, w.message));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+  c.appendChild(scroll);
+}
+
+// ---- one team, one department, one lead source --------------
+function renderEntity(main) {
+  const metrics = state.model.metrics;
+  const breakdowns = state.model.breakdowns;
+  const view = state.view;
+  const row = entityRow(view.domain, view.name);
+  const S1 = () => cssVar('--series-1');
+  const S2 = () => cssVar('--series-2');
+  const S3 = () => cssVar('--series-3');
+
+  const crumb = el('div', 'crumb');
+  const back = el('button', 'linkish', '← Overview');
+  back.type = 'button';
+  back.addEventListener('click', () => setView({ kind: 'overview' }));
+  crumb.appendChild(back);
+  crumb.appendChild(el('span', null, DOMAIN_LABEL[view.domain] + ' · ' + view.name));
+  main.appendChild(crumb);
+
+  const head = card(main, null);
+  const kicker = el('div', 'sub');
+  kicker.textContent = DOMAIN_LABEL[view.domain] +
+    (view.domain === 'sales' ? ' · lead source' : view.domain === 'project_delivery' ? ' · team' : ' · department');
+  const h = el('div', 'hero', view.name);
+  head.appendChild(h);
+  head.appendChild(kicker);
+
+  if (!row) {
+    head.appendChild(el('div', 'empty', 'This period has no rows for ' + view.name + '.'));
+    return;
+  }
+
+  // ---- the figures for this entity, on the same basis as the headline ones
+  const asMetric = (value, fmtSuffix) => ({ is_available: value !== null && value !== undefined, metric_value: value, unavailable_reason: 'Not enough data in this window to calculate it for ' + view.name + '.' });
+
+  if (view.domain === 'sales') {
+    tiles(head, [
+      ['Revenue won', asMetric(row.revenue_won), fmtMoney],
+      ['Leads', asMetric(row.leads), fmtInt],
+      ['Closed won', asMetric(row.closed_won), fmtInt],
+      ['Closed lost', asMetric(row.closed_lost), fmtInt],
+      ['Win rate', asMetric(row.win_rate), fmtPct],
+      ['Open deals', asMetric(row.open_deals), fmtInt],
+      ['Open pipeline', asMetric(row.pipeline_value), fmtMoney],
+      ['Average won deal', asMetric(row.average_won_deal), fmtMoney],
+      ['Share of revenue', asMetric(row.share_of_revenue), fmtPct],
+    ]);
+  } else if (view.domain === 'project_delivery') {
+    tiles(head, [
+      ['Total load', asMetric(row.total_load), fmtInt],
+      ['Active', asMetric(row.active), fmtInt],
+      ['Blocked', asMetric(row.blocked), fmtInt],
+      ['Completed', asMetric(row.completed), fmtInt],
+      ['On-time rate', asMetric(row.on_time_rate), fmtPct],
+      ['Average delay', asMetric(row.average_delay_days), fmtDays],
+      ['Worst delay', asMetric(row.worst_delay_days), fmtDays],
+      ['Budget variance', asMetric(row.budget_variance), fmtMoney],
+      ['Over budget', asMetric(row.over_budget), fmtInt],
+    ]);
+  } else {
+    tiles(head, [
+      ['Active headcount', asMetric(row.active_headcount), fmtInt],
+      ['Opening headcount', asMetric(row.opening_headcount), fmtInt],
+      ['Change', asMetric(row.headcount_change), fmtInt],
+      ['New hires', asMetric(row.new_hires), fmtInt],
+      ['Exits', asMetric(row.exits), fmtInt],
+      ['Attrition rate', asMetric(row.attrition_rate), fmtPct],
+      ['Applications', asMetric(row.applications), fmtInt],
+      ['Time to hire', asMetric(row.time_to_hire_days), fmtDays],
+      ['Accepted, not started', asMetric(row.accepted_not_started), fmtInt],
+    ]);
+  }
+
+  // ---- where this one sits against the others
+  // Emphasis, not a repaint
+  const compare = card(main, 'Against the others');
+  const g = el('div', 'grid');
+  compare.appendChild(g);
+
+  if (view.domain === 'sales') {
+    const list = breakdowns['sales.revenue_by_lead_source'] || [];
+    chartCard(g, {
+      title: 'Revenue won by lead source',
+      note: view.name + ' is highlighted; the other sources are shown for scale.',
+      draw: (host, w) => hBars(host, w, {
+        rows: list.map((x) => ({ label: x.lead_source, value: x.revenue_won })),
+        format: fmtMoney,
+        highlight: view.name,
+        valueName: 'revenue won',
+      }),
+      table: () => ({
+        columns: ['Lead source', 'Revenue won', 'Leads', 'Win rate'],
+        rows: list.map((x) => [x.lead_source, fmtMoney(x.revenue_won), x.leads, fmtPct(x.win_rate)]),
+      }),
+    });
+  } else if (view.domain === 'project_delivery') {
+    const list = breakdowns['project_delivery.delivery_load_by_team'] || [];
+    chartCard(g, {
+      title: 'Delivery load by team',
+      note: view.name + ' is highlighted; bar length is total load in this window.',
+      draw: (host, w) => hBars(host, w, {
+        rows: list.map((x) => ({
+          label: x.team,
+          value: x.total_load,
+          detail: [
+            { name: 'active', value: String(x.active) },
+            { name: 'blocked', value: String(x.blocked) },
+            { name: 'completed', value: String(x.completed) },
+          ],
+        })),
+        format: fmtInt,
+        highlight: view.name,
+        valueName: 'projects',
+      }),
+      table: () => ({
+        columns: ['Team', 'Total load', 'Active', 'Blocked', 'Completed'],
+        rows: list.map((x) => [x.team, x.total_load, x.active, x.blocked, x.completed]),
+      }),
+    });
+  } else {
+    const list = breakdowns['people_ops.headcount_by_department'] || [];
+    chartCard(g, {
+      title: 'Active headcount by department',
+      note: view.name + ' is highlighted; the other departments are shown for scale.',
+      draw: (host, w) => hBars(host, w, {
+        rows: list.map((x) => ({ label: x.department, value: x.active_headcount })),
+        format: fmtInt,
+        highlight: view.name,
+        valueName: 'people',
+      }),
+      table: () => ({
+        columns: ['Department', 'Headcount', 'Hires', 'Exits', 'Attrition'],
+        rows: list.map((x) => [x.department, x.active_headcount, x.new_hires, x.exits, fmtPct(x.attrition_rate)]),
+      }),
+    });
+  }
+
+  // ---- the named work behind the counts
+  if (view.domain === 'project_delivery') {
+    const detail = card(main, 'The work behind the numbers');
+    const blocked = row.blocked_items || [];
+    const late = row.late_items || [];
+
+    detail.appendChild(el('h3', null, 'Blocked projects'));
+    if (!blocked.length) detail.appendChild(el('div', 'muted', 'Nothing on ' + view.name + ' is blocked.'));
+    else detail.appendChild(buildTable({
+      columns: ['Project', 'Owner', 'Due'],
+      rows: blocked.map((p) => [p.project_name || p.project_id, p.owner || '—', p.due_date ? fmtDate(p.due_date) : 'no due date']),
+    }));
+
+    detail.appendChild(el('h3', null, 'Completed late in this window'));
+    if (!late.length) detail.appendChild(el('div', 'muted', 'Nothing on ' + view.name + ' completed late in this window.'));
+    else detail.appendChild(buildTable({
+      columns: ['Project', 'Owner', 'Days late'],
+      rows: late.map((p) => [p.project_name || p.project_id, p.owner || '—', Math.round(p.delay_days)]),
+    }));
+
+    if (row.missing_due_date || row.missing_cost) {
+      detail.appendChild(el('div', 'sub',
+        [row.missing_due_date ? row.missing_due_date + ' completed project(s) have no due date, so they are outside the on-time rate.' : '',
+         row.missing_cost ? row.missing_cost + ' have no actual cost, so they are outside budget variance.' : ''
+        ].filter(Boolean).join(' ')));
+    }
+
+    const owners = row.owners || [];
+    if (owners.length) {
+      detail.appendChild(el('h3', null, 'Owners on this team in this window'));
+      // Scoped to this team's card: every owner on screen at once is a
+      // distinct hue, which is what the reader actually needs here. An owner
+      // who appears under two teams is not promised the same colour in both.
+      const scope = 'owners:' + view.name;
+      registerHues(scope, owners);
+      const chips = el('div', 'chips');
+      owners.forEach((o) => chips.appendChild(chipEl(o, scope, 'static')));
+      detail.appendChild(chips);
+    }
+  }
+
+  if (view.domain === 'people_ops' && (row.roles || []).length) {
+    const detail = card(main, 'Roles in this department');
+    const scope = 'roles:' + view.name;
+    registerHues(scope, row.roles);
+    const chips = el('div', 'chips');
+    row.roles.forEach((r) => chips.appendChild(chipEl(r, scope, 'static')));
+    detail.appendChild(chips);
+    if (row.accepted_not_started) {
+      detail.appendChild(el('div', 'sub', row.accepted_not_started +
+        ' accepted offer(s) in this department start after the period ends, so they are not in the headcount above.'));
+    }
+  }
+
+  if (view.domain === 'sales' && row.deals_missing_amount) {
+    const detail = card(main, 'What is missing');
+    detail.appendChild(el('div', 'sub', row.deals_missing_amount +
+      ' closed-won deal(s) from ' + view.name + ' have no deal amount, so revenue won for this source is understated.'));
+  }
+
+  renderInsights(main, { domain: view.domain, entity: view.name });
+  renderDataQuality(main, view.domain);
+}
+
+// ---- export -------------------------------------------------
+function csvCell(v) {
+  const s = v === null || v === undefined ? '' : String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function csvRow(cells) { return cells.map(csvCell).join(','); }
+
+function buildCsv() {
+  const d = state.data;
+  const out = [];
+
+  out.push('# Koya Talent Operations Report');
+  out.push(csvRow(['field', 'value']));
+  [
+    ['run_id', d.run_id], ['period', d.period_label], ['period_key', d.period_key],
+    ['period_start', d.period_start], ['period_end', d.period_end], ['period_days', d.period_days],
+    ['compared_with', d.compare_label], ['reference_date', d.reference_date],
+    ['run_status', d.run_status], ['failed_sources', (d.failed_sources || []).join(' ')],
+    ['insight_source', d.insight_source], ['model', d.model],
+    ['confidence', d.confidence], ['grounded', d.grounded],
+    ['updated_at', d.updated_at], ['exported_at', new Date().toISOString()],
+  ].forEach((r) => out.push(csvRow(r)));
+
+  out.push('');
+  out.push('# Metrics');
+  out.push(csvRow(['domain', 'metric', 'value', 'available', 'unavailable_reason',
+    'previous_value', 'change', 'percent_change', 'direction']));
+  (d.metrics || []).forEach((m) => out.push(csvRow([
+    m.domain, m.metric_key, m.metric_value, m.is_available, m.unavailable_reason,
+    m.previous_value, m.change, m.percent_change, m.direction])));
+
+  out.push('');
+  out.push('# Breakdowns');
+  out.push(csvRow(['domain', 'breakdown', 'item', 'field', 'value']));
+  (d.breakdowns || []).forEach((b) => {
+    const v = b.values || {};
+    Object.keys(v).forEach((k) => {
+      const cell = v[k];
+      if (cell !== null && typeof cell === 'object') return;   // nested lists live in the JSON export
+      out.push(csvRow([b.domain, b.breakdown_key, b.item_key, k, cell]));
+    });
+  });
+
+  out.push('');
+  out.push('# Data quality (scoped to this reporting period)');
+  out.push(csvRow(['severity', 'code', 'scope', 'source', 'record_id', 'record_date', 'message']));
+  (d.data_quality || []).forEach((w) => out.push(csvRow([
+    w.severity, w.code, w.scope, w.source, w.record_id, w.record_date, w.message])));
+
+  return out.join('\n');
+}
+
+function download(filename, mime, text) {
+  const blob = new Blob([text], { type: mime + ';charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportName(ext) {
+  const d = state.data;
+  return 'koya-report_' + (d.period_key || 'period') + '_' + (d.period_end || '') + '.' + ext;
+}
+
+$('exportMenu').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-export]');
+  if (!btn) return;
+  $('exportMenu').open = false;
+  if (!state.data) return notice('info', 'Nothing to export yet', 'Load a period first.');
+  if (btn.dataset.export === 'csv') download(exportName('csv'), 'text/csv', buildCsv());
+  else if (btn.dataset.export === 'json') download(exportName('json'), 'application/json', JSON.stringify(state.data, null, 2));
+  else window.print();
+});
+document.addEventListener('pointerdown', (e) => {
+  const menu = $('exportMenu');
+  if (menu.open && !menu.contains(e.target)) menu.open = false;
+}, true);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { $('exportMenu').open = false; hideTip(); }
+});
+$('exportHint').textContent =
+  'Exports the whole selected period, not just the panel on screen. Figures are exported unformatted, exactly as they are stored.';
+
+// ---- run now ------------------------------------------------
+// The period buttons only ever READ — they fetch whatever report is already
+// stored. This is the only control that starts a run, so it is always here,
+// and when the deployment has no webhook configured it says that rather than
+// disappearing: a missing button reads as "this dashboard cannot refresh",
+// which is a different and wronger message.
+const runBtn = $('runBtn');
+if (!N8N_WEBHOOK_URL) {
+  runBtn.classList.remove('primary');
+  runBtn.title = 'Refresh is not wired up on this deployment';
+}
+
+function setRunning(on, label) {
+  runBtn.disabled = on;
+  runBtn.setAttribute('aria-busy', String(on));
+  clear(runBtn);
+  if (on) runBtn.appendChild(el('span', 'spinner'));
+  runBtn.appendChild(document.createTextNode(on ? (label || 'Running…') : 'Run now'));
+}
+
+async function triggerRun(body, opts) {
+  const options = opts || {};
+  setRunning(true, options.label);
+  clear($('notices'));
+  const started = Date.now();
+  try {
+    const res = await fetch(N8N_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ requested_by: 'dashboard' }, body)),
+    });
+    if (!res.ok) throw new Error('n8n returned ' + res.status + ' ' + res.statusText);
+    // A webhook that responds before the pipeline finishes, or an n8n error
+    // page, will not be JSON. That is not a failed run, so do not report it
+    // as one — fall through and reload, which shows the truth.
+    let payload = null;
+    try { payload = await res.json(); } catch (e) { payload = null; }
+    await loadPeriod(body.period);
+    const secs = Math.round((Date.now() - started) / 1000);
+    if (payload && payload.status === 'unchanged') {
+      notice('info', 'Nothing to update',
+        'The source data has not changed since the last run for this period, so the report was ' +
+        'left as it is and no analysis was re-run. That is the cost control working, not a failure.');
+    } else {
+      notice('ok', 'Report rebuilt', 'The workflow finished in ' + secs + ' seconds and this page is showing the new run.');
+    }
+  } catch (err) {
+    notice('alert', 'Could not trigger the workflow',
+      String((err && err.message) || err) +
+      '. Check that the workflow is Active in n8n, that the webhook URL in the deployment config is the ' +
+      'Production URL, and that the webhook node allows this page’s origin (CORS).');
+  } finally {
+    setRunning(false);
+  }
+}
+
+runBtn.addEventListener('click', () => {
+  if (!N8N_WEBHOOK_URL) {
+    return notice('info', 'Refresh is not wired up on this deployment',
+      'This page can start a run only when it knows the workflow’s webhook URL. Set N8N_WEBHOOK_URL — ' +
+      'in .env locally, or as an Environment Variable on the Vercel project — and rebuild. Leaving it ' +
+      'unset keeps the dashboard strictly read-only, which is the right setting for a page anyone can open: ' +
+      'the URL is published to every visitor. Until then, run the workflow from n8n.');
+  }
+  if (state.period === 'custom') {
+    return notice('info', 'Use the Custom panel to run a custom range',
+      'A custom run needs the start and end dates, so it is started from the Run report button next to the date pickers.');
+  }
+  triggerRun({ period: state.period });
+});
+
+// ---- custom range -------------------------------------------
+// A popover in the nav bar rather than a panel on the page, because the pickers
+// are a way of asking a question and the report is the answer: once the question
+// has been asked, they are between the reader and it. Every path that starts a
+// run or loads a report closes them.
+const customBtn = () => document.querySelector('#controls button[data-period="custom"]');
+
+function closeCustom() {
+  const panel = $('customPanel');
+  if (!panel || panel.hidden) return;
+  panel.hidden = true;
+  const b = customBtn();
+  if (b) b.setAttribute('aria-expanded', 'false');
+}
+
+function askCustom() {
+  const panel = $('customPanel');
+  const btn = customBtn();
+
+  // Second click on Custom closes it, the way the Export menu behaves.
+  if (!panel.hidden) return closeCustom();
+
+  clear(panel);
+  panel.appendChild(el('strong', null, 'Custom date range'));
+  const row = el('div', 'row');
+  const start = document.createElement('input');
+  start.type = 'date';
+  start.value = '2026-01-01';
+  const end = document.createElement('input');
+  end.type = 'date';
+  end.value = (state.data && state.data.reference_date) || '2026-06-30';
+  row.appendChild(el('span', 'muted', 'From'));
+  row.appendChild(start);
+  row.appendChild(el('span', 'muted', 'to'));
+  row.appendChild(end);
+
+  if (N8N_WEBHOOK_URL) {
+    const go = el('button', 'primary', 'Run report');
+    go.addEventListener('click', () => {
+      if (!start.value || !end.value) {
+        // The panel stays open on a validation failure — the reader has to come
+        // back to it, so closing it would be taking the form away mid-correction.
+        return notice('warn', 'Both dates are needed', 'Pick a start and an end date, then press Run report.');
+      }
+      closeCustom();
+      triggerRun({ period: 'custom', start: start.value, end: end.value }, { label: 'Running…' });
+    });
+    row.appendChild(go);
+  }
+
+  const show = el('button', null, 'Show latest custom run');
+  show.addEventListener('click', () => { closeCustom(); loadPeriod('custom'); });
+  row.appendChild(show);
+  panel.appendChild(row);
+
+  panel.appendChild(el('div', 'hint', N8N_WEBHOOK_URL
+    ? 'The sample sources cover January 2025 to June 2026 and the report is anchored to 30 June 2026, ' +
+      'so a range after that comes back empty.'
+    : 'This deployment is read-only, so it shows the most recent custom run rather than starting a new one.'));
+
+  panel.hidden = false;
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  start.focus();
+}
+
+// Outside click and Escape close it, like any other popover on the page.
+document.addEventListener('click', (e) => {
+  const panel = $('customPanel');
+  if (!panel || panel.hidden) return;
+  if (panel.contains(e.target) || e.target === customBtn()) return;
+  closeCustom();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCustom(); });
+
+// ---- boot ---------------------------------------------------
+document.querySelectorAll('#controls button[data-period]').forEach((b) => {
+  b.addEventListener('click', () => {
+    if (b.dataset.period === 'custom') {
+      state.period = 'custom';
+      document.querySelectorAll('#controls button[data-period]').forEach((x) =>
+        x.setAttribute('aria-pressed', String(x === b)));
+      askCustom();
+    } else {
+      loadPeriod(b.dataset.period);
+    }
+  });
+});
+
+loadPeriod('last_30d');
+</script>
+</body>
+</html>
