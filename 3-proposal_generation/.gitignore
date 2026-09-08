@@ -1,0 +1,45 @@
+# ============================================================
+# Koya Proposal Studio — ignore rules
+#
+# This directory is its OWN git repository (origin:
+# psychemist/aat-c3-week-3-proposal-app), nested inside the portfolio repo.
+# That nesting is the whole reason this file has to exist: ignore rules do not
+# cross a repository boundary, so the portfolio's root .gitignore — which does
+# cover .env and .env.local — has no effect whatsoever in here. Without this
+# file, build/.env.local (Neon password, session signing secret, Anthropic key)
+# is a plain untracked file that `git add .` would happily commit and push to a
+# public fork.
+#
+# Every pattern below is deliberately slash-less so it matches at ANY depth.
+# A pattern like `*/.env` matches build/.env but misses build/nested/.env, and
+# the file it fails to match is the one holding the credentials.
+# ============================================================
+
+# ---------- Secrets ----------
+.env
+.env.*
+!.env.example
+
+# ---------- Dependencies ----------
+node_modules/
+
+# ---------- Build output ----------
+.next/
+out/
+build/.next/
+*.tsbuildinfo
+next-env.d.ts
+
+# ---------- Deploy tooling ----------
+.vercel/
+
+# ---------- OS / editor ----------
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# ---------- Local test scratch ----------
+coverage/
+*.local.json
