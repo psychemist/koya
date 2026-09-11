@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Koya Proposal Studio">
+  <!--
+    A proposal, and the thing that makes it one: a second person's approval.
+
+    The mark is a sheet of paper with three ruled lines and a check struck
+    through the lower right corner. That is the product in one glyph - the
+    document is what Claude drafts, the check is the gate it cannot pass on
+    its own. A plain document icon would describe a word processor.
+
+    Drawn rather than set in type. A lettermark at 16px is a smudge, and the
+    favicon's whole job is to be recognisable in a strip of twenty tabs.
+
+    `currentColor` is not used: a favicon renders outside the page, with no
+    inherited colour and no access to the theme's custom properties. The
+    values are literal, and chosen to hold against both a light and a dark
+    browser chrome - the accent carries the mark, the sheet stays near-white.
+  -->
+  <rect width="32" height="32" rx="7" fill="#1d4ed8"/>
+  <path d="M9 7.5h10.5L24 12v12.5a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z" fill="#f8fafc"/>
+  <path d="M19.5 7.5 24 12h-3.5a1 1 0 0 1-1-1V7.5Z" fill="#bfdbfe"/>
+  <g fill="#94a3b8">
+    <rect x="11" y="13" width="10" height="1.6" rx="0.8"/>
+    <rect x="11" y="16.4" width="10" height="1.6" rx="0.8"/>
+    <rect x="11" y="19.8" width="6" height="1.6" rx="0.8"/>
+  </g>
+  <circle cx="22.5" cy="22" r="6" fill="#16a34a"/>
+  <path d="m19.8 22.1 1.9 1.9 3.6-3.9" fill="none" stroke="#fff" stroke-width="1.9"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

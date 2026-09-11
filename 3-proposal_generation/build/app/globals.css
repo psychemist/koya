@@ -1,0 +1,2036 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Koya Proposal Studio — design system
+
+   Two surfaces, deliberately different:
+
+     CHROME  — the application. Cool, near-neutral, quiet. It is a tool, and
+               a tool should recede while you use it.
+     PAPER   — the document. Warm, high-contrast, serif, with a real measure.
+               The proposal is the product, and it should look like a document
+               rather than like a text field.
+
+   That distinction is the main design idea. Most AI writing tools present the
+   output as chat; a proposal is a legal-adjacent artefact a client reads, and
+   it earns typographic treatment.
+
+   Colour rules, carried over from the Week 2 dashboard:
+     - Every token is defined on bare :root, so no colour has its only
+       definition inside a media query.
+     - Dark mode redefines tokens only, never rules.
+     - Nothing is carried by hue alone. Every status pairs a colour with an
+       icon and a word, because a red dot means nothing to a colour-blind
+       reviewer and nothing at all in a printout.
+   ============================================================ */
+
+/**
+ * Light mode.
+ *
+ * The chrome greys are NEUTRAL, very slightly cool, and the paper is warm.
+ * That split is deliberate and it is the thing that makes light mode read as
+ * clean rather than muddy.
+ *
+ * The first version had warm chrome (#f6f5f2, #f0eee9) against cool ink
+ * (#16151a) and a violet-tinted muted grey. Two problems followed. The
+ * temperature clash made every neutral surface look slightly dirty — warm
+ * ground under cool text is the classic recipe for it. And because the chrome
+ * was already warm, the warm paper no longer stood out from it, which
+ * collapsed the one distinction the whole design rests on: the application
+ * recedes, the document does not.
+ *
+ * So: chrome sits on a hue-neutral ramp with a hint of blue, ink is a true
+ * near-black, and the warm cream is reserved entirely for the document
+ * surface. Put a proposal on screen and the paper now reads as paper.
+ */
+:root {
+  color-scheme: light;
+
+  /* ---- chrome: neutral, faintly cool, recedes ---- */
+  --page: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #f1f3f7;
+  --surface-3: #e3e7ee;
+  --ink: #14161a;
+  --ink-2: #4a5058;
+  --muted: #7b828d;
+  --border: rgba(20, 22, 26, 0.1);
+  --border-strong: rgba(20, 22, 26, 0.19);
+
+  /* ---- paper: warm, and the only warm surface in the interface ---- */
+  --paper: #fffdf7;
+  --paper-ink: #1a1813;
+  --paper-muted: #6d675a;
+  --paper-rule: rgba(26, 24, 19, 0.13);
+
+  /* ---- accent. 5.6:1 on white, so it passes AA as body text too. ---- */
+  --accent: #2b5cb0;
+  --accent-hover: #24509c;
+  --accent-ink: #ffffff;
+  --accent-soft: #eaf0fb;
+  --accent-line: #bacdee;
+
+  /* ---- status. Green/red are reserved for outcome, never for identity. ---- */
+  --good: #17784a;
+  --good-soft: #e6f4ec;
+  --good-line: #a9d7bf;
+  --attention: #97600f;
+  --attention-soft: #fdf3e0;
+  --attention-line: #e8c68d;
+  --bad: #b83a30;
+  --bad-soft: #fceceb;
+  --bad-line: #eeb4ad;
+  --progress: #2b5cb0;
+  --progress-soft: #eaf0fb;
+
+  --focus: #2b5cb0;
+
+  /*
+   * The selected section, on paper.
+   *
+   * This cannot be --accent-soft. That token is a cool near-white mixed for
+   * the cool chrome, and laid over the warm cream of the document it goes
+   * grey and muddy — which is why the first version had to be dialled down
+   * to 35% opacity and then could not be seen at all. A translucent wash of
+   * the accent tints whatever is underneath it instead of fighting it, so
+   * the same token works on paper and on chrome, in both themes.
+   */
+  --select: rgba(43, 92, 176, 0.075);
+  --select-line: #2b5cb0;
+
+  /*
+   * Shadows are barely there on purpose. A clean light interface separates
+   * surfaces with a crisp hairline border and a whisper of elevation; heavy
+   * drop shadows on a white ground read as grubby smudges rather than depth.
+   */
+  --shadow-sm: 0 1px 1px rgba(20, 22, 26, 0.04);
+  --shadow: 0 1px 2px rgba(20, 22, 26, 0.04), 0 4px 14px rgba(20, 22, 26, 0.045);
+  --shadow-lg: 0 2px 4px rgba(20, 22, 26, 0.05), 0 14px 40px rgba(20, 22, 26, 0.09);
+
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 16px;
+
+  /* ==========================================================
+     The dark palette, defined once and not yet applied.
+
+     Dark mode has to be activated by two different selectors — the
+     system-preference media query, and an explicit user choice — and
+     spelling the palette out twice is how the two silently drift apart. The
+     values live here; the two blocks below are mechanical remappings that
+     name no colours of their own.
+
+     Same temperature discipline as light mode: chrome faintly cool, paper
+     warm. #1c1a17 next to #16181d keeps the document reading as paper even
+     at night.
+     ========================================================== */
+  --d-page: #0e0f12;
+  --d-surface: #16181d;
+  --d-surface-2: #1e2027;
+  --d-surface-3: #292c34;
+  --d-ink: #f2f4f7;
+  --d-ink-2: #b4b9c2;
+  --d-muted: #7d838d;
+  --d-border: rgba(255, 255, 255, 0.1);
+  --d-border-strong: rgba(255, 255, 255, 0.2);
+
+  --d-paper: #1c1a17;
+  --d-paper-ink: #f4f2ed;
+  --d-paper-muted: #a5a094;
+  --d-paper-rule: rgba(255, 250, 240, 0.14);
+
+  --d-accent: #6f9ce8;
+  --d-accent-hover: #89b1f0;
+  --d-accent-ink: #0c0d11;
+  --d-accent-soft: #182338;
+  --d-accent-line: #32507f;
+
+  --d-good: #4cba82;
+  --d-good-soft: #12251b;
+  --d-good-line: #2c5540;
+  --d-attention: #e0a648;
+  --d-attention-soft: #292014;
+  --d-attention-line: #5d4826;
+  --d-bad: #e8776c;
+  --d-bad-soft: #2c1917;
+  --d-bad-line: #5e332f;
+
+  --d-focus: #89b1f0;
+
+  --d-select: rgba(137, 177, 240, 0.14);
+  --d-select-line: #6f9ce8;
+}
+
+/**
+ * Dark mode, activated two ways and defined none.
+ *
+ * `--koya-dark` is a single mixin-like declaration list applied by both
+ * selectors below. Every value it uses comes from the --d-* set above, so
+ * there is exactly one place to change a dark colour.
+ */
+@media (prefers-color-scheme: dark) {
+  /*
+   * System preference. Guarded so that a user who has explicitly chosen
+   * Light is not overridden by their operating system.
+   */
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --page: var(--d-page);
+    --surface: var(--d-surface);
+    --surface-2: var(--d-surface-2);
+    --surface-3: var(--d-surface-3);
+    --ink: var(--d-ink);
+    --ink-2: var(--d-ink-2);
+    --muted: var(--d-muted);
+    --border: var(--d-border);
+    --border-strong: var(--d-border-strong);
+
+    --paper: var(--d-paper);
+    --paper-ink: var(--d-paper-ink);
+    --paper-muted: var(--d-paper-muted);
+    --paper-rule: var(--d-paper-rule);
+
+    --accent: var(--d-accent);
+    --accent-hover: var(--d-accent-hover);
+    --accent-ink: var(--d-accent-ink);
+    --accent-soft: var(--d-accent-soft);
+    --accent-line: var(--d-accent-line);
+
+    --good: var(--d-good);
+    --good-soft: var(--d-good-soft);
+    --good-line: var(--d-good-line);
+    --attention: var(--d-attention);
+    --attention-soft: var(--d-attention-soft);
+    --attention-line: var(--d-attention-line);
+    --bad: var(--d-bad);
+    --bad-soft: var(--d-bad-soft);
+    --bad-line: var(--d-bad-line);
+    --progress: var(--d-accent);
+    --progress-soft: var(--d-accent-soft);
+
+    --focus: var(--d-focus);
+
+    --select: var(--d-select);
+    --select-line: var(--d-select-line);
+
+    /* Elevation on a dark ground comes from surface lightness, not shadow. */
+    --shadow-sm: none;
+    --shadow: none;
+    --shadow-lg: 0 14px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* An explicit choice, which beats the system preference in both directions. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --page: var(--d-page);
+  --surface: var(--d-surface);
+  --surface-2: var(--d-surface-2);
+  --surface-3: var(--d-surface-3);
+  --ink: var(--d-ink);
+  --ink-2: var(--d-ink-2);
+  --muted: var(--d-muted);
+  --border: var(--d-border);
+  --border-strong: var(--d-border-strong);
+
+  --paper: var(--d-paper);
+  --paper-ink: var(--d-paper-ink);
+  --paper-muted: var(--d-paper-muted);
+  --paper-rule: var(--d-paper-rule);
+
+  --accent: var(--d-accent);
+  --accent-hover: var(--d-accent-hover);
+  --accent-ink: var(--d-accent-ink);
+  --accent-soft: var(--d-accent-soft);
+  --accent-line: var(--d-accent-line);
+
+  --good: var(--d-good);
+  --good-soft: var(--d-good-soft);
+  --good-line: var(--d-good-line);
+  --attention: var(--d-attention);
+  --attention-soft: var(--d-attention-soft);
+  --attention-line: var(--d-attention-line);
+  --bad: var(--d-bad);
+  --bad-soft: var(--d-bad-soft);
+  --bad-line: var(--d-bad-line);
+  --progress: var(--d-accent);
+  --progress-soft: var(--d-accent-soft);
+
+  --focus: var(--d-focus);
+
+  --select: var(--d-select);
+  --select-line: var(--d-select-line);
+
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-lg: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Expose the tokens to Tailwind so utilities and tokens cannot drift apart. */
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-paper: var(--paper);
+  --color-paper-ink: var(--paper-ink);
+  --color-paper-muted: var(--paper-muted);
+  --color-paper-rule: var(--paper-rule);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-good-line: var(--good-line);
+  --color-attention: var(--attention);
+  --color-attention-soft: var(--attention-soft);
+  --color-attention-line: var(--attention-line);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-bad-line: var(--bad-line);
+  --color-progress: var(--progress);
+  --color-progress-soft: var(--progress-soft);
+
+  --radius-token: var(--radius);
+  --radius-token-sm: var(--radius-sm);
+  --radius-token-lg: var(--radius-lg);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: var(--font-source-serif), ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ============================================================
+   Base
+
+   Wrapped in @layer base, and that is load-bearing rather than tidiness.
+
+   Unlayered CSS beats every @layer, regardless of specificity. These rules
+   started out unlayered while the primitives below sat in @layer components,
+   so the bare `a { color: var(--accent) }` below silently defeated
+   `.btn-primary { color: var(--accent-ink) }` on every element that was both
+   a link and a primary button — rendering accent-blue text on an
+   accent-blue ground. "New proposal" in the header and the active filter
+   pill were solid blue rectangles with invisible labels.
+
+   Putting these in @layer base restores the intended order:
+   theme -> base -> components -> utilities.
+   ============================================================ */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Tabular figures everywhere in the chrome: money and counts in a table
+       that jitter as they change are hard to compare down a column. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1, h2, h3, h4 {
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: -0.011em;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* One visible focus treatment for everything, and never `outline: none`
+     without a replacement — the whole app has to be keyboard-operable. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--ink);
+  }
+
+  /*
+   * Pointer cursors.
+   *
+   * Tailwind v4's preflight resets buttons to `cursor: default`, reversing
+   * v3. `.btn` sets `cursor: pointer` for itself, which hid the problem
+   * everywhere it was used and left it everywhere it was not: the outline
+   * nav, the section rows, the disclosure summaries and the theme toggle
+   * are all plain buttons, and none of them said "you can click me". A
+   * control that does not change the cursor reads as a label.
+   */
+  :where(button, summary, [role="button"], label[for], select):not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+  /* Disclosure triangles are drawn by the components that use them. */
+  summary {
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /*
+   * The same 0.5px press the .btn class has, extended to every other
+   * control. It is the cheapest possible confirmation that a click landed,
+   * and on a slow network it is the only feedback before the response
+   * arrives.
+   */
+  :where(button, summary, [role="button"]):not(:disabled):active {
+    transform: translateY(0.5px);
+  }
+
+  /*
+   * Rubber-band scrolling is what produced the "dead space" under the
+   * workspace: overscrolling the page dragged the fixed three-pane layout
+   * away from the viewport edge and exposed the ground behind it. The panes
+   * already contain their own scroll; this stops the document behind them
+   * from moving at all.
+   */
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+}
+
+/* ============================================================
+   Primitives
+   ============================================================ */
+
+@layer components {
+  /* ============================================================
+     Type scale
+     ============================================================
+
+     There were NINETEEN distinct font sizes in this interface, set one at a
+     time as arbitrary Tailwind values: 9, 10, 10.5, 11, 11.5, 12, 12.5, 13,
+     13.5, 14, 15, 17, 19, 22, 26, 30, 34, 40 and 46 pixels. Eight of them
+     lived between 9px and 13px.
+
+     A reader cannot distinguish 12px from 12.5px. What they can see is that
+     nothing lines up: two labels that mean the same thing render at
+     different sizes because they were written on different days, and the
+     eye reads that as carelessness long before anyone consciously notices a
+     half-pixel. This is the single largest reason the interface looked
+     unfinished next to its own content.
+
+     Six steps, each far enough from the next to mean something. Line height
+     travels with size, because the two are one decision: small text needs
+     proportionally more leading, display text needs less.
+     ============================================================ */
+
+  .t-2xs {
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .t-xs {
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  .t-sm {
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .t-base {
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .t-md {
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .t-lg {
+    font-size: 19px;
+    line-height: 1.3;
+    letter-spacing: -0.015em;
+  }
+
+  /* ---- buttons ---- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 120ms ease, border-color 120ms ease, transform 60ms ease;
+  }
+  /*
+   * A hairline of lift.
+   *
+   * The buttons were flat rectangles distinguished only by a border, which
+   * is what made the interface read as unfinished next to its own
+   * typography. This is not a drop shadow: it is a one-pixel inset highlight
+   * along the top edge and a whisper of shadow below, which is how a
+   * physical control catches light. At this weight it is invisible until it
+   * is missing.
+   */
+  .btn {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.6),
+      0 1px 1.5px rgba(20, 22, 26, 0.05);
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: inset 0 1px 2px rgba(20, 22, 26, 0.12);
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /*
+   * The highlight is light hitting a pale surface. On a dark ground there is
+   * no such highlight, and faking one turns every button into a plastic
+   * bevel, so dark mode gets a hairline of its own colour instead.
+   *
+   * Two things this has to get right, both of which the first attempt got
+   * wrong. It must be guarded by the media query, or the not-light selector
+   * matches the default light theme too and paints dark shadows on a white
+   * interface. And it must not repeat the root-plus-dark-attribute selector
+   * used by the palette block below, because a test splits the stylesheet on
+   * that exact string to check the two token-remapping blocks agree, and a
+   * component rule wearing the same selector makes it count three. The bare
+   * attribute selector matches the same element and keeps that test honest.
+   * (Which is also why this comment describes the selector instead of
+   * quoting it: the split does not know a comment from a rule.)
+   */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .btn {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+  }
+  [data-theme="dark"] .btn {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: transparent;
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  .btn-primary,
+  .btn-good {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 1px 2px rgba(20, 22, 26, 0.16);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: transparent;
+  }
+  .btn-ghost {
+    box-shadow: none;
+  }
+
+  .btn-good {
+    background: var(--good);
+    border-color: transparent;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  /*
+    Quiet tinted buttons, for actions that carry a meaning rather than a
+    weight.
+
+    The gap panel had "Resolved" as a plain button and "Waive" as a ghost, so
+    the only thing separating a correction from an override was one of them
+    having no background at all. A ghost button beside a solid one does not
+    read as the lesser of two choices, it reads as a link somebody forgot to
+    style - which is exactly how it was reported.
+
+    Tinted rather than solid. `.btn-good` is the Send button: full saturation
+    is right for the one irreversible action on a page and wrong for a row of
+    small controls, where a strip of saturated colour turns a list of gaps
+    into an alarm. These carry the same hues at panel strength, so the pair
+    reads as a considered choice between two things rather than as one button
+    and one absence.
+  */
+  /*
+    The ground matters more than the tint.
+
+    These first used --good-soft and --attention-soft as their backgrounds,
+    which worked on a white row and disappeared on an amber one: a blocking
+    gap's row is itself --attention-soft, so the Waive button sat on exactly
+    its own colour and read as text. A button has to be legible against
+    whatever it is placed on, and a panel tint is not a reliable ground.
+
+    So the fill is --surface, which is lighter than every row background in
+    the application, and the meaning is carried by the border and the label
+    instead. The tint moves to hover, where it confirms the hue without
+    having to survive being the same colour as something else.
+  */
+  .btn-good-soft {
+    background: var(--surface);
+    border-color: var(--good-line);
+    color: var(--good);
+    font-weight: 600;
+  }
+  .btn-good-soft:hover:not(:disabled) {
+    background: var(--good-soft);
+    border-color: var(--good);
+  }
+
+  .btn-attention-soft {
+    background: var(--surface);
+    border-color: var(--attention-line);
+    color: var(--attention);
+    font-weight: 600;
+  }
+  .btn-attention-soft:hover:not(:disabled) {
+    background: var(--attention-soft);
+    border-color: var(--attention);
+  }
+  .btn-good:hover:not(:disabled) {
+    filter: brightness(1.08);
+    border-color: transparent;
+  }
+
+  .btn-danger {
+    background: var(--surface);
+    border-color: var(--bad-line);
+    color: var(--bad);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: var(--bad-soft);
+    border-color: var(--bad);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--ink-2);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--surface-2);
+    border-color: transparent;
+    color: var(--ink);
+  }
+
+  .btn-sm {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .btn-lg {
+    padding: 11px 20px;
+    font-size: 14px;
+  }
+
+  /* ============================================================
+     Application chrome
+     ============================================================ */
+
+  /*
+   * A header reads as chrome when it is a slightly different material from
+   * the page rather than a rectangle with a line under it. Two things do
+   * that here: a very slight vertical gradient, so the surface has a
+   * direction, and a second hairline below the border in the page colour,
+   * which reads as a shadow's first pixel without being a shadow.
+   */
+  .app-header {
+    background:
+      linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--surface) 100%, transparent),
+        color-mix(in srgb, var(--surface) 94%, var(--surface-2))
+      );
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 55%, transparent);
+  }
+
+  /*
+   * The wordmark. Two weights and a hairline rather than two coloured words:
+   * the accent is the interface's one loud colour and spending it on a logo
+   * that appears on every page leaves nothing to point at what matters.
+   */
+  .wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    white-space: nowrap;
+  }
+  .wordmark-koya {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .wordmark-rule {
+    width: 1px;
+    height: 15px;
+    background: var(--border-strong);
+  }
+  .wordmark-name {
+    font-family: var(--font-serif);
+    font-size: 14.5px;
+    letter-spacing: -0.01em;
+    color: var(--ink-2);
+  }
+
+  .nav-main {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  /*
+   * Navigation is not a row of buttons. Buttons invite a click on a thing
+   * that happens; a nav link says where you are, so it is quiet at rest and
+   * marked when current, with the marker under the label where a reader
+   * already looks for it.
+   */
+  .nav-link {
+    position: relative;
+    padding: 7px 11px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    transition: color 120ms ease, background 120ms ease;
+  }
+  .nav-link:hover {
+    color: var(--ink);
+    background: var(--surface-2);
+  }
+  .nav-link.is-active {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .nav-link.is-active::after {
+    content: "";
+    position: absolute;
+    left: 11px;
+    right: 11px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--accent);
+  }
+
+  .header-divider {
+    width: 1px;
+    height: 22px;
+    background: var(--border);
+  }
+
+  /* ---- account ---- */
+
+  .account-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px 4px 4px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: none;
+    font: inherit;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .account-trigger:hover,
+  .account-trigger[aria-expanded="true"] {
+    background: var(--surface-2);
+    border-color: var(--border);
+  }
+
+  .avatar {
+    display: grid;
+    place-items: center;
+    width: 27px;
+    height: 27px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    color: var(--accent);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 7px);
+    z-index: 50;
+    width: 288px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    animation: koya-fade-up 120ms ease both;
+  }
+  .menu-left {
+    right: auto;
+    left: 0;
+  }
+  .menu-head {
+    padding: 12px 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  /*
+   * Stacked, not side by side.
+   *
+   * The theme switcher is a three-option segmented control with a word in
+   * each segment, so it is around 220px wide on its own. Sitting it next to
+   * a label inside a 264px menu with `overflow: hidden` meant the last
+   * segment was simply clipped off. Putting the label above it gives the
+   * control the full width of the menu, and it now stays correct whatever
+   * the option labels say, which a fixed width would not.
+   */
+  .menu-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 7px;
+    padding: 11px 13px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /*
+   * Inside the menu the segmented control fills the row and the three
+   * options share it equally, so they stay the same size as each other
+   * rather than sizing to their labels.
+   */
+  .menu .seg {
+    display: flex;
+    width: 100%;
+  }
+  .menu .seg button {
+    flex: 1 1 0;
+    justify-content: center;
+    min-width: 0;
+  }
+  .menu .seg button.is-selected {
+    /* The selected pill adds a border; keep it from growing the row. */
+    padding-block: 3px;
+  }
+  .menu-foot {
+    padding: 6px;
+  }
+
+  /* ---- metrics ---- */
+
+  /*
+   * A number the eye lands on first.
+   *
+   * These were 22px semibold in the body face, which is only a little
+   * larger than the label above them, so a row of four read as four small
+   * paragraphs rather than four figures. Tabular lining numerals at a real
+   * display size, with the label demoted, gives the row a shape you can
+   * scan without reading.
+   */
+  .metric {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 13px 15px 14px;
+    box-shadow: var(--shadow-sm);
+  }
+  .metric-value {
+    margin-top: 5px;
+    font-size: 27px;
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums lining;
+  }
+  .metric-detail {
+    margin-top: 5px;
+    font-size: 11.5px;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+  /*
+   * A metric with no figure yet.
+   *
+   * "Not yet" set at 27px semibold black sits in the row as though it were a
+   * number, and a row of figures you can scan without reading is the whole
+   * point of the strip. An absent value is not a large value, so it is
+   * demoted to the size and weight of a sentence.
+   */
+  .metric-value.is-empty {
+    font-size: 17px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--muted);
+  }
+
+  /* ---- surfaces ---- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+
+  /* ---- form controls ---- */
+  .field-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--ink-2);
+    margin-bottom: 5px;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 5px;
+    line-height: 1.45;
+  }
+
+  .input,
+  .textarea,
+  .select {
+    width: 100%;
+    padding: 9px 11px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 13.5px;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+  .input::placeholder,
+  .textarea::placeholder {
+    color: var(--muted);
+  }
+  .input:focus,
+  .textarea:focus,
+  .select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .textarea {
+    resize: vertical;
+    min-height: 84px;
+    line-height: 1.55;
+  }
+  /* A field carrying a blocking gap is outlined, AND labelled in the panel,
+     AND announced to assistive tech. Never colour alone. */
+  .input[data-gap="blocking"],
+  .textarea[data-gap="blocking"] {
+    border-color: var(--attention-line);
+    background: var(--attention-soft);
+  }
+
+  /* ---- badges and pills ---- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px 2px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--ink-2);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .badge-good {
+    background: var(--good-soft);
+    border-color: var(--good-line);
+    color: var(--good);
+  }
+  .badge-attention {
+    background: var(--attention-soft);
+    border-color: var(--attention-line);
+    color: var(--attention);
+  }
+  .badge-bad {
+    background: var(--bad-soft);
+    border-color: var(--bad-line);
+    color: var(--bad);
+  }
+  .badge-progress {
+    background: var(--progress-soft);
+    border-color: var(--accent-line);
+    color: var(--progress);
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+    flex: none;
+  }
+
+  /* ---- segmented control (the theme switcher) ---- */
+  .seg {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .seg button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border: none;
+    border-radius: 999px;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  /*
+   * A plain token rather than color-mix(). Tailwind compiles a color-mix()
+   * value with an unprefixed fallback of the first colour argument, which
+   * here meant `background: var(--ink)` — near-black behind near-black text,
+   * i.e. an invisible label on any engine that took the fallback path. An
+   * existing step on the surface ramp needs no colour function and cannot
+   * degrade.
+   */
+  .seg button:hover:not(.is-selected) {
+    color: var(--ink);
+    background: var(--surface-3);
+  }
+  /*
+   * The selected pill has to be obvious at a glance, which the first version
+   * was not: white (--surface) sitting on the near-white track (--surface-2)
+   * is a 1.05:1 difference, so all three options looked equally unselected
+   * and the control read as decoration. The accent tint plus accent ink plus
+   * a border is three separate signals, and none of them depends on noticing
+   * a 2% shift in background lightness.
+   */
+  .seg button.is-selected {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    /* Compensate for the border so the pill does not grow when selected. */
+    padding: 3px 8px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  /* The ring belongs on the pressed pill, not around the whole group. */
+  .seg button:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+  .seg-glyph {
+    font-size: 11px;
+    line-height: 1;
+  }
+  /* Below 640px the labels go and the glyphs carry it, with aria-label intact. */
+  @media (max-width: 640px) {
+    .seg-label {
+      display: none;
+    }
+    .seg button {
+      padding: 5px 8px;
+    }
+  }
+
+  .kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    background: var(--surface-2);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ============================================================
+     Paper — the document surface
+     ============================================================ */
+
+  .paper {
+    background: var(--paper);
+    color: var(--paper-ink);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  /* The measure. 33rem at 16.5px lands around 70 characters, which is the
+     band that reads comfortably for continuous prose. The chrome around it is
+     14px; the document is deliberately larger, because it is being read
+     rather than scanned. */
+  .prose-doc {
+    font-family: var(--font-serif);
+    font-size: 16.5px;
+    line-height: 1.68;
+    color: var(--paper-ink);
+    max-width: 33rem;
+    font-variant-numeric: normal;
+  }
+  .prose-doc > * + * {
+    margin-top: 1.05em;
+  }
+  .prose-doc p {
+    margin: 0;
+  }
+  .prose-doc strong {
+    font-weight: 650;
+  }
+  .prose-doc ul {
+    margin: 0;
+    padding-left: 1.15em;
+    list-style: none;
+  }
+  .prose-doc li {
+    position: relative;
+    margin-top: 0.5em;
+  }
+  .prose-doc li::before {
+    content: "";
+    position: absolute;
+    left: -0.95em;
+    top: 0.62em;
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+  .prose-doc h3 {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: 0.005em;
+    margin-top: 1.5em;
+  }
+
+  /* A gap marker rendered inside the document. Amber ground, dotted underline
+     and a warning glyph supplied by the component — three signals, so it
+     survives greyscale and colour-blindness. */
+  .gap-marker {
+    background: var(--attention-soft);
+    border-bottom: 1.5px dotted var(--attention);
+    color: var(--attention);
+    padding: 1px 4px;
+    border-radius: 4px;
+    font-family: var(--font-sans);
+    font-size: 0.82em;
+    font-weight: 600;
+    cursor: help;
+  }
+
+  /* ============================================================
+     The section shell — a document section you can work on in place
+     ============================================================ */
+
+  /*
+   * Editing used to happen in the right rail, on whichever section happened
+   * to be selected. That put the controls a long way from the words they
+   * changed, allowed exactly one section to be worked on at a time, and hid
+   * the two most-used actions in the app behind a click on a paragraph.
+   *
+   * So the controls come to the section. Each one is a shell that is
+   * invisible at rest, outlines itself on hover, and commits to a full
+   * surface while it is being edited or rewritten. Several can be open at
+   * once because their state is their own.
+   */
+  .section-shell {
+    position: relative;
+    margin-inline: -20px;
+    padding: 10px 20px 12px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    transition: background 140ms ease, border-color 140ms ease;
+  }
+  .section-shell::before {
+    content: "";
+    position: absolute;
+    inset-block: 8px;
+    left: 6px;
+    width: 2px;
+    border-radius: 999px;
+    background: var(--select-line);
+    opacity: 0;
+    transition: opacity 140ms ease;
+  }
+  .section-shell:hover:not(.is-active) {
+    background: color-mix(in srgb, var(--select) 45%, transparent);
+  }
+  /*
+   * Selected, and visible in both themes. The wash tints the paper, the
+   * hairline gives it an edge on a surface that has no other edges, and the
+   * rule down the left is the signal that survives when a reader has the
+   * display dimmed or the contrast turned down. Three signals rather than a
+   * 2% shift in background lightness, which is what the previous
+   * `bg-accent-soft/35` amounted to.
+   */
+  .section-shell.is-active {
+    background: var(--select);
+    border-color: var(--select-line);
+  }
+  .section-shell.is-active::before {
+    opacity: 1;
+  }
+  .section-shell.is-working {
+    border-color: var(--accent-line);
+    background: var(--select);
+  }
+
+  /*
+   * The per-section toolbar. Hidden until the section is worth acting on,
+   * but never hidden behind hover alone: keyboard focus inside the shell
+   * reveals it too, and it stays put once the section is selected. A
+   * control that only exists while a mouse is over it is a control a
+   * keyboard user does not have.
+   */
+  .section-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .section-shell:hover .section-tools,
+  .section-shell:focus-within .section-tools,
+  .section-shell.is-active .section-tools,
+  .section-shell.is-working .section-tools {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    /* No hover to reveal with, so nothing is ever hidden. */
+    .section-tools {
+      opacity: 1;
+    }
+  }
+
+  /* The editor that opens inside a section, on chrome rather than paper so
+     the boundary between reading and writing is unambiguous. */
+  .section-editor {
+    margin-top: 10px;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-sans);
+  }
+
+  /* ---- citation chips ---- */
+
+  /*
+   * `[[source:1]]` is how the model points at an attachment, and it used to
+   * reach the screen as those literal characters — which a reader can only
+   * read as a bug. It is a real citation, so it renders as one: the file it
+   * refers to, named, and stripped from everything client-facing.
+   */
+  .source-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-inline: 2px;
+    padding: 0 6px;
+    border-radius: 999px;
+    border: 1px solid var(--accent-line);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-family: var(--font-sans);
+    font-size: 0.72em;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    vertical-align: 1px;
+    white-space: nowrap;
+    cursor: help;
+  }
+
+  /* ---- layout helpers ---- */
+  .scroll-y {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .scroll-y::-webkit-scrollbar {
+    width: 10px;
+  }
+  .scroll-y::-webkit-scrollbar-thumb {
+    background: var(--surface-3);
+    border-radius: 999px;
+    border: 3px solid var(--surface);
+  }
+
+  /* Wide content must scroll inside its own box; the page body never scrolls
+     horizontally. */
+  .scroll-x {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  .divide-line > * + * {
+    border-top: 1px solid var(--border);
+  }
+
+  /* ============================================================
+     Headings — one ladder instead of three
+
+     Card and rail headings were being chosen per file rather than per level.
+     The same job was done three ways: a serif h1 on the page header, plain
+     bold `t-base` on "Covering email" and "Checks", and the uppercase
+     `.eyebrow` on "Call details" and "Gaps". A reader cannot know that three
+     treatments mean one level, so the interface read as though importance
+     changed from panel to panel when it did not.
+
+     Three rungs, each with one job, plus the eyebrow, which is a label above
+     a value and never a heading:
+
+       .page-title   the serif h1. One per page, and the only serif in chrome.
+       .panel-title  the heading on a card or panel.
+       .rail-title   a group inside a rail, where vertical space is scarce.
+     ============================================================ */
+  .page-title {
+    font-family: var(--font-serif);
+    font-size: 27px;
+    font-weight: 400;
+    line-height: 1.14;
+    letter-spacing: -0.021em;
+    color: var(--ink);
+  }
+
+  .panel-title {
+    margin: 0;
+    font-size: 13.5px;
+    font-weight: 650;
+    line-height: 1.35;
+    letter-spacing: -0.004em;
+    color: var(--ink);
+  }
+
+  /*
+   * A heading over a group of cards, one rung above .panel-title.
+   *
+   * The system page is nine stacked full-width sections and it had no rhythm
+   * at all: nine identically weighted labels above nine identically shaped
+   * cards, so scrolling it felt like one continuous wall. The rule runs from
+   * the end of the label to the edge of the column, which gives the eye a
+   * line to find each new section by without adding a single element to the
+   * markup.
+   */
+  .section-heading {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin: 0 0 11px;
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1.3;
+    letter-spacing: -0.011em;
+    color: var(--ink);
+  }
+  .section-heading::after {
+    content: "";
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /*
+   * A rail group's heading. Uppercase and small like an eyebrow, because at
+   * 340px wide a rail cannot spend a whole type step on a label; paired with
+   * the separator that .rail-section supplies, it still reads as a heading
+   * rather than as a caption.
+   */
+  .rail-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /*
+   * Rail rhythm.
+   *
+   * The inspector's five groups each set their own margin and their own
+   * separator, so the space between any two of them depended on which
+   * groups happened to be present: two stacked margins in one place, a
+   * border and 12px in another, nothing at all where a group rendered null.
+   * One rule for the gap and one for the separator makes the column read as
+   * a single column whatever it contains.
+   */
+  .rail-section + .rail-section {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ============================================================
+     The workspace toolbar
+     ============================================================
+
+     It was a flex row on the page ground with the status on the left and
+     everything else pushed right by a single `ml-auto`, so the buttons, the
+     cost figure and the status help text all competed for the same edge and
+     the row had no shape at any width.
+
+     Two changes. It is chrome, so it is drawn on the chrome surface and
+     continues the header rather than floating on the page ground. And the
+     actions are grouped, with the step the workflow wants next separated by
+     a rule from the tools, so the eye finds it without reading every label.
+     ============================================================ */
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-height: 47px;
+    padding: 7px 16px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+    backdrop-filter: blur(12px) saturate(1.3);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 45%, transparent);
+  }
+
+  /* ============================================================
+     Workspace panes
+     ============================================================
+
+     Above 1024px the workspace owns the viewport and each of its three
+     columns scrolls inside itself, which is right: an outline that scrolls
+     away from the document it indexes is not an outline.
+
+     Below that there is not enough width for three columns, so they stack,
+     and stacking them inside a viewport-height box with `overflow: hidden`
+     is what produced the phone layout: two independent scroll windows of
+     about 400px each, one holding the document and one holding the
+     inspector, neither able to show more than a fragment of itself, and the
+     outline hidden altogether. A stacked workspace is a page, and a page
+     scrolls once.
+     ============================================================ */
+  .pane {
+    min-width: 0;
+  }
+  @media (min-width: 1024px) {
+    .pane {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+    }
+    .pane::-webkit-scrollbar {
+      width: 10px;
+    }
+    .pane::-webkit-scrollbar-thumb {
+      background: var(--surface-3);
+      border-radius: 999px;
+      border: 3px solid var(--surface);
+    }
+  }
+  .toolbar-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .toolbar-rule {
+    width: 1px;
+    height: 20px;
+    flex: none;
+    background: var(--border);
+  }
+  /* The cost figure. Present, quotable, and never louder than a button. */
+  .toolbar-cost {
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums lining;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* ============================================================
+     Filters — a group with a shape
+     ============================================================
+
+     Six status filters were six loose buttons, one solid accent and five
+     borderless ghosts, so the set had no outline and read as an accidental
+     row rather than as one control with one choice made in it. The track
+     gives it a shape. The selected chip uses the accent tint, accent ink and
+     hairline that the theme switcher already uses, for the same reason it
+     does: a white pill on a near-white track is a 1.05:1 difference and
+     nobody can see it.
+     ============================================================ */
+  .filter-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    padding: 3px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .filter-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .filter-chip {
+    /* A containing block, so anything positioned inside a chip stays inside
+       the scrolling track rather than escaping to the page and widening it. */
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.3;
+    white-space: nowrap;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .filter-chip:hover {
+    background: var(--surface-3);
+    color: var(--ink);
+    text-decoration: none;
+  }
+  /* An inset ring rather than a border, so selecting a chip cannot move the
+     chips beside it. */
+  .filter-chip.is-active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 650;
+    box-shadow: inset 0 0 0 1px var(--accent-line);
+  }
+  .filter-chip.is-active:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  /*
+   * The count beside a filter label, which is what makes the row worth
+   * having. "What is waiting on an approver" is the question a salesperson
+   * opens this app to answer, and answering it in the filter itself saves
+   * the click that used to be the only way to find out.
+   */
+  .filter-count {
+    min-width: 1.15em;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    color: var(--ink-2);
+    font-size: 10.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums lining;
+    text-align: center;
+  }
+  .filter-chip.is-active .filter-count {
+    background: color-mix(in srgb, var(--accent) 17%, transparent);
+    color: var(--accent);
+  }
+
+  /*
+   * A search box with its glyph inside it rather than a second control
+   * beside it. The submit button stays, because the form has to work with
+   * no JavaScript, but the field no longer needs the word twice.
+   */
+  .field-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+  .field-search .input {
+    padding-left: 31px;
+  }
+  .field-search-glyph {
+    position: absolute;
+    left: 10px;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+  /* ============================================================
+     Data tables
+     ============================================================
+
+     One table treatment, so the pipeline, the routing table and the spend
+     table stop each inventing their own cell padding and header weight. The
+     header is a label row rather than a data row: small, tracked, uppercase
+     and muted, on the second surface. That reads as a header without a
+     single extra rule.
+     ============================================================ */
+  .tbl {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13.5px;
+  }
+  .tbl thead th {
+    padding: 9px 16px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.065em;
+    text-transform: uppercase;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .tbl tbody td {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .tbl tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .tbl tbody tr {
+    transition: background 110ms ease;
+  }
+  .tbl-hover tbody tr:hover {
+    background: var(--surface-2);
+  }
+  /* Keyboard focus inside a row marks the row, not only the link in it. */
+  .tbl-hover tbody tr:focus-within {
+    background: var(--select);
+  }
+  .tbl-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums lining;
+  }
+
+  /*
+   * A whole row that navigates.
+   *
+   * The pipeline's caption promised "each row links to its workspace" and
+   * only the reference cell did, which is a 90px target inside a 1300px row.
+   * This stretches the reference link across the row, so the row is
+   * clickable without giving up anything a real link does: middle-click,
+   * copy link address, and one keyboard focus stop per row rather than
+   * eight.
+   *
+   * It needs `position: relative` on the row, which is why that is set here
+   * and not left to a utility that might be dropped.
+   */
+  .tbl-rowlink tbody tr {
+    position: relative;
+  }
+  .row-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  /*
+   * The row is the link, so the reference inside it is an identifier rather
+   * than a second link. Eight accent-blue references down a column is eight
+   * things asking to be clicked when there is really one target per row. It
+   * takes the accent on hover, which is where a reader looking for something
+   * to click already is.
+   */
+  .tbl-rowlink .row-link {
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .tbl-rowlink tbody tr:hover .row-link,
+  .tbl-rowlink tbody tr:focus-within .row-link {
+    color: var(--accent);
+  }
+
+  /* ============================================================
+     Numbered steps
+     ============================================================
+
+     Tailwind's preflight removes list markers, so "What happens next" on the
+     intake form rendered as five indented paragraphs with no numbers: the
+     one list in the interface whose whole job is to say what order things
+     happen in had lost the order.
+     ============================================================ */
+  .steps {
+    counter-reset: koya-step;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .steps > li {
+    counter-increment: koya-step;
+    position: relative;
+    padding-left: 27px;
+  }
+  .steps > li + li {
+    margin-top: 9px;
+  }
+  .steps > li::before {
+    content: counter(koya-step);
+    position: absolute;
+    top: 1px;
+    left: 0;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums lining;
+    line-height: 1;
+  }
+
+  /* ============================================================
+     The upload control
+     ============================================================
+
+     `<input type="file">` renders as the operating system's own button, and
+     that native grey "Choose Files" control was the one thing on the intake
+     page that belonged to a different design than everything around it.
+     What follows is still a real file input, still keyboard reachable, and
+     still works if this stylesheet never loads. It is a label given a target
+     the size of the action it performs.
+     ============================================================ */
+  .dropzone {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 20px 16px;
+    border-radius: var(--radius);
+    border: 1px dashed var(--border-strong);
+    background: var(--surface-2);
+    text-align: center;
+    transition: border-color 130ms ease, background 130ms ease;
+  }
+  .dropzone:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .dropzone:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  /* Taken out of the layout rather than hidden: `display: none` is not
+     focusable, and the input itself is the keyboard path to this control. */
+  .dropzone-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+  .dropzone-glyph {
+    display: grid;
+    place-items: center;
+    width: 31px;
+    height: 31px;
+    border-radius: 999px;
+    border: 1px solid var(--accent-line);
+    background: var(--surface);
+    color: var(--accent);
+  }
+
+  /* ============================================================
+     Disclosure
+     ============================================================
+
+     Four collapsible groups had four different affordances: a bare "+", a
+     bare "−", a word, and in one case nothing at all. A caret that rotates
+     is the one convention every reader already has, and it says both "there
+     is more here" and "it is open" with the same mark.
+     ============================================================ */
+  .disclosure {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 6px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    transition: background 120ms ease;
+  }
+  .disclosure:hover {
+    background: var(--surface-2);
+  }
+  .disclosure-caret {
+    flex: none;
+    margin-left: auto;
+    color: var(--muted);
+    transition: transform 170ms ease;
+  }
+  .disclosure[aria-expanded="true"] .disclosure-caret {
+    transform: rotate(90deg);
+  }
+  /* A native `<details>` has no aria-expanded; `open` on the parent is the
+     same state under another name. */
+  details[open] > .disclosure .disclosure-caret {
+    transform: rotate(90deg);
+  }
+
+  /*
+   * The rewrite instruction, in the per-section toolbar.
+   *
+   * A full-strength input sitting inside a document is a hole in the page.
+   * At rest this is a hairline on the paper; focused, it becomes a real
+   * field. Same target and same behaviour, and the document stops looking
+   * like a form when nobody is typing into it.
+   */
+  .section-instruction {
+    min-width: 8rem;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 65%, transparent);
+    color: var(--ink);
+    font: inherit;
+    font-size: 12.5px;
+    transition: background 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
+  }
+  .section-instruction::placeholder {
+    color: var(--muted);
+  }
+  .section-instruction:hover {
+    background: var(--surface);
+  }
+  .section-instruction:focus {
+    outline: none;
+    background: var(--surface);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  /*
+   * A sticky action bar for a long form.
+   *
+   * The intake form is around 1,900px tall and its only submit button was at
+   * the bottom of it, so the question "have I done enough to save this?" was
+   * answerable only by scrolling to the end. The bar keeps the answer, the
+   * button and the gap count in view the whole way down.
+   */
+  .action-bar {
+    position: sticky;
+    /* Not flush. At bottom: 0 a rounded bar butts against the window edge and
+       reads as a panel that has been cut off rather than one that is floating
+       above the form. */
+    bottom: 10px;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(12px) saturate(1.3);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+/* ============================================================
+   Motion — purposeful only
+   ============================================================ */
+
+@keyframes koya-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes koya-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes koya-shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.animate-fade-up {
+  animation: koya-fade-up 220ms ease-out both;
+}
+
+.animate-pulse-soft {
+  animation: koya-pulse 1.6s ease-in-out infinite;
+}
+
+/* The caret that follows streamed text as it arrives. */
+.stream-caret::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: koya-pulse 1s steps(2, start) infinite;
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    var(--surface-3) 50%,
+    var(--surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: koya-shimmer 1.4s linear infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ============================================================
+   Print — the client-facing proposal page must produce a real PDF
+   from the browser's own print dialogue, as a third path alongside
+   the generated PDF and DOCX.
+   ============================================================ */
+
+@media print {
+  :root {
+    --page: #fff;
+    --paper: #fff;
+    --paper-ink: #000;
+    --surface: #fff;
+    --ink: #000;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    font-size: 11pt;
+  }
+  .paper {
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .prose-doc {
+    max-width: none;
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+  /* Never split a heading from the text it introduces. */
+  h1, h2, h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .break-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

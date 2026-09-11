@@ -1,0 +1,336 @@
+{
+  "name": "Koya — Proposal Delivery",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Proposal approved",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -260,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "koya-proposal-delivery",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "notes": "POST from the Proposal Studio after internal approval. Signed with HMAC-SHA256; the URL alone is not authorisation.",
+      "notesInFlow": true
+    },
+    {
+      "id": "verify",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/**\n * Verify the request actually came from the Proposal Studio.\n *\n * The webhook URL is not a secret — it sits in an environment variable, in a\n * deploy log, and in this workflow's own definition. So the URL alone must not\n * be enough to make this workflow email a client. Every request carries:\n *\n *   x-koya-timestamp   unix seconds\n *   x-koya-signature   HMAC-SHA256(secret, `${timestamp}.${rawBody}`), hex\n *\n * The timestamp is inside the signed material, which is what stops a captured\n * request being replayed for ever. Anything outside the window is rejected\n * even if the signature is valid.\n *\n * Comparison is constant-time. A byte-by-byte early exit leaks how much of a\n * forged signature was correct, which is enough to recover one.\n */\nconst crypto = require('crypto');\n\nconst TOLERANCE_SECONDS = 300;\n\nconst SECRET_NAME = 'IKE_KOYA_WEBHOOK_SECRET';\n\n/**\n * Where the shared secret comes from, and why this is not a one-liner.\n *\n * `$env` is not available on every n8n instance. n8n Cloud has no process\n * environment a workflow can reach, and self-hosted instances ship with\n * `N8N_BLOCK_ENV_ACCESS_IN_NODE=true` by default. On both, TOUCHING `$env`\n * THROWS rather than returning undefined — which is what the \"access to env\n * vars denied\" error is. A bare `$env.FOO` therefore does not degrade to a\n * missing secret; it kills the node before the fail-closed branch below can\n * run, and the app sees a 500 instead of a 401 it can explain.\n *\n * So both lookups are attempted and both are guarded:\n *\n *   $env   self-hosted, with N8N_BLOCK_ENV_ACCESS_IN_NODE=false\n *   $vars  n8n Cloud and self-hosted alike — Settings → Variables\n *\n * Order matters only for instances that somehow have both, and process\n * environment wins there because it is the one a deploy pipeline sets.\n */\nfunction readSecret(name) {\n  try {\n    if (typeof $env !== 'undefined' && $env && $env[name]) return String($env[name]);\n  } catch (err) {\n    // Env access is blocked on this instance. Not fatal — try Variables.\n  }\n  try {\n    if (typeof $vars !== 'undefined' && $vars && $vars[name]) return String($vars[name]);\n  } catch (err) {\n    // Neither source is readable. Handled by the fail-closed branch below.\n  }\n  return null;\n}\n\nconst secret = readSecret(SECRET_NAME);\nif (!secret) {\n  // Failing closed. A missing secret must never mean \"skip the check\".\n  return [{\n    json: {\n      ok: false,\n      status: 401,\n      reason:\n        `${SECRET_NAME} is not readable on this n8n instance. Set it as a ` +\n        'Variable (Settings \\u2192 Variables), or as an environment variable with ' +\n        'N8N_BLOCK_ENV_ACCESS_IN_NODE=false. Its value must match ' +\n        'N8N_WEBHOOK_SECRET in the application.',\n    },\n  }];\n}\n\nconst item = $input.first();\nconst headers = item.json.headers || {};\nconst body = item.json.body || {};\n\nconst timestamp = headers['x-koya-timestamp'];\nconst signature = headers['x-koya-signature'];\n\nif (!timestamp || !signature) {\n  return [{ json: { ok: false, status: 401, reason: 'missing signature headers' } }];\n}\n\nconst age = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp));\nif (!Number.isFinite(age) || age > TOLERANCE_SECONDS) {\n  return [{ json: { ok: false, status: 401, reason: `timestamp outside the ${TOLERANCE_SECONDS}s window (age ${age}s)` } }];\n}\n\n/**\n * The signature was computed over the exact bytes the app sent. n8n has\n * already parsed the body, so it is re-serialised here — which is safe only\n * because the app builds the payload with JSON.stringify over a plain object\n * with a fixed key order. If either side ever reorders those keys, every\n * request starts failing verification, loudly, rather than silently accepting\n * unverified input.\n */\nconst raw = JSON.stringify(body);\nconst expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${raw}`, 'utf8').digest('hex');\n\nconst a = Buffer.from(String(signature), 'utf8');\nconst b = Buffer.from(expected, 'utf8');\nconst valid = a.length === b.length && crypto.timingSafeEqual(a, b);\n\nif (!valid) {\n  return [{ json: { ok: false, status: 401, reason: 'signature mismatch' } }];\n}\n\n// Payload shape check. A verified request with a missing field is a bug in the\n// caller, and reporting it as 400 rather than crashing the workflow is what\n// makes it debuggable from the app's own delivery record.\nconst required = ['ref', 'proposalId', 'recipient', 'subject', 'bodyText', 'proposalLink', 'idempotencyKey'];\nconst missing = required.filter((key) => !body[key]);\nif (missing.length > 0) {\n  return [{ json: { ok: false, status: 400, reason: `payload missing: ${missing.join(', ')}` } }];\n}\n\nreturn [{\n  json: {\n    ok: true,\n    status: 200,\n    ref: body.ref,\n    proposalId: body.proposalId,\n    recipient: body.recipient,\n    // Copied on the client email, normally the approver who signed it off.\n    // Defaulted rather than required: an older caller that does not send it\n    // must not be rejected, and an empty list is a valid answer.\n    cc: Array.isArray(body.cc) ? body.cc : [],\n    subject: body.subject,\n    bodyText: body.bodyText,\n    proposalLink: body.proposalLink,\n    idempotencyKey: body.idempotencyKey,\n    correlationId: body.correlationId || null,\n    verifiedAt: new Date().toISOString(),\n  },\n}];\n"
+      },
+      "notes": "Constant-time HMAC check plus a 5-minute replay window, then a payload shape check. Fails closed if the secret is unset.",
+      "notesInFlow": true
+    },
+    {
+      "id": "gate",
+      "name": "Verified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        180,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ok",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "gmail",
+      "name": "Send client email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        420,
+        -120
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.recipient }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.bodyText }}",
+        "options": {
+          "ccList": "={{ ($json.cc || []).join(',') }}"
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "The proposal itself is not attached: the email carries the tokenised link, which is the same URL the client would click from anywhere.",
+      "notesInFlow": true
+    },
+    {
+      "id": "buildNotice",
+      "name": "Build Discord notice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -120
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/**\n * The internal notification, built after the client email has gone.\n *\n * Kept deliberately short. A notification nobody reads is worse than none,\n * because it trains the channel to be ignored — so this is one line of what\n * happened plus the reference needed to find it, and nothing else.\n *\n * The client's email address is NOT included. It is personal data, the channel\n * is wider than the deal team, and the reference is enough to look it up.\n */\n\n/**\n * The payload is read from the node that produced it, by name.\n *\n * `$input` here is the GMAIL RESPONSE — id, threadId, labelIds — because this\n * node sits directly after the send. It carries no `ref`, no `recipient` and\n * no `proposalId`. Reading the notice out of it put `undefined` in the\n * reference line and threw on `recipient.split`, which is the failure this\n * comment exists to stop coming back.\n *\n * Naming the node also survives an edit. A chain that relies on \"whatever the\n * previous node emitted\" breaks the moment someone inserts a step between the\n * send and this one; `$('Verify signature')` does not.\n */\nfunction verifiedPayload() {\n  try {\n    return $('Verify signature').first().json || {};\n  } catch (err) {\n    // Unreachable in the wired workflow, and still guarded. See below.\n    return {};\n  }\n}\n\nconst payload = verifiedPayload();\n\nfunction sentResponse() {\n  try {\n    return $('Send client email').first().json || {};\n  } catch (err) {\n    return {};\n  }\n}\n\nconst sent = sentResponse();\n\nconst messageId = sent.id || sent.messageId || sent.threadId || 'unknown';\nconst ref = payload.ref || 'unknown';\n\n/**\n * The domain only, and never the local part.\n *\n * `recipient` is guaranteed present by the shape check in the verify node, so\n * the guard is not about the happy path. It is about what a throw COSTS here:\n * this node runs after the client already has the email, and an exception\n * makes the workflow answer the app with a failure — at which point the app\n * correctly falls over to its own Resend lane and the client receives the\n * proposal twice. A missing internal notification is a nuisance. A duplicate\n * email to a client is something they see.\n */\nfunction recipientDomain(value) {\n  if (typeof value !== 'string') return 'their domain';\n  const at = value.lastIndexOf('@');\n  if (at === -1 || at === value.length - 1) return 'their domain';\n  return value.slice(at + 1);\n}\n\nconst lines = [\n  `**Proposal sent** · \\`${ref}\\``,\n  `Delivered to the client contact at ${recipientDomain(payload.recipient)}.`,\n  `Message id: \\`${messageId}\\``,\n];\n\nif (payload.correlationId) {\n  lines.push(`Correlation: \\`${payload.correlationId}\\``);\n}\n\nreturn [{\n  json: {\n    content: lines.join('\\n'),\n    // Echoed back to the app in the webhook response so the delivery row can\n    // record which provider message this was.\n    messageId,\n    ref,\n    proposalId: payload.proposalId || null,\n    idempotencyKey: payload.idempotencyKey || null,\n  },\n}];\n"
+      },
+      "notes": "One line plus the reference. The client's email address is deliberately omitted.",
+      "notesInFlow": true
+    },
+    {
+      "id": "discordOk",
+      "name": "Notify team",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        900,
+        -120
+      ],
+      "parameters": {
+        "authentication": "webhook",
+        "content": "={{ $json.content }}",
+        "options": {}
+      },
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "REPLACE_WITH_YOUR_DISCORD_CREDENTIAL_ID",
+          "name": "Discord webhook"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "respondOk",
+      "name": "Respond sent",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1140,
+        -120
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, messageId: $('Build Discord notice').first().json.messageId, ref: $('Build Discord notice').first().json.ref }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "notes": "The messageId is echoed so the app can store it on the delivery row.",
+      "notesInFlow": true
+    },
+    {
+      "id": "buildFailure",
+      "name": "Build failure notice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        140
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/**\n * The failure path.\n *\n * Reached when signature verification fails, the payload is malformed, or\n * Gmail refuses. All three are reported to Discord and returned to the app\n * with a non-2xx status, which is what makes the app fail over to its own\n * Resend lane rather than silently reporting success.\n *\n * The distinction matters: a 401 means somebody sent us an unverifiable\n * request and no email should be attempted anywhere; a 500 means we tried and\n * could not, and the app should try the other lane.\n */\nconst item = $input.first().json;\n\n/**\n * Two different things arrive here and they carry different fields.\n *\n *   the IF node's false branch   the verify node's refusal: status, reason,\n *                                and no ref, because a request that failed\n *                                verification has no payload we are willing\n *                                to quote back\n *   Gmail's error output         an `error` object, and nothing else at all\n *\n * The second case is why the reference is looked up by node name rather than\n * read off the input. A Gmail failure is the one alert somebody has to act on\n * — the client did not get the proposal — and an alert that says `unknown`\n * where the reference goes cannot be acted on. `Verify signature` still holds\n * the verified payload at this point, so the reference is there to be had.\n *\n * Guarded, because on the 401 path that node produced no payload either, and\n * a notifier that throws turns a reportable failure into a silent one.\n */\nfunction verified() {\n  try {\n    return $('Verify signature').first().json || {};\n  } catch (err) {\n    return {};\n  }\n}\n\nconst payload = verified();\n\nconst status = item.status || 500;\nconst reason = item.reason || (item.error && item.error.message) || 'unknown failure';\nconst ref = item.ref || payload.ref || 'unknown';\nconst correlationId = item.correlationId || payload.correlationId || null;\n\nconst severity = status === 401 ? 'REJECTED' : 'FAILED';\n\nconst lines = [\n  `**Proposal delivery ${severity}** · \\`${ref}\\``,\n  `Reason: ${reason}`,\n];\n\nif (status === 401) {\n  lines.push('An unverified request reached this workflow. Nothing was sent. Check that IKE_KOYA_WEBHOOK_SECRET on this n8n instance matches N8N_WEBHOOK_SECRET in the app.');\n} else {\n  lines.push('The application will fall back to its own send lane. Nothing was sent from here.');\n}\n\nif (correlationId) {\n  lines.push(`Correlation: \\`${correlationId}\\``);\n}\n\nreturn [{\n  json: {\n    content: lines.join('\\n'),\n    status,\n    reason,\n    ref,\n  },\n}];\n"
+      },
+      "notes": "Distinguishes 401 (nothing should be sent anywhere) from 500 (try the other lane).",
+      "notesInFlow": true
+    },
+    {
+      "id": "discordFail",
+      "name": "Alert team",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        660,
+        140
+      ],
+      "parameters": {
+        "authentication": "webhook",
+        "content": "={{ $json.content }}",
+        "options": {}
+      },
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "REPLACE_WITH_YOUR_DISCORD_CREDENTIAL_ID",
+          "name": "Discord webhook"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "respondFail",
+      "name": "Respond failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        900,
+        140
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, reason: $('Build failure notice').first().json.reason }) }}",
+        "options": {
+          "responseCode": "={{ $('Build failure notice').first().json.status }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Proposal approved": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verified?": {
+      "main": [
+        [
+          {
+            "node": "Send client email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build failure notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send client email": {
+      "main": [
+        [
+          {
+            "node": "Build Discord notice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build failure notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Discord notice": {
+      "main": [
+        [
+          {
+            "node": "Notify team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify team": {
+      "main": [
+        [
+          {
+            "node": "Respond sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build failure notice": {
+      "main": [
+        [
+          {
+            "node": "Alert team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert team": {
+      "main": [
+        [
+          {
+            "node": "Respond failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "meta": {
+    "generatedBy": "n8n/build-workflow.ts — do not hand-edit this file",
+    "generatedAt": "fb4258752f1ba591",
+    "sourceFiles": [
+      "code/01-verify-signature.js",
+      "code/02-build-discord-notice.js",
+      "code/03-build-failure-notice.js"
+    ]
+  }
+}
