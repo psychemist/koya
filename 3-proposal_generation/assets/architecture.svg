@@ -1,0 +1,224 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 1400" width="1180" height="1400" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b9098"/>
+    </marker>
+    <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b0b5bc"/>
+    </marker>
+    <style>
+      .bx  { fill:#ffffff; stroke:#c2c7ce; stroke-width:1.6; rx:8; }
+      .bnd { fill:#f4f6f8; stroke:#e0e4e8; stroke-width:1.4; rx:10; }
+      .ai  { fill:#eaf2fb; stroke:#2f6ea8; stroke-width:2; rx:8; }
+      .sk  { fill:#f7f8f9; stroke:#c2c7ce; stroke-width:1.6; stroke-dasharray:5 4; rx:8; }
+      .dec { fill:#fdf6e8; stroke:#c9a227; stroke-width:1.8; rx:8; }
+      .t   { font-size:14px; fill:#16191d; font-weight:600; }
+      .s   { font-size:12.2px; fill:#5d646d; }
+      .lbl { font-size:11.8px; fill:#8b9098; font-style:italic; }
+      .ln  { stroke:#8b9098; stroke-width:1.6; fill:none; marker-end:url(#a); }
+      .lnp { stroke:#8b9098; stroke-width:1.6; fill:none; }
+      .lnd { stroke:#b0b5bc; stroke-width:1.5; fill:none; stroke-dasharray:5 4; marker-end:url(#ad); }
+      .hd  { font-size:11px; fill:#8b9098; font-weight:600; letter-spacing:.08em; }
+      .ttl { font-size:19px; fill:#16191d; font-weight:700; }
+      .tsb { font-size:12.6px; fill:#5d646d; }
+    </style>
+  </defs>
+
+  <!-- title -->
+  <text class="ttl" x="30" y="42">Koya Proposal Studio</text>
+  <text class="tsb" x="30" y="64">Claude drafts it. Gates check it.</text>
+  <text class="tsb" x="30" y="82">A different person approves it.</text>
+
+  <!-- ROLES -->
+  <rect class="bnd" x="330" y="14" width="460" height="52"/>
+  <text class="hd" x="346" y="34">ROLES</text>
+  <text class="t" x="452" y="48" font-size="13">Salesperson</text>
+  <text class="t" x="570" y="48" font-size="13">Approver</text>
+  <text class="t" x="672" y="48" font-size="13">Admin</text>
+  <text class="lbl" x="806" y="44">one account may</text>
+  <text class="lbl" x="806" y="58">hold several</text>
+  <path class="ln" d="M560,66 L560,90"/>
+
+  <!-- INTAKE -->
+  <rect class="bx" x="420" y="94" width="280" height="54"/>
+  <text class="t" x="560" y="116" text-anchor="middle">Intake form</text>
+  <text class="s" x="560" y="133" text-anchor="middle">11 fields, plus PDF / DOCX / TXT / MD / CSV</text>
+  <path class="ln" d="M560,148 L560,172"/>
+
+  <!-- SANITISE -->
+  <rect class="bx" x="420" y="176" width="280" height="54"/>
+  <text class="t" x="560" y="198" text-anchor="middle">Extract &amp; sanitise</text>
+  <text class="s" x="560" y="215" text-anchor="middle">invisibles stripped · delimiters neutralised · sha256 dedup</text>
+  <text class="lbl" x="750" y="192">a hostile upload cannot</text>
+  <text class="lbl" x="750" y="206">address the model. flags</text>
+  <text class="lbl" x="750" y="220">are advisory, never blocking</text>
+  <path class="ln" d="M560,230 L560,254"/>
+
+  <!-- OCR DECISION -->
+  <rect class="dec" x="420" y="256" width="280" height="44"/>
+  <text class="t" x="560" y="283" text-anchor="middle">Text layer?</text>
+  <path class="ln" d="M700,278 L746,278"/>
+  <text class="lbl" x="706" y="270">no</text>
+  <rect class="ai" x="750" y="256" width="290" height="44"/>
+  <text class="t" x="895" y="275" text-anchor="middle">Claude Haiku 4.5 — OCR</text>
+  <text class="s" x="895" y="291" text-anchor="middle">reads the pages as images</text>
+  <text class="lbl" x="750" y="318">raises an advisory gap: a misread</text>
+  <text class="lbl" x="750" y="332">figure would be confirmed by the</text>
+  <text class="lbl" x="750" y="346">grounding gate, not caught by it</text>
+  <path class="ln" d="M560,300 L560,326"/>
+  <text class="lbl" x="568" y="318">yes</text>
+
+  <!-- VALIDATE -->
+  <rect class="bx" x="420" y="328" width="280" height="54"/>
+  <text class="t" x="560" y="350" text-anchor="middle">Validate intake</text>
+  <text class="s" x="560" y="367" text-anchor="middle">deterministic · no model · free</text>
+  <text class="lbl" x="222" y="348" text-anchor="end">empty field blocks,</text>
+  <text class="lbl" x="222" y="362" text-anchor="end">doubtful field advises</text>
+  <text class="lbl" x="222" y="380" text-anchor="end">a wall of blockers</text>
+  <text class="lbl" x="222" y="394" text-anchor="end">gets waived unread</text>
+  <path class="ln" d="M560,382 L560,406"/>
+
+  <!-- CACHE DECISION -->
+  <rect class="dec" x="420" y="408" width="280" height="44"/>
+  <text class="t" x="560" y="435" text-anchor="middle">Content hash changed?</text>
+  <path class="lnd" d="M420,430 L294,430"/>
+  <text class="lbl" x="336" y="422">no</text>
+  <rect class="sk" x="40" y="408" width="250" height="44"/>
+  <text class="t" x="165" y="427" text-anchor="middle">Served from the database</text>
+  <text class="s" x="165" y="443" text-anchor="middle">no call, no spend</text>
+  <path class="ln" d="M560,452 L560,478"/>
+  <text class="lbl" x="568" y="470">yes</text>
+
+  <!-- DRAFT -->
+  <rect class="ai" x="420" y="480" width="280" height="58"/>
+  <text class="t" x="560" y="503" text-anchor="middle">Claude Opus 5 — draft</text>
+  <text class="s" x="560" y="520" text-anchor="middle">streaming · 7 sections, 6 written</text>
+  <text class="s" x="560" y="534" text-anchor="middle">Next Steps is a template</text>
+  <text class="lbl" x="750" y="500">cached prompt prefix. one section</text>
+  <text class="lbl" x="750" y="514">regenerates and the other six stay</text>
+  <text class="lbl" x="750" y="528">byte-identical, which is why the</text>
+  <text class="lbl" x="750" y="542">document is seven rows, not a blob</text>
+
+  <!-- GATES -->
+  <path class="lnp" d="M560,538 L560,558 M255,558 L865,558 M255,558 L255,572 M560,558 L560,572 M865,558 L865,572"/>
+  <text class="hd" x="120" y="554">GATES</text>
+  <rect class="bx" x="120" y="574" width="270" height="58"/>
+  <text class="t" x="255" y="597" text-anchor="middle">Grounding</text>
+  <text class="s" x="255" y="614" text-anchor="middle">Haiku — every figure traced</text>
+  <text class="s" x="255" y="628" text-anchor="middle">back to intake or upload</text>
+  <rect class="bx" x="425" y="574" width="270" height="58"/>
+  <text class="t" x="560" y="597" text-anchor="middle">Gap analysis</text>
+  <text class="s" x="560" y="614" text-anchor="middle">Haiku — at most four,</text>
+  <text class="s" x="560" y="628" text-anchor="middle">advisory unless contradictory</text>
+  <rect class="bx" x="730" y="574" width="270" height="58"/>
+  <text class="t" x="865" y="597" text-anchor="middle">Voice &amp; style</text>
+  <text class="s" x="865" y="614" text-anchor="middle">deterministic · no model</text>
+  <text class="s" x="865" y="628" text-anchor="middle">31 assertions</text>
+  <path class="lnp" d="M255,632 L255,648 M560,632 L560,648 M865,632 L865,648 M255,648 L865,648"/>
+  <path class="ln" d="M560,648 L560,674"/>
+  <text class="lbl" x="1012" y="600">findings are advisory.</text>
+  <text class="lbl" x="1012" y="614">blocking over a word</text>
+  <text class="lbl" x="1012" y="628">choice teaches people</text>
+  <text class="lbl" x="1012" y="642">to waive without reading</text>
+
+  <!-- REVIEW -->
+  <rect class="bx" x="420" y="676" width="280" height="58"/>
+  <text class="t" x="560" y="699" text-anchor="middle">Review</text>
+  <text class="s" x="560" y="716" text-anchor="middle">comments without a verdict</text>
+  <text class="s" x="560" y="730" text-anchor="middle">regenerate · edit · revert, with history</text>
+  <path class="ln" d="M560,734 L560,758"/>
+
+  <!-- GAP GATE -->
+  <rect class="dec" x="420" y="760" width="280" height="44"/>
+  <text class="t" x="560" y="787" text-anchor="middle">Blocking gaps open?</text>
+  <path class="lnd" d="M700,782 L746,782"/>
+  <text class="lbl" x="706" y="774">yes</text>
+  <rect class="sk" x="750" y="760" width="290" height="44"/>
+  <text class="t" x="895" y="779" text-anchor="middle">Refused</text>
+  <text class="s" x="895" y="795" text-anchor="middle">on the server, not a hidden button</text>
+  <path class="ln" d="M560,804 L560,830"/>
+  <text class="lbl" x="568" y="822">no</text>
+
+  <!-- SUBMIT -->
+  <rect class="bx" x="420" y="832" width="280" height="54"/>
+  <text class="t" x="560" y="854" text-anchor="middle">Submit for approval</text>
+  <text class="s" x="560" y="871" text-anchor="middle">an approver may be assigned, or anyone may take it</text>
+  <path class="ln" d="M560,886 L560,910"/>
+
+  <!-- SEPARATION OF DUTIES -->
+  <rect class="dec" x="420" y="912" width="280" height="44"/>
+  <text class="t" x="560" y="939" text-anchor="middle">Approver is not the author?</text>
+  <path class="lnd" d="M700,934 L746,934"/>
+  <text class="lbl" x="706" y="926">no</text>
+  <rect class="sk" x="750" y="912" width="290" height="44"/>
+  <text class="t" x="895" y="931" text-anchor="middle">Refused</text>
+  <text class="s" x="895" y="947" text-anchor="middle">whatever role the author holds</text>
+  <path class="ln" d="M560,956 L560,982"/>
+  <text class="lbl" x="568" y="974">yes</text>
+
+  <!-- APPROVED -->
+  <rect class="bx" x="420" y="984" width="280" height="54"/>
+  <text class="t" x="560" y="1006" text-anchor="middle">Approved</text>
+  <text class="s" x="560" y="1023" text-anchor="middle">a version guard refuses a double approval</text>
+  <path class="ln" d="M700,1011 L746,1011"/>
+  <rect class="ai" x="750" y="984" width="290" height="54"/>
+  <text class="t" x="895" y="1006" text-anchor="middle">Claude Haiku 4.5</text>
+  <text class="s" x="895" y="1023" text-anchor="middle">one covering-email sentence</text>
+  <text class="lbl" x="750" y="1056">cached on an intake hash,</text>
+  <text class="lbl" x="750" y="1070">so a re-send costs nothing</text>
+  <path class="ln" d="M560,1038 L560,1062"/>
+
+  <!-- IDEMPOTENCY CLAIM -->
+  <rect class="bx" x="420" y="1064" width="280" height="58"/>
+  <text class="t" x="560" y="1087" text-anchor="middle">Claim the delivery row</text>
+  <text class="s" x="560" y="1104" text-anchor="middle">UNIQUE idempotency key, in Postgres,</text>
+  <text class="s" x="560" y="1118" text-anchor="middle">before either lane is attempted</text>
+  <text class="lbl" x="390" y="1084" text-anchor="end">the duplicate gate. a timeout</text>
+  <text class="lbl" x="390" y="1098" text-anchor="end">on lane A is safe to retry on</text>
+  <text class="lbl" x="390" y="1112" text-anchor="end">lane B: if A did send, B collides</text>
+  <path class="ln" d="M560,1122 L560,1148"/>
+
+  <!-- LANES -->
+  <rect class="bx" x="330" y="1150" width="230" height="54"/>
+  <text class="t" x="445" y="1172" text-anchor="middle">Lane A — n8n</text>
+  <text class="s" x="445" y="1189" text-anchor="middle">HMAC-signed · Gmail + Discord</text>
+  <path class="ln" d="M560,1177 L596,1177"/>
+  <text class="lbl" x="562" y="1169">fails</text>
+  <rect class="bx" x="600" y="1150" width="230" height="54"/>
+  <text class="t" x="715" y="1172" text-anchor="middle">Lane B — Resend</text>
+  <text class="s" x="715" y="1189" text-anchor="middle">fallback · copies the approver</text>
+  <path class="lnd" d="M830,1177 L866,1177"/>
+  <rect class="sk" x="870" y="1150" width="280" height="54"/>
+  <text class="t" x="1010" y="1172" text-anchor="middle">Neither configured</text>
+  <text class="s" x="1010" y="1189" text-anchor="middle">recorded blocked, hands back an .eml</text>
+  <path class="lnp" d="M445,1204 L445,1224 M715,1204 L715,1224 M445,1224 L715,1224"/>
+  <path class="ln" d="M560,1224 L560,1250"/>
+
+  <!-- CLIENT -->
+  <rect class="bnd" x="420" y="1252" width="280" height="54"/>
+  <text class="t" x="560" y="1274" text-anchor="middle">Client opens /p/&lt;token&gt;</text>
+  <text class="s" x="560" y="1291" text-anchor="middle">status-gated link · PDF, DOCX, Markdown</text>
+  <text class="lbl" x="750" y="1274">the token is stored hashed, so a</text>
+  <text class="lbl" x="750" y="1288">database dump hands out nothing</text>
+
+  <!-- STANDING PANELS -->
+  <rect class="sk" x="40" y="676" width="250" height="118"/>
+  <text class="t" x="165" y="700" text-anchor="middle">Audit trail</text>
+  <text class="s" x="56" y="722">every action writes an events row</text>
+  <text class="s" x="56" y="738">AND one line of JSON to stdout, so</text>
+  <text class="s" x="56" y="754">the trail survives the database</text>
+  <text class="s" x="56" y="770">being the thing that broke</text>
+  <text class="s" x="56" y="786">Activity by person · System by failure</text>
+
+  <rect class="sk" x="40" y="832" width="250" height="106"/>
+  <text class="t" x="165" y="856" text-anchor="middle">Postgres — Neon</text>
+  <text class="s" x="56" y="878">proposals · sections · gaps · sources</text>
+  <text class="s" x="56" y="894">events · ai_calls · deliveries</text>
+  <text class="s" x="56" y="910">share_links · approvals · comments</text>
+  <text class="s" x="56" y="926">users · sessions · rate_limits</text>
+
+  <rect class="sk" x="40" y="984" width="250" height="70"/>
+  <text class="t" x="165" y="1008" text-anchor="middle">Never sent to Claude</text>
+  <text class="s" x="56" y="1030">the client's email address. the model</text>
+  <text class="s" x="56" y="1046">has no use for it, so it does not go</text>
+</svg>
