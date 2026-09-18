@@ -1,0 +1,134 @@
+{
+  "name": "Koya Content Desk, Newsletter",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "koya-newsletter",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "publish-webhook",
+      "name": "Publish webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -780,
+        300
+      ],
+      "webhookId": "koya-newsletter",
+      "notes": "rawBody is required: the signature is computed over the exact bytes the app sent, and n8n's parsed JSON does not round-trip to the same string."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// \u2500\u2500 Verify the payload actually came from the app \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n//\n// This webhook is a public URL. Unsigned, it is a way for anyone who learns\n// it to send mail from the team's Gmail account to any address they like.\n// The publishing lane needs this more than the notification lane does, not\n// less: a spoofed notification is noise in a Discord channel, a spoofed\n// publish is a message going out under the client's name.\n//\n// The app signs the RAW body with HMAC-SHA256 using N8N_PUBLISH_SECRET.\n\nconst crypto = require('crypto');\n\nconst SECRET_NAME = 'KOYA_PUBLISH_SECRET';\n\n/**\n * Where the shared secret comes from, and why this is not a one-liner.\n *\n * Matches koya-proposal-delivery.json in 3/build: $env is unreachable on\n * n8n Cloud and is blocked by default on self-hosted instances, and TOUCHING\n * it THROWS rather than returning undefined. A bare $env.FOO would therefore\n * kill this node before the fail-closed branch below ever runs, turning a\n * clean 401 into an opaque 500. Both sources are tried, both are guarded.\n */\nfunction readSecret(name) {\n  try {\n    if (typeof $env !== 'undefined' && $env && $env[name]) return String($env[name]);\n  } catch (err) {\n    // Env access is blocked on this instance. Not fatal \u2014 try Variables.\n  }\n  try {\n    if (typeof $vars !== 'undefined' && $vars && $vars[name]) return String($vars[name]);\n  } catch (err) {\n    // Neither source is readable. Handled by the fail-closed branch below.\n  }\n  return null;\n}\n\nconst secret = readSecret(SECRET_NAME);\nif (!secret) {\n  throw new Error(\n    `${SECRET_NAME} is not readable on this n8n instance. Set it as a Variable ` +\n    '(Settings \u2192 Variables), or as an environment variable with ' +\n    'N8N_BLOCK_ENV_ACCESS_IN_NODE=false. Its value must match N8N_PUBLISH_SECRET in the app. ' +\n    'Refusing to send unverifiable mail.');\n}\n\nconst headers = $input.item.json.headers || {};\nconst rawBody = $input.item.json.body;\n\nconst provided = headers['x-koya-signature'];\nif (!provided) {\n  throw new Error('Missing x-koya-signature header \u2014 refusing unsigned payload.');\n}\n\nconst raw = typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody);\nconst expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');\n\nconst a = Buffer.from(String(provided));\nconst b = Buffer.from(expected);\nif (!(a.length === b.length && crypto.timingSafeEqual(a, b))) {\n  throw new Error('Signature mismatch \u2014 refusing payload.');\n}\n\nconst payload = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody;\n\nconst recipients = Array.isArray(payload.recipients)\n  ? payload.recipients.map(String).filter((e) => e.includes('@'))\n  : [];\n\n// An approved newsletter with nobody to send it to is a configuration\n// problem, and it has to fail loudly. Returning ok here would write `sent`\n// against a send that reached no inbox, which is the exact false success the\n// whole queue design exists to prevent.\nif (recipients.length === 0) {\n  throw new Error('No recipients on the payload. Refusing to report a send that reached nobody.');\n}\nif (!payload.subject) {\n  throw new Error('No subject line on the payload.');\n}\n\nreturn {\n  json: {\n    requestId: payload.requestId,\n    idempotencyKey: String(payload.idempotencyKey || ''),\n    subject: String(payload.subject),\n    html: String(payload.html || ''),\n    recipients,\n    emittedAt: payload.emittedAt,\n  },\n};\n"
+      },
+      "id": "verify",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -540,
+        300
+      ],
+      "notes": "Throws on a bad signature, an empty recipient list or a missing subject, so each shows up as a failed execution the app can see rather than a silent no-op reported back as success. Reads KOYA_PUBLISH_SECRET the same way 3/build/n8n/koya-proposal-delivery.json reads its webhook secret: $env first, $vars second, each one guarded, because a blocked $env throws rather than returning undefined."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.recipients.join(',') }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "send-gmail",
+      "name": "Send via Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -300,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "THE NEWSLETTER GOES OUT FROM GMAIL, and that is the difference between a demo that sends and one that only says it did.\n\nResend refuses to deliver to arbitrary recipients without a VERIFIED DOMAIN. With its shared onboarding sender it will accept the API call, return an id, and deliver to nobody but the account owner. The queue would then record `sent` with a provider id against a newsletter that reached no subscriber, which is precisely the false success this system is built to refuse.\n\nGmail sends as the connected account, needs no domain and costs nothing. Its daily send cap is a few hundred recipients, which is the honest limit of this lane and is written on the admin page.\n\nNo onError override here on purpose: a failure has to reach the app as a non-2xx, so the queue row records the failure and retries rather than recording a send."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, providerId: $json.id || $json.messageId || $('Verify signature').item.json.idempotencyKey, recipients: $('Verify signature').item.json.recipients.length }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "ack",
+      "name": "Acknowledge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -60,
+        300
+      ],
+      "notes": "Reached only after Gmail actually accepted the message, so a 200 here means a send happened. The app writes `sent` on this response and on nothing else."
+    }
+  ],
+  "connections": {
+    "Publish webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Send via Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send via Gmail": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "REPLACE_ME"
+  },
+  "tags": []
+}

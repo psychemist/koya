@@ -1,0 +1,221 @@
+{
+  "name": "Koya Content Desk, Publishing Queue Tick",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "sched",
+      "name": "Every 5 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        300
+      ],
+      "notes": "Five minutes is a deliberate choice, not a default. Scheduling granularity finer than this buys nothing for content publishing, and each tick is a request that costs something."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// \u2500\u2500 Resolve config, the same way 3/build/n8n reads its webhook secret \u2500\u2500\n//\n// KOYA_APP_URL and KOYA_TICK_KEY are used inside expression fields on the\n// HTTP node below (its URL and its auth header). An expression like\n// {{ $env.FOO || $vars.FOO }} looks like the obvious way to add a fallback,\n// but it is not safe: touching $env THROWS on an instance where env access\n// is blocked (true by default when self-hosted, and $env does not exist at\n// all on n8n Cloud), and a throw inside an expression fails the node before\n// the `||` ever gets a chance to fall through to $vars. Resolving both\n// values here, in a Code node with the throw properly caught, is what makes\n// the fallback actually work rather than only appearing to.\n//\n// KOYA_TICK_KEY fails CLOSED: a tick that cannot authenticate itself must\n// not run silently as an unauthenticated request. KOYA_APP_URL is spelled\n// out in the same error rather than defaulted, because a wrong guess here\n// would tick a URL nobody intended and the failure would be far harder to\n// trace than a clear message naming exactly what is missing.\n\nfunction readVar(name) {\n  try {\n    if (typeof $env !== 'undefined' && $env && $env[name]) return String($env[name]);\n  } catch (err) {\n    // Env access is blocked on this instance. Not fatal \u2014 try Variables.\n  }\n  try {\n    if (typeof $vars !== 'undefined' && $vars && $vars[name]) return String($vars[name]);\n  } catch (err) {\n    // Neither source is readable. Handled by the fail-closed check below.\n  }\n  return null;\n}\n\nconst appUrl = readVar('KOYA_APP_URL');\nconst tickKey = readVar('KOYA_TICK_KEY');\nconst missing = [!appUrl && 'KOYA_APP_URL', !tickKey && 'KOYA_TICK_KEY'].filter(Boolean);\n\nif (missing.length) {\n  throw new Error(\n    `${missing.join(' and ')} not readable on this n8n instance. Set as a Variable ` +\n    '(Settings \u2192 Variables), or as an environment variable with ' +\n    'N8N_BLOCK_ENV_ACCESS_IN_NODE=false. Refusing to tick the queue unauthenticated.');\n}\n\nreturn { json: { appUrl, tickKey } };\n"
+      },
+      "id": "resolve-config",
+      "name": "Resolve config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        300
+      ],
+      "notes": "Throws if either value is unreadable, which n8n reports as a failed execution rather than a tick that quietly ran unauthenticated. See the in-code comment for why this cannot simply be an {{ $env.X || $vars.X }} expression on the HTTP node instead."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.appUrl }}/api/queue/tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-koya-tick-key",
+              "value": "={{ $json.tickKey }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "tick",
+      "name": "Tick the queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -400,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "notes": "NEVER ERROR IS DELIBERATELY OFF.\n\nThe 'Never Error' option would make this node report success on a 500, which is precisely the silent failure this whole system is built to avoid. A failed tick must show as a failed execution.\n\nRetrying is safe: the app claims rows with FOR UPDATE SKIP LOCKED and every queue row carries a UNIQUE idempotency key that is passed through to the provider. A retry after a timeout cannot double-post."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.needsAttention }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "any-trouble",
+      "name": "Does a person need to look?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -160,
+        300
+      ],
+      "notes": "A quiet tick posts nothing. A channel notification on every successful 5-minute tick would bury the one that matters."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// \u2500\u2500 Compose the Discord alert as plain markdown \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n//\n// The native Discord node's `content` field takes text, not the embeds\n// array the previous httpRequest-based version built. Composing it here,\n// in a Code node, is the same shape 3/build/n8n/koya-proposal-delivery.json\n// uses for its \"Build failure notice\" step: format upstream, post downstream.\n\nconst body = $json.body || {};\nconst config = $('Resolve config').first().json;\n\nconst swept = (body.swept || []).map((s) =>\n  `\u26a0\ufe0f recovered a stalled request from \\`${s.from}\\` \u2192 \\`${s.to}\\` \u2014 something crashed ` +\n  `mid-run: ${config.appUrl}/requests/${s.id}`);\n\nconst details = (body.details || [])\n  .filter((d) => d.state !== 'sent' && d.state !== 'queued_manual')\n  .map((d) =>\n    `\u2022 **${d.channel}** \u2192 ${d.state}${d.code ? ` (\\`${d.code}\\`)` : ''} ` +\n    `${config.appUrl}/requests/${d.requestId}`);\n\nconst content = [\n  `\ud83d\udd34 **Publishing queue: ${body.summary || 'needs attention'}**`,\n  ...swept,\n  ...details,\n].join('\\n').slice(0, 3900);\n\nreturn { json: { content } };\n"
+      },
+      "id": "format-alert",
+      "name": "Format alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        220
+      ],
+      "notes": "Blocked and failed are reported together but they are NOT the same thing: blocked means a channel has no credentials or an approval is no longer current (expected \u2014 the normal state for X when paid publishing is off); failed means the provider was reached and something went wrong, and someone should look. The per-item lines keep both in view."
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "={{ $json.content }}",
+        "options": {}
+      },
+      "id": "alert",
+      "name": "Alert #content-errors",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        320,
+        220
+      ],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "REPLACE_WITH_YOUR_DISCORD_CREDENTIAL_ID",
+          "name": "Discord webhook \u2014 content-errors"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Same credential as koya-notifications.json's error channel \u2014 reuse it rather than creating a second one, since both post to #content-errors. The webhook URL lives only in this credential, never in a workflow variable or in this node's own parameters."
+    }
+  ],
+  "connections": {
+    "Every 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Resolve config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tick the queue": {
+      "main": [
+        [
+          {
+            "node": "Does a person need to look?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Does a person need to look?": {
+      "main": [
+        [
+          {
+            "node": "Format alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Resolve config": {
+      "main": [
+        [
+          {
+            "node": "Tick the queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format alert": {
+      "main": [
+        [
+          {
+            "node": "Alert #content-errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "koya-content-desk"
+  },
+  "tags": [
+    {
+      "name": "koya-content-desk"
+    }
+  ]
+}

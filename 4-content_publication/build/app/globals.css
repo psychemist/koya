@@ -1,0 +1,439 @@
+@import "tailwindcss";
+
+/* ============================================================
+   KOYA CONTENT DESK
+
+   The model for this interface is a sub-editor's proofing desk, not a
+   dashboard. Someone sits with a proof, reads it, marks what is wrong in the
+   margin, and either signs it off or sends it back. Every screen here is a
+   stage of that, and the review screen IS the proof.
+
+   Three rules the tokens below exist to enforce:
+
+   1. RED MEANS BLOCKING. Nothing else is red. If a reviewer learns that red
+      is decorative anywhere, the one place it must stop them stops working.
+   2. THE PROOF IS THE HERO. Chrome is quiet, tight and sans-serif; the draft
+      is serif, generously set, and the only thing on screen with presence.
+   3. NOTHING WHISPERS. A degraded notification, an unconfigured channel and
+      a blocked queue row each get a visible, named state.
+   ============================================================ */
+
+@theme {
+  /* --- surfaces ------------------------------------------------------- */
+  /* Cool rather than cream. Warm paper under a lot of red marks reads
+     alarming, and this is a screen someone stares at for an hour at a time. */
+  --color-paper:   #f1f3f6;
+  --color-sheet:   #ffffff;
+  --color-sunk:    #e9edf2;
+
+  /* --- ink ------------------------------------------------------------ */
+  --color-ink:     #151b2b;
+  --color-ink-70:  #46506a;
+  --color-muted:   #66708a;
+  --color-faint:   #8b94aa;
+
+  /* --- rules ---------------------------------------------------------- */
+  --color-rule:        #dbe1ea;
+  --color-rule-strong: #c3cbd9;
+
+  /* --- meaning -------------------------------------------------------- */
+  /* One red, one green, one amber, one blue, each with exactly one job. */
+  --color-blocking:    #be3020;   /* approval is refused */
+  --color-blocking-bg: #fdf1ef;
+  --color-advisory:    #8a5a06;   /* worth knowing, stops nothing */
+  --color-advisory-bg: #fdf6e7;
+  --color-ok:          #0f6b4f;   /* the provider confirmed it */
+  --color-ok-bg:       #eef7f2;
+  --color-waiting:     #2f4aa8;   /* queued, claimed, in flight */
+  --color-waiting-bg:  #eef1fb;
+
+  /* --- type ----------------------------------------------------------- */
+  --font-sans:  var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-newsreader), Georgia, 'Times New Roman', serif;
+  --font-mono:  var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+
+  /* --- radii ---------------------------------------------------------- */
+  /* Deliberately not one value everywhere. A sheet of paper is sharper than
+     a button, and a status token is round because it is a token. */
+  --radius-sheet: 10px;
+  --radius-proof: 3px;
+  --radius-input: 6px;
+
+  /* --- the proof ------------------------------------------------------ */
+  /* Slightly darker than body ink in light mode, because a long serif
+     passage read at length wants more contrast than a label does. */
+  --color-proof-ink: #10131c;
+  --color-proof-mark-bg: #fdf1ef;
+  --color-proof-mark-ink: #7d1e12;
+  --color-proof-ok-bg: #eef7f2;
+  --color-overlay: rgb(21 27 43 / 0.25);
+
+  /* --- text ON a filled button --------------------------------------- */
+  /* A filled button paints itself with a token that INVERTS between themes,
+     so its label cannot be a fixed colour. `--color-ink` is near-black in
+     light and near-white in dark: hard-coding white text gave a white button
+     with a white label the moment dark mode existed. */
+  --color-on-ink: #ffffff;
+  --color-on-ok:  #ffffff;
+}
+
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ============================================================
+   DARK
+
+   The same design, not a different one. Every token keeps its job:
+   red still means blocking and only blocking, the proof is still the
+   one thing on screen with presence, and the chrome still recedes.
+
+   Three states, which is what people actually want. An explicit choice
+   stamps `data-theme` on the root element and wins over everything. With
+   no choice stored, nothing is stamped and the operating system decides,
+   which is the default.
+
+   The `:not([data-theme="light"])` guard is what makes "light" mean
+   light even on a machine set to dark. Without it the media query would
+   quietly overrule a deliberate choice.
+   ============================================================ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --color-paper:   #11141b;
+    --color-sheet:   #191e28;
+    --color-sunk:    #222936;
+
+    --color-ink:     #e9edf5;
+    --color-ink-70:  #b3bdcd;
+    --color-muted:   #8d98ab;
+    --color-faint:   #6b7789;
+
+    --color-rule:        #2a3240;
+    --color-rule-strong: #3a4454;
+
+    /* Saturated reds and greens vibrate on a dark ground. These are
+       lifted in lightness and pulled back in chroma so they stay
+       legible at small sizes without glowing. */
+    --color-blocking:    #ff9382;
+    --color-blocking-bg: #3a1b16;
+    --color-advisory:    #e8b45d;
+    --color-advisory-bg: #392c13;
+    --color-ok:          #5fd3a3;
+    --color-ok-bg:       #133029;
+    --color-waiting:     #93aaff;
+    --color-waiting-bg:  #1c2340;
+
+    --color-proof-ink:      #e7ecf4;
+    --color-proof-mark-bg:  #4a1e17;
+    --color-proof-mark-ink: #ffcabe;
+    --color-proof-ok-bg:    #163a2f;
+    --color-overlay:        rgb(4 6 10 / 0.55);
+
+    --color-on-ink: #11141b;
+    --color-on-ok:  #06231a;
+  }
+}
+
+/* An explicit choice, which beats the operating system in both directions. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-paper:   #11141b;
+  --color-sheet:   #191e28;
+  --color-sunk:    #222936;
+
+  --color-ink:     #e9edf5;
+  --color-ink-70:  #b3bdcd;
+  --color-muted:   #8d98ab;
+  --color-faint:   #6b7789;
+
+  --color-rule:        #2a3240;
+  --color-rule-strong: #3a4454;
+
+  --color-blocking:    #ff9382;
+  --color-blocking-bg: #3a1b16;
+  --color-advisory:    #e8b45d;
+  --color-advisory-bg: #392c13;
+  --color-ok:          #5fd3a3;
+  --color-ok-bg:       #133029;
+  --color-waiting:     #93aaff;
+  --color-waiting-bg:  #1c2340;
+
+  --color-proof-ink:      #e7ecf4;
+  --color-proof-mark-bg:  #4a1e17;
+  --color-proof-mark-ink: #ffcabe;
+  --color-proof-ok-bg:    #163a2f;
+  --color-overlay:        rgb(4 6 10 / 0.55);
+
+  --color-on-ink: #11141b;
+  --color-on-ok:  #06231a;
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Visible focus, always. People move through this form with the keyboard,
+   and an invisible focus ring is how they lose their place and hit the wrong
+   button on a screen where one of the buttons publishes. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-waiting);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   THE PROOF
+
+   Set like something printed: serif, a measure under 70 characters, more
+   line-height than the chrome around it. The reviewer has to actually read
+   this, which is the entire editorial and legal point of the screen.
+   ============================================================ */
+.proof {
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.72;
+  color: var(--color-proof-ink);
+  max-width: 68ch;
+}
+
+.proof .t-h1 {
+  font-family: var(--font-sans);
+  font-size: 1.5rem;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0 0 1.25rem;
+}
+.proof .t-h2 {
+  font-family: var(--font-sans);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin: 2rem 0 0.625rem;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--color-rule);
+}
+.proof .t-p { margin: 0 0 1.05rem; }
+
+/* The same proof, set down one notch. The workspace shows four drafts stacked
+   on one screen for orientation; the review screen shows one to be read. Same
+   rendering either way, because two renderings of one draft is two chances for
+   a reviewer to approve something that looked different when they read it. */
+.proof-compact {
+  font-size: 0.95rem;
+  line-height: 1.62;
+  max-width: none;
+}
+.proof-compact .t-h1 { font-size: 1.1875rem; margin-bottom: 0.875rem; }
+.proof-compact .t-h2 { font-size: 0.9375rem; margin-top: 1.375rem; padding-top: 0.75rem; }
+.proof-compact .t-p  { margin-bottom: 0.8rem; }
+
+/* The margin mark. Unsupported claims are struck IN THE TEXT, where the
+   reader's eye already is, rather than listed in a panel they can scroll
+   past. The underline is the sub-editor's pen; the tint only exists to make
+   it findable while scanning. */
+mark.unsupported {
+  background: var(--color-proof-mark-bg);
+  color: var(--color-proof-mark-ink);
+  box-shadow: inset 0 -2px 0 0 var(--color-blocking);
+  padding: 0.05em 0.12em;
+  border-radius: 2px;
+}
+mark.supported {
+  background: var(--color-proof-ok-bg);
+  padding: 0.05em 0.12em;
+  border-radius: 2px;
+}
+
+/* ------------------------------------------------------------
+   APPARATUS, NOT PROSE.
+
+   A citation marker like [S1d20P1] is an excerpt label the grounding check
+   needs and a reader must never see. Set in the middle of a serif paragraph
+   in the same face as the sentence around it, it reads as part of the
+   sentence, and two people took it for corrupted text.
+
+   So it gets the treatment the evidence hashes get: mono, smaller, tinted,
+   sitting slightly off the baseline. Small enough to read past, distinct
+   enough that nobody has to ask what it is.
+   ------------------------------------------------------------ */
+.cite {
+  font-family: var(--font-mono);
+  font-size: 0.66em;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  vertical-align: 0.28em;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--color-waiting);
+  background: var(--color-waiting-bg);
+  border: 1px solid color-mix(in oklab, var(--color-waiting) 22%, transparent);
+  border-radius: 3px;
+  padding: 0.15em 0.3em;
+  margin-inline: 0.12em;
+  cursor: help;
+}
+
+/* [NEEDS SOURCE: …] is the model correctly declining to invent a fact, and it
+   BLOCKS approval. Red, because that is what red means here, and never
+   stripped on publish: removing only the marker would publish the sentence
+   with a hole where its evidence should be. */
+.gap {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  font-weight: 500;
+  color: var(--color-blocking);
+  background: var(--color-blocking-bg);
+  border: 1px dashed color-mix(in oklab, var(--color-blocking) 45%, transparent);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  cursor: help;
+}
+
+/* ============================================================
+   SHARED PIECES
+
+   All of these live in the `components` layer ON PURPOSE.
+
+   Tailwind emits utilities into the `utilities` layer, which the cascade
+   places after `components`. Without that, these classes are plain top-level
+   rules defined after the Tailwind import, so at equal specificity THEY win
+   and any utility layered on top silently does nothing: `.sheet bg-blocking-bg`
+   rendered a white card, and `.sheet border-blocking/30` rendered a grey
+   border. Both looked like a design choice rather than a cascade accident.
+
+   In a layer, the relationship is the one everybody assumes: these set the
+   defaults and a utility overrides them.
+   ============================================================ */
+@layer components {
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.pill-dot {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 999px;
+  background: currentColor;
+  flex: none;
+}
+
+.sheet {
+  background: var(--color-sheet);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sheet);
+}
+
+
+/* Form controls, defined once, so a field never looks different from the
+   field beside it. */
+.field {
+  width: 100%;
+  background: var(--color-sheet);
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-input);
+  padding: 0.5rem 0.6875rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-ink);
+}
+.field::placeholder { color: var(--color-faint); }
+.field:hover { border-color: color-mix(in oklab, var(--color-rule-strong) 70%, var(--color-ink)); }
+.field:focus { border-color: var(--color-waiting); }
+
+.label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 0.3125rem;
+}
+.hint {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4375rem;
+  border-radius: var(--radius-input);
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.5rem 0.9375rem;
+  border: 1px solid transparent;
+  transition: background-color 120ms ease, border-color 120ms ease;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary { background: var(--color-ink); color: var(--color-on-ink); }
+.btn-primary:not(:disabled):hover { background: color-mix(in oklab, var(--color-ink) 88%, var(--color-sheet)); }
+
+.btn-quiet {
+  background: var(--color-sheet);
+  border-color: var(--color-rule-strong);
+  color: var(--color-ink);
+}
+.btn-quiet:not(:disabled):hover { background: var(--color-sunk); }
+
+.btn-approve { background: var(--color-ok); color: var(--color-on-ok); }
+.btn-approve:not(:disabled):hover { background: color-mix(in oklab, var(--color-ok) 85%, black); }
+
+.btn-danger {
+  background: var(--color-sheet);
+  border-color: color-mix(in oklab, var(--color-blocking) 40%, var(--color-rule));
+  color: var(--color-blocking);
+}
+.btn-danger:not(:disabled):hover { background: var(--color-blocking-bg); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-muted);
+  padding-inline: 0.5rem;
+}
+.btn-ghost:not(:disabled):hover { color: var(--color-ink); }
+
+/* Machine identifiers only: evidence hashes and correlation IDs, which people
+   genuinely compare character by character. Not a flourish on small labels. */
+.ident {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: -0.01em;
+  color: var(--color-muted);
+}
+}
+
+/* The one piece of motion in the app, and it answers an action: the
+   confirmation sheet arriving when someone asks to approve or to publish. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+.rise { animation: rise 140ms ease-out; }

@@ -1,0 +1,387 @@
+{
+  "name": "Koya Content Desk, Notifications",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "koya-notify",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-in",
+      "name": "Notify webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -780,
+        300
+      ],
+      "webhookId": "koya-notify",
+      "notes": "The app POSTs one event per state change. Raw body is required: the signature is computed over the exact bytes, so re-serialising the JSON would change them and every request would fail verification."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsColn": "",
+        "language": "javaScript",
+        "jsCode": "// \u2500\u2500 Verify the payload actually came from the app \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n//\n// This webhook is a public URL. Unsigned, it is an open relay into the\n// team's Discord for anyone who learns it, and a notification channel that\n// can be spoofed is worse than no notification channel, because people\n// trust what it says.\n//\n// The app signs the RAW body with HMAC-SHA256 using N8N_NOTIFY_SECRET.\n\nconst crypto = require('crypto');\n\nconst SECRET_NAME = 'KOYA_NOTIFY_SECRET';\n\n/**\n * Where the shared secret comes from, and why this is not a one-liner.\n *\n * $env is not available on every n8n instance. n8n Cloud has no process\n * environment a workflow can reach, and self-hosted instances ship with\n * N8N_BLOCK_ENV_ACCESS_IN_NODE=true by default. On both, TOUCHING $env\n * THROWS rather than returning undefined, so a bare $env.FOO does not\n * degrade to a missing secret \u2014 it kills the node before the fail-closed\n * branch below can run, and the app sees a 500 instead of a 401 it can\n * actually explain.\n *\n * So both lookups are attempted and both are guarded:\n *   $env   self-hosted, with N8N_BLOCK_ENV_ACCESS_IN_NODE=false\n *   $vars  n8n Cloud and self-hosted alike \u2014 Settings \u2192 Variables\n * Order matters only for an instance that somehow has both; process\n * environment wins there because it is the one a deploy pipeline sets.\n */\nfunction readSecret(name) {\n  try {\n    if (typeof $env !== 'undefined' && $env && $env[name]) return String($env[name]);\n  } catch (err) {\n    // Env access is blocked on this instance. Not fatal \u2014 try Variables.\n  }\n  try {\n    if (typeof $vars !== 'undefined' && $vars && $vars[name]) return String($vars[name]);\n  } catch (err) {\n    // Neither source is readable. Handled by the fail-closed branch below.\n  }\n  return null;\n}\n\n/** Ordinary config, not a secret: missing is a degraded default, not a 401. */\nfunction readConfig(name, fallback) {\n  const v = readSecret(name);\n  return v === null ? fallback : v;\n}\n\nconst secret = readSecret(SECRET_NAME);\nif (!secret) {\n  throw new Error(\n    `${SECRET_NAME} is not readable on this n8n instance. Set it as a Variable ` +\n    '(Settings \u2192 Variables), or as an environment variable with ' +\n    'N8N_BLOCK_ENV_ACCESS_IN_NODE=false. Its value must match N8N_NOTIFY_SECRET in the app. ' +\n    'Refusing to process an unverifiable notification.');\n}\n\nconst headers = $input.item.json.headers || {};\nconst rawBody = $input.item.json.body;\n\nconst provided = headers['x-koya-signature'];\nif (!provided) {\n  throw new Error('Missing x-koya-signature header \u2014 refusing unsigned payload.');\n}\n\nconst raw = typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody);\nconst expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');\n\nconst a = Buffer.from(String(provided));\nconst b = Buffer.from(expected);\nif (!(a.length === b.length && crypto.timingSafeEqual(a, b))) {\n  throw new Error('Signature mismatch \u2014 refusing payload.');\n}\n\nconst payload = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody;\nconst level = payload.level === 'error' ? 'error' : 'success';\nconst title = String(payload.title || 'Koya Content Desk');\nconst lines = Array.isArray(payload.lines) ? payload.lines.map(String) : [];\nconst url = String(payload.url || '');\nconst correlationId = payload.correlationId || null;\n\n// Plain markdown, because the native Discord node's `content` field is text,\n// not the embeds array the old httpRequest body sent. The emoji carries the\n// same at-a-glance severity an embed's colour used to.\nconst discordContent = [\n  `${level === 'error' ? '\ud83d\udd34' : '\ud83d\udfe2'} **${title}**${url ? `\\n${url}` : ''}`,\n  ...lines,\n  correlationId ? `\\`${correlationId}\\`` : '',\n].filter(Boolean).join('\\n').slice(0, 3900);\n\nreturn {\n  json: {\n    kind: payload.kind,\n    level,\n    actionRequired: Boolean(payload.actionRequired),\n    requestId: payload.requestId,\n    correlationId,\n    title,\n    lines,\n    recipients: Array.isArray(payload.recipients) ? payload.recipients : [],\n    url,\n    emittedAt: payload.emittedAt,\n    discordContent,\n    notifyFrom: readConfig('NOTIFY_FROM_EMAIL', ''),\n  },\n};\n"
+      },
+      "id": "verify",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        300
+      ],
+      "notes": "Fails CLOSED on a bad or missing signature (throws, which n8n reports as a failed execution) and reads KOYA_NOTIFY_SECRET the same way koya-proposal-delivery.json reads its webhook secret in 3/build: $env first, $vars second, because touching a blocked $env THROWS rather than returning undefined and would otherwise kill this node before the fail-closed branch runs."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.level }}",
+                    "rightValue": "error",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "errors"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.level }}",
+                    "rightValue": "success",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "successes"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "route",
+      "name": "Route by level",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -320,
+        300
+      ],
+      "notes": "Two channels, deliberately separated. A success feed gets skimmed; an error feed gets read. Mixing them is how an error stops being noticed."
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "={{ $json.discordContent }}",
+        "options": {}
+      },
+      "id": "discordErrors",
+      "name": "Discord #content-errors",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        180
+      ],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "REPLACE_WITH_YOUR_DISCORD_CREDENTIAL_ID",
+          "name": "Discord webhook \u2014 content-errors"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "The webhook URL lives in this credential (n8n \u2192 Credentials \u2192 Discord Webhook), not in a workflow variable and not in this node's parameters. Same posture as 3/build/n8n/koya-proposal-delivery.json's Discord nodes: the URL never appears in the workflow's own JSON, in an execution log, or in a Variables list an admin can browse \u2014 only inside the encrypted credential store."
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "={{ $json.discordContent }}",
+        "options": {}
+      },
+      "id": "discordSuccess",
+      "name": "Discord #content-success",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        420
+      ],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "REPLACE_WITH_YOUR_DISCORD_CREDENTIAL_ID",
+          "name": "Discord webhook \u2014 content-success"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "The webhook URL lives in this credential (n8n \u2192 Credentials \u2192 Discord Webhook), not in a workflow variable and not in this node's parameters. Same posture as 3/build/n8n/koya-proposal-delivery.json's Discord nodes: the URL never appears in the workflow's own JSON, in an execution log, or in a Variables list an admin can browse \u2014 only inside the encrypted credential store."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.recipients.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-recipients",
+      "name": "Anyone to email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        160,
+        300
+      ],
+      "notes": "Most events are feed-only. An email per state change trains people to ignore the emails, so only the events the app marked with recipients get one."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.recipients.map(r => r.email).join(',') }}",
+        "subject": "={{ ($json.actionRequired ? 'Action required: ' : '') + $json.title }}",
+        "emailType": "html",
+        "message": "={{ '<div style=\"font:14px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;color:#111;max-width:560px\"><h2 style=\"font-size:17px;margin:0 0 14px\">' + $json.title + '</h2>' + $json.lines.map(l => '<p style=\"margin:0 0 10px\">' + l + '</p>').join('') + ($json.actionRequired ? '<p style=\"margin:20px 0\"><a href=\"' + $json.url + '\" style=\"background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600\">Open the request</a></p>' : '<p style=\"margin:20px 0\"><a href=\"' + $json.url + '\">' + $json.url + '</a></p>') + '<hr style=\"border:0;border-top:1px solid #e5e5e5;margin:24px 0\"><p style=\"color:#666;font-size:12px;margin:0\">Koya Content Desk. Nothing is published until a person approves it.</p></div>' }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "email-gmail",
+      "name": "Email via Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        400,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "PRIMARY EMAIL LANE, and it is Gmail rather than Resend for one practical reason: Resend will only deliver to arbitrary recipients from a VERIFIED DOMAIN. Without one its shared onboarding@resend.dev sender can reach the account owner and nobody else, so every notification addressed to anyone outside this project was accepted by the API and silently never arrived. An assessor would have received nothing.\n\nGmail sends as the connected account, needs no domain, and costs nothing. Connect it under Credentials, Gmail OAuth2.\n\nThe error output falls through to the Resend node, so a Gmail outage still gets the mail out where a domain IS configured."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $json.notifyFrom, to: $json.recipients.map(r => r.email), subject: ($json.actionRequired ? 'Action required: ' : '') + $json.title, html: '<div style=\"font:14px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;color:#111;max-width:560px\"><h2 style=\"font-size:17px;margin:0 0 14px\">' + $json.title + '</h2>' + $json.lines.map(l => '<p style=\"margin:0 0 10px\">' + l + '</p>').join('') + ($json.actionRequired ? '<p style=\"margin:20px 0\"><a href=\"' + $json.url + '\" style=\"background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600\">Open the request</a></p>' : '<p style=\"margin:20px 0\"><a href=\"' + $json.url + '\">' + $json.url + '</a></p>') + '<hr style=\"border:0;border-top:1px solid #e5e5e5;margin:24px 0\"><p style=\"color:#666;font-size:12px;margin:0\">Koya Content Desk. Nothing is published until a person approves it.</p></div>' }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "email",
+      "name": "Email via Resend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        380
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Resend API (Authorization: Bearer re_...)"
+        }
+      },
+      "notes": "SECOND LANE INSIDE n8n, reached only from the Gmail node's error output.\n\nIt needs a VERIFIED DOMAIN on the Resend account to reach anyone but the account owner, which is exactly why it is no longer first. Where a domain exists it is the better sender; where one does not, it silently delivers nothing, and silence is the failure mode this project exists to avoid.\n\nThe key lives in n8n's CREDENTIAL STORE as HTTP Header Auth, Authorization: Bearer re_\u2026, never in this node body and never in the app's environment.\n\nThe app keeps a Resend key of its own for a THIRD lane, used only when this whole workflow is unreachable. If that one fires, the email says so, because a reader who gets the mail but no Discord message should know why."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, kind: $json.kind, requestId: $json.requestId }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond",
+      "name": "Acknowledge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        300
+      ],
+      "notes": "The app treats a non-2xx as 'n8n lane failed' and falls back to sending the email itself. So this must respond only after the fan-out has been attempted \u2014 acknowledging early would make the fallback unreachable."
+    }
+  ],
+  "connections": {
+    "Notify webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Route by level",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by level": {
+      "main": [
+        [
+          {
+            "node": "Discord #content-errors",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Discord #content-success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord #content-errors": {
+      "main": [
+        [
+          {
+            "node": "Anyone to email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord #content-success": {
+      "main": [
+        [
+          {
+            "node": "Anyone to email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anyone to email?": {
+      "main": [
+        [
+          {
+            "node": "Email via Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Acknowledge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email via Resend": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email via Gmail": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email via Resend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "koya-content-desk",
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "koya-content-desk"
+    }
+  ]
+}
