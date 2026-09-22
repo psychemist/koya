@@ -1,0 +1,186 @@
+{
+  "name": "Koya Lead Notify",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "koya-lead-notify",
+        "responseMode": "responseNode",
+        "options": { "rawBody": true }
+      },
+      "id": "webhook-notify",
+      "name": "Notify webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-360, 0],
+      "webhookId": "koya-lead-notify"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verify the HMAC before anything is posted anywhere.\n// The webhook is a public URL. Unsigned, it is an open relay into the team's\n// Discord for anyone who learns it, and a channel that can be spoofed is worse\n// than no channel because people trust what it says.\n//\n// FAIL CLOSED. n8n Cloud has no process environment a workflow can reach, so\n// the secret is read from $env first and from $vars second, and a missing\n// secret is a rejection rather than a skipped check.\nconst crypto = require('crypto');\n\nconst item = $input.first();\nconst raw = item.binary?.data\n  ? Buffer.from(item.binary.data.data, 'base64').toString('utf8')\n  : (typeof item.json.body === 'string' ? item.json.body : JSON.stringify(item.json.body));\n\nconst headers = item.json.headers || {};\nconst signature = headers['x-koya-signature'];\n\nlet secret;\ntry { secret = $env.KOYA_LEAD_NOTIFY_SECRET; } catch (e) { secret = undefined; }\nif (!secret) { try { secret = $vars.KOYA_LEAD_NOTIFY_SECRET; } catch (e) { secret = undefined; } }\nif (!secret) throw new Error('KOYA_LEAD_NOTIFY_SECRET is not set. Refusing to post unverified.');\nif (!signature) throw new Error('No signature on this request. Rejected.');\n\nconst expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');\nconst a = Buffer.from(String(signature));\nconst b = Buffer.from(expected);\nif (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {\n  throw new Error('Signature mismatch. Rejected before posting anywhere.');\n}\n\nconst payload = JSON.parse(raw);\nreturn [{ json: payload }];"
+      },
+      "id": "verify-signature",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-140, 0]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "version": 2 },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.level }}",
+                    "rightValue": "error",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "errors"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "version": 2 },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.level }}",
+                    "rightValue": "success",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "success"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "route-by-level",
+      "name": "Route by level",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [80, 0]
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "={{ ($json.actionRequired ? '**Action required** ' : '') + '**' + $json.title + '**\\n' + $json.lines.join('\\n') + '\\n' + $json.url }}",
+        "options": {}
+      },
+      "id": "discord-errors",
+      "name": "Discord leads-errors",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [320, -120],
+      "credentials": { "discordWebhookApi": { "id": "REPLACE", "name": "Discord leads-errors" } }
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "={{ '**' + $json.title + '**\\n' + $json.lines.join('\\n') + '\\n' + $json.url }}",
+        "options": {}
+      },
+      "id": "discord-success",
+      "name": "Discord leads-success",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [320, 40],
+      "credentials": { "discordWebhookApi": { "id": "REPLACE", "name": "Discord leads-success" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.recipients.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "anyone-to-email",
+      "name": "Anyone to email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [560, 0]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.recipients.map(r => r.email).join(',') }}",
+        "subject": "={{ ($json.actionRequired ? 'Action required: ' : '') + $json.title }}",
+        "message": "={{ $json.lines.join('<br>') + '<br><br><a href=\"' + $json.url + '\">Open the run</a>' }}",
+        "options": {}
+      },
+      "id": "email-gmail",
+      "name": "Email via Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [800, -60],
+      "credentials": { "gmailOAuth2": { "id": "REPLACE", "name": "Koya Gmail" } },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: 'Koya Lead Desk <onboarding@resend.dev>', to: $json.recipients.map(r => r.email), subject: ($json.actionRequired ? 'Action required: ' : '') + $json.title, html: $json.lines.join('<br>') + '<br><br><a href=\"' + $json.url + '\">Open the run</a>' }) }}",
+        "options": {}
+      },
+      "id": "email-resend",
+      "name": "Email via Resend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1040, 40],
+      "credentials": { "httpHeaderAuth": { "id": "REPLACE", "name": "Resend API" } }
+    },
+    {
+      "parameters": { "options": {} },
+      "id": "acknowledge",
+      "name": "Acknowledge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1280, 0]
+    }
+  ],
+  "connections": {
+    "Notify webhook": { "main": [[{ "node": "Verify signature", "type": "main", "index": 0 }]] },
+    "Verify signature": { "main": [[{ "node": "Route by level", "type": "main", "index": 0 }]] },
+    "Route by level": {
+      "main": [
+        [{ "node": "Discord leads-errors", "type": "main", "index": 0 }],
+        [{ "node": "Discord leads-success", "type": "main", "index": 0 }]
+      ]
+    },
+    "Discord leads-errors": { "main": [[{ "node": "Anyone to email?", "type": "main", "index": 0 }]] },
+    "Discord leads-success": { "main": [[{ "node": "Anyone to email?", "type": "main", "index": 0 }]] },
+    "Anyone to email?": {
+      "main": [
+        [{ "node": "Email via Gmail", "type": "main", "index": 0 }],
+        [{ "node": "Acknowledge", "type": "main", "index": 0 }]
+      ]
+    },
+    "Email via Gmail": {
+      "main": [
+        [{ "node": "Acknowledge", "type": "main", "index": 0 }],
+        [{ "node": "Email via Resend", "type": "main", "index": 0 }]
+      ]
+    },
+    "Email via Resend": { "main": [[{ "node": "Acknowledge", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

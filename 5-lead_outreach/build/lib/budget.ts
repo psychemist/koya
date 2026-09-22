@@ -55,6 +55,30 @@ export type SpendReservation = { ledgerId: string };
 export async function reserveApifySpend(
   runId: string, estimateUsd: number, note: string,
 ): Promise<SpendReservation> {
+  try {
+    return await reserve(runId, estimateUsd, note);
+  } catch (e) {
+    // The daily cap is drawn against a shared cohort account, so the next
+    // person is already blocked. Somebody should know within seconds rather
+    // than at the end of a run.
+    if (e instanceof ProviderError && e.code === 'BUDGET_DAY') {
+      const { notify, operatorRecipients } = await import('./notify/index.ts');
+      await notify({
+        kind: 'budget_exhausted_daily',
+        runId,
+        scope: new Date().toISOString().slice(0, 10),
+        title: 'Koya Lead Desk: daily Apify cap reached',
+        lines: [e.message, 'This account is shared across the cohort.'],
+        to: operatorRecipients(),
+      });
+    }
+    throw e;
+  }
+}
+
+async function reserve(
+  runId: string, estimateUsd: number, note: string,
+): Promise<SpendReservation> {
   return tx(async (client) => {
     await client.query('select pg_advisory_xact_lock($1)', [SPEND_LOCK]);
     const t = await totals(client, runId);

@@ -2,7 +2,8 @@ import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { startup } from '@anthropic-ai/claude-agent-sdk';
 import { query, one, pool } from '../lib/db.ts';
-import { loadRun, transition, type RunRow } from '../lib/runs.ts';
+import { loadRun, transition, runStats, type RunRow } from '../lib/runs.ts';
+import { notify, buildDigest, operatorRecipients, type NotifyKind } from '../lib/notify/index.ts';
 import { runAgent, agentOptions } from '../lib/agent/run-agent.ts';
 import { assertApifyAccount } from '../lib/providers/apify.ts';
 import { config } from '../lib/config.ts';
@@ -56,8 +57,31 @@ async function handle(run: RunRow): Promise<void> {
     if (run.status === 'queued') {
       await transition(run.id, 'queued', 'refining_icp');
     }
+
+    // Feed only, deliberately no recipients. An email per state change teaches
+    // people to ignore the emails.
+    await notify({ kind: 'run_started', runId: run.id, title: 'Lead run started',
+                   lines: [`Objective: ${run.objective}`], to: [] });
+
     const outcome = await runAgent(run.id);
     const after = await loadRun(run.id);
+    const stats = await runStats(run.id);
+
+    const kind: NotifyKind = after.needs_clarification ? 'run_needs_clarification'
+      : after.status === 'complete' ? 'run_complete'
+      : after.status === 'partial' ? 'run_partial'
+      : 'run_failed';
+
+    await notify({
+      kind,
+      runId: run.id,
+      title: `Koya Lead Desk: ${kind.replace('run_', '').replace(/_/g, ' ')}`,
+      lines: after.needs_clarification
+        ? [`Objective: ${after.objective}`, after.needs_clarification]
+        : buildDigest(after, stats),
+      to: operatorRecipients(),
+    });
+
     log('info', 'run finished', {
       run: run.id, subtype: outcome.subtype, status: after.status,
       turns: outcome.turns, costUsd: outcome.costUsd,
@@ -65,12 +89,16 @@ async function handle(run: RunRow): Promise<void> {
   } catch (e) {
     // An uncaught throw must not leave the run stuck in a transient status
     // that no state machine will ever move again.
-    log('error', 'run failed', { run: run.id, error: e instanceof Error ? e.message : String(e) });
+    const message = e instanceof Error ? e.message : String(e);
+    log('error', 'run failed', { run: run.id, error: message });
     await transition(run.id,
       ['queued', 'refining_icp', 'discovering', 'researching', 'drafting'], 'failed',
-      undefined,
-      { error_message: e instanceof Error ? e.message : String(e), finished_at: new Date() },
+      undefined, { error_message: message, finished_at: new Date() },
     ).catch(() => undefined);
+    await notify({
+      kind: 'run_failed', runId: run.id, title: 'Koya Lead Desk: run failed',
+      lines: [`Objective: ${run.objective}`, message], to: operatorRecipients(),
+    });
   } finally {
     stop();
   }
