@@ -1,0 +1,10 @@
+{
+  "note": "One discovery batch that returns the same company three ways, plus one already delivered. The normaliser has to collapse the first three to a single key and the delivered-domain exclusion has to drop the fourth before it costs a scrape.",
+  "items": [
+    { "name": "Acme Payroll", "url": "https://www.acme.co/", "employees": 45 },
+    { "name": "Acme Payroll", "url": "http://acme.co/pricing?utm_source=search", "employees": 45 },
+    { "title": "Acme", "website": "acme.co", "employees": 45 },
+    { "name": "Northwind Payroll", "url": "https://northwind-payroll.example/about", "employees": 60 },
+    { "name": "Directory listing", "url": "https://linkedin.com/company/acme" }
+  ]
+}

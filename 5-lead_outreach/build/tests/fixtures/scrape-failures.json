@@ -1,0 +1,31 @@
+{
+  "note": "Three ways a page fails to be evidence, each of which must record its own reason rather than being flattened into one generic failure. The run continues past all three.",
+  "cases": [
+    {
+      "name": "dead-domain",
+      "url": "https://this-domain-does-not-resolve.example/",
+      "statusCode": 404,
+      "expectedCode": "SCRAPE_DEAD"
+    },
+    {
+      "name": "forbidden",
+      "url": "https://walled.example/about",
+      "statusCode": 403,
+      "expectedCode": "SCRAPE_403"
+    },
+    {
+      "name": "js-only",
+      "url": "https://spa.example/",
+      "statusCode": 200,
+      "markdown": "Home About Contact Login",
+      "expectedUsable": false
+    },
+    {
+      "name": "boilerplate",
+      "url": "https://thin.example/",
+      "statusCode": 200,
+      "markdown": "Menu Home Products Pricing Careers Blog Login Sign up",
+      "expectedUsable": false
+    }
+  ]
+}
