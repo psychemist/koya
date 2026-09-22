@@ -6,13 +6,15 @@ import { query, one } from '../db.ts';
 export type Fetched = { markdown: string; statusCode: number };
 export type Fetcher = (url: string) => Promise<Fetched>;
 
+export type ScrapeProvider = 'firecrawl' | 'direct' | 'cache';
+
 export type ScrapeResult = {
   markdown: string;
   httpStatus: number;
   contentHash: string;
   usable: boolean;
   fromCache: boolean;
-  provider: 'firecrawl' | 'cache';
+  provider: ScrapeProvider;
 };
 
 /**
@@ -101,6 +103,50 @@ const firecrawlFetcher: Fetcher = async (url) => {
   };
 };
 
+/**
+ * The secondary lane, used when Firecrawl is out of credits or rate limiting.
+ *
+ * Deliberately crude: fetch the page and strip it to text. It gets less than
+ * Firecrawl does and will fail on anything that needs JavaScript, which is
+ * why it is second. The alternative is that a spent credit balance ends the
+ * research entirely, and a thinner page is worth more than no page.
+ *
+ * Which provider served each page is recorded, so a reviewer can see that a
+ * lead was judged from the weaker source.
+ */
+const directFetcher: Fetcher = async (url) => {
+  const res = await fetch(url, {
+    redirect: 'follow',
+    headers: { 'user-agent': 'KoyaLeadDesk/1.0 (+company research; contact via koya.test)' },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) {
+    const err = new Error(`Direct fetch responded ${res.status}`) as Error & { statusCode: number };
+    err.statusCode = res.status;
+    throw err;
+  }
+  const html = await res.text();
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { markdown: text, statusCode: res.status };
+};
+
+/** Firecrawl failures that mean "this provider cannot serve this page right
+ *  now", as opposed to "this page does not exist". Only the former falls back:
+ *  a dead domain is dead on both lanes. */
+const FALLBACK_WORTHY = new Set(['FIRECRAWL_402', 'FIRECRAWL_429', 'FIRECRAWL_5XX']);
+
 function mapError(e: any): ProviderError {
   const status = e?.statusCode ?? e?.status;
   if (status === 402) {
@@ -153,10 +199,20 @@ export async function scrape(
   const host = new URL(urlNorm).hostname;
 
   let fetched: Fetched;
+  let provider: ScrapeProvider = 'firecrawl';
   try {
     fetched = await withDomainSlot(host, () => fetcher(urlNorm));
   } catch (e) {
-    throw mapError(e);
+    const mapped = mapError(e);
+    // A stubbed fetcher is the test's whole point, so it is never silently
+    // replaced by a real network call.
+    if (opts.fetcher || !FALLBACK_WORTHY.has(mapped.code)) throw mapped;
+    try {
+      fetched = await withDomainSlot(host, () => directFetcher(urlNorm));
+      provider = 'direct';
+    } catch {
+      throw mapped;     // report the primary failure, not the secondary one
+    }
   }
 
   const contentHash = sha256(fetched.markdown);
@@ -177,6 +233,6 @@ export async function scrape(
     contentHash,
     usable: isUsable(fetched.markdown),
     fromCache: false,
-    provider: 'firecrawl',
+    provider,
   };
 }

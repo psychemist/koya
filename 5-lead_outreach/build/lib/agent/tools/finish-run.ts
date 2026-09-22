@@ -4,6 +4,7 @@ import { baseArgs, ok, failed, refused } from './shared.ts';
 import { withToolCall } from '../../toolcalls.ts';
 import { query } from '../../db.ts';
 import { loadRun, runStats, transition } from '../../runs.ts';
+import { recomputeScorecard } from '../../gates/list-quality.ts';
 
 export const finishRun = tool(
   'finish_run',
@@ -34,6 +35,21 @@ export const finishRun = tool(
               `and ${stats.qualified} are stored. Call get_run_state, reconcile, and try again.`),
             resultSummary: { rejected: 'recount', claimed: args.claimed_qualified,
                              actual: stats.qualified },
+          };
+        }
+
+        // The six dimensions the lead-list-quality skill says are recomputed
+        // here. A list that fails one is not a finished list, however many
+        // rows it has.
+        const scorecard = await recomputeScorecard(args.run_id);
+        if (!scorecard.passed) {
+          const failures = scorecard.dimensions.filter((d) => !d.passed);
+          return {
+            value: refused(
+              'The scorecard does not pass, so this run is not finished:\n' +
+              failures.map((f) => `- ${f.dimension}: ${f.detail}`).join('\n') +
+              '\nFix these and call finish_run again. Do not pad the list to compensate.'),
+            resultSummary: { rejected: 'scorecard', failures: failures.map((f) => f.dimension) },
           };
         }
 
@@ -77,7 +93,10 @@ export const finishRun = tool(
         );
 
         return {
-          value: ok({ status, qualified: stats.qualified, target: run.target_leads, stats }),
+          value: ok({
+            status, qualified: stats.qualified, target: run.target_leads, stats,
+            scorecard: scorecard.dimensions.map((d) => `${d.dimension}: ${d.detail}`),
+          }),
           resultSummary: { status, ...stats },
         };
       });

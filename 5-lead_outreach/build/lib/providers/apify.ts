@@ -71,6 +71,37 @@ export function toCandidate(item: Record<string, unknown>): Candidate | null {
   };
 }
 
+const START_ATTEMPTS = 3;
+
+/**
+ * Bounded retries with jittered backoff, for rate limits and 5xx only.
+ *
+ * The jitter matters because the cohort shares one Apify account: a fixed
+ * backoff makes every worker that got a 429 come back at the same instant and
+ * rate-limit each other again. Nothing else is retried, because a 4xx that is
+ * not a 429 means the request was wrong and sending it again will not fix it.
+ *
+ * The retry lives here rather than being left to the agent. `ProviderError`
+ * used to tell the model "this is transient, you may try once more", which
+ * delegates a backoff decision to something with no clock.
+ */
+async function startWithBackoff(actorId: string, call: ActorCall) {
+  let lastError: any;
+  for (let attempt = 1; attempt <= START_ATTEMPTS; attempt++) {
+    try {
+      return await apify().actor(actorId).start(call.input, call.options);
+    } catch (e: any) {
+      lastError = e;
+      const status = e?.statusCode ?? e?.status;
+      const worthRetrying = status === 429 || (typeof status === 'number' && status >= 500);
+      if (!worthRetrying || attempt === START_ATTEMPTS) throw e;
+      const base = 500 * 2 ** (attempt - 1);
+      await new Promise((r) => setTimeout(r, base + Math.random() * base));
+    }
+  }
+  throw lastError;
+}
+
 /**
  * An actor left running is an actor still spending, so an overrun is aborted
  * rather than waited out.
@@ -125,14 +156,14 @@ export async function discover(
 
   let started;
   try {
-    started = await apify().actor(actorId).start(call.input, call.options);
+    started = await startWithBackoff(actorId, call);
   } catch (e: any) {
     await settle(0, 'actor failed to start, nothing charged');
     const status = e?.statusCode ?? e?.status;
     throw new ProviderError(
       status === 429 ? 'APIFY_429' : status >= 500 ? 'APIFY_5XX' : 'APIFY_START_FAILED',
-      `Apify actor ${actorId} did not start: ${e?.message ?? e}`,
-      status === 429 || status >= 500,
+      `Apify actor ${actorId} did not start after ${START_ATTEMPTS} attempts: ${e?.message ?? e}`,
+      false,   // the retries have already happened; the agent must not add more
     );
   }
 

@@ -5,6 +5,7 @@ import { notificationStatus } from '../../../lib/notify/index.ts';
 import { ConfirmDelete } from '../../ui/confirm';
 import { Progress } from './progress';
 import { DraftEditor } from './draft-editor';
+import { ClarifyForm } from './clarify-form';
 import { requireUserPage, canSeeRun, canDeleteRun } from '../../../lib/auth.ts';
 
 export const dynamic = 'force-dynamic';
@@ -82,13 +83,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
       <Progress runId={id} initialStatus={run.status} />
 
       {run.needs_clarification && (
-        <div className="error">
-          <b>This run is waiting on you.</b>
-          <p className="small" style={{ margin: '6px 0 0' }}>{run.needs_clarification}</p>
-          <p className="small muted" style={{ margin: '6px 0 0' }}>
-            Nothing has been spent. Start a new run with a more specific objective.
-          </p>
-        </div>
+        <ClarifyForm runId={id} question={run.needs_clarification} />
       )}
 
       {run.shortfall_reason && (
