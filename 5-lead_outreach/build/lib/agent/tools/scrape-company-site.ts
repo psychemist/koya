@@ -99,7 +99,11 @@ export const scrapeCompanySite = tool(
             url: args.url,
             retrieved: new Date().toISOString(),
             injectionFlagged: screened.flagged,
-            content: screened.usable ? (screened.summary || page.markdown) : null,
+            // NEVER fall back to the raw page here. An empty summary means the
+            // screen produced nothing usable, and handing the unscreened
+            // markdown to the tool-holding model is precisely what the
+            // quarantine exists to prevent.
+            content: screened.usable && screened.summary ? screened.summary : null,
           });
 
           return {

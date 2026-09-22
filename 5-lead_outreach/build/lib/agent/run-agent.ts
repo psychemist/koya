@@ -2,7 +2,7 @@ import { query as agentQuery, type Options } from '@anthropic-ai/claude-agent-sd
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.ts';
 import { query } from '../db.ts';
-import { loadRun, transition, type RunRow } from '../runs.ts';
+import { loadRun, transition, runStats, type RunRow, type RunStatus } from '../runs.ts';
 import { recordSpend } from '../budget.ts';
 import { leadgenServer } from './server.ts';
 import { budgetHook } from './hooks.ts';
@@ -86,27 +86,41 @@ export async function runAgent(runId: string): Promise<AgentOutcome> {
     }
   }
 
-  await query(
-    'update public.runs set claude_cost_usd = claude_cost_usd + $2, agent_turns = $3 where id = $1',
-    [runId, costUsd, turns],
-  );
+  await query('update public.runs set agent_turns = $2 where id = $1', [runId, turns]);
+  // recordSpend refreshes runs.claude_cost_usd from the ledger, so the cost is
+  // written in exactly one place rather than incremented here as well.
   if (costUsd > 0) await recordSpend(runId, 'claude', costUsd, 'agent loop');
+
+  const WORKING: RunStatus[] =
+    ['queued', 'refining_icp', 'discovering', 'researching', 'drafting'];
 
   // A cap is never reported as success. The run ends partial naming the cap,
   // with everything produced so far preserved.
   if (subtype === 'error_max_turns' || subtype === 'error_max_budget_usd') {
-    await transition(runId,
-      ['queued', 'refining_icp', 'discovering', 'researching', 'drafting'], 'partial',
-      undefined, {
-        shortfall_reason: subtype === 'error_max_turns'
-          ? `The agent reached its turn cap of ${config.limits.maxTurns} before finishing.`
-          : `The agent reached its spend cap of $${config.limits.maxBudgetUsd}.`,
-        finished_at: new Date(),
-      });
+    await transition(runId, WORKING, 'partial', undefined, {
+      shortfall_reason: subtype === 'error_max_turns'
+        ? `The agent reached its turn cap of ${config.limits.maxTurns} before finishing.`
+        : `The agent reached its spend cap of $${config.limits.maxBudgetUsd}.`,
+      finished_at: new Date(),
+    });
   } else if (subtype !== 'success') {
-    await transition(runId,
-      ['queued', 'refining_icp', 'discovering', 'researching', 'drafting'], 'failed',
-      undefined, { error_message: `Agent ended with ${subtype}.`, finished_at: new Date() });
+    /**
+     * Partial results are never discarded.
+     *
+     * An overload or a mid-flight error after seven good leads is a short run,
+     * not a failed one. `failed` means the run produced nothing usable, and
+     * reporting it that way would hide work a reviewer can still act on.
+     */
+    const stats = await runStats(runId);
+    const produced = stats.assessed > 0;
+    await transition(runId, WORKING, produced ? 'partial' : 'failed', undefined, {
+      ...(produced
+        ? { shortfall_reason:
+              `The agent stopped early (${subtype}) after assessing ${stats.assessed} ` +
+              `companies. The leads below are what it had finished.` }
+        : { error_message: `Agent ended with ${subtype} before producing anything usable.` }),
+      finished_at: new Date(),
+    });
   }
 
   return { subtype, costUsd, turns, skillsLoaded };

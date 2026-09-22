@@ -69,9 +69,50 @@ test('the hook still lets the agent read its own state on a terminal run',
     await dropRun(run.id);
   });
 
+test('the hook denies every spending tool while a run is parked on a question',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({
+      status: 'refining_icp',
+      needs_clarification: 'Which country should I search in?',
+    } as any);
+    for (const tool of ['mcp__leadgen__discover_companies',
+                        'mcp__leadgen__scrape_company_site']) {
+      const d = await budgetHook({
+        hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { run_id: run.id },
+      } as any);
+      assert.equal(d.hookSpecificOutput?.permissionDecision, 'deny', `${tool} was allowed`);
+      assert.match(d.hookSpecificOutput!.permissionDecisionReason!, /waiting on an answer/i);
+    }
+    // Reading state is still allowed, or the agent cannot find its way out.
+    const readOnly = await budgetHook({
+      hook_event_name: 'PreToolUse', tool_name: 'mcp__leadgen__get_run_state',
+      tool_input: { run_id: run.id },
+    } as any);
+    assert.equal(readOnly.hookSpecificOutput, undefined);
+    await dropRun(run.id);
+  });
+
+test('the hook denies discovery until an ICP has been saved',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ status: 'refining_icp' });
+    const d = await budgetHook({
+      hook_event_name: 'PreToolUse',
+      tool_name: 'mcp__leadgen__discover_companies',
+      tool_input: { run_id: run.id },
+    } as any);
+    assert.equal(d.hookSpecificOutput?.permissionDecision, 'deny');
+    assert.match(d.hookSpecificOutput!.permissionDecisionReason!, /save_icp/);
+    await dropRun(run.id);
+  });
+
 test('the hook denies discovery once the candidate budget is spent',
   { skip: skipWithoutDatabase }, async () => {
-    const run = await seedRun({ candidate_budget: 5, candidates_used: 5 });
+    // An ICP is saved here so the budget refusal is what is under test rather
+    // than the earlier refusal for a run that has not refined its criteria.
+    const run = await seedRun({
+      candidate_budget: 5, candidates_used: 5,
+      icp: JSON.stringify({ hard_filters: ['United States'] }),
+    } as any);
     const d = await budgetHook({
       hook_event_name: 'PreToolUse',
       tool_name: 'mcp__leadgen__discover_companies',

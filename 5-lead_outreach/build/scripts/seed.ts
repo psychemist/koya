@@ -18,11 +18,11 @@ try { assertPostgresUrl(url); } catch (e) { console.error((e as Error).message);
 
 const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
 
-const PASSWORD = process.env.SEED_PASSWORD || 'lead-desk-2026';
+const PASSWORD = process.env.SEED_PASSWORD || 'lead-pipe-2026';
 
 const users = [
   { email: 'operator@koya.test', name: 'Ada Okafor', role: 'operator' },
-  { email: 'admin@koya.test', name: 'Ikechukwu Agudike', role: 'admin' },
+  { email: 'admin@koya.test', name: 'Chukwu Dike', role: 'admin' },
 ];
 
 for (const u of users) {

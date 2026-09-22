@@ -105,14 +105,35 @@ async function reserve(
   });
 }
 
+/**
+ * The ledger is the source of truth; the columns on `runs` are a cache of it.
+ *
+ * They exist because the digest, the run list and the sample pack all read
+ * cost from the run rather than re-aggregating, and a cache nobody refreshes
+ * reads $0.00 forever, which is worse than no figure at all.
+ */
+async function syncRunSpend(runId: string | null): Promise<void> {
+  if (!runId) return;
+  await query(
+    `update public.runs set
+       apify_spend_usd = (select coalesce(sum(amount_usd),0) from public.spend_ledger
+                           where run_id = $1 and provider = 'apify'),
+       claude_cost_usd = (select coalesce(sum(amount_usd),0) from public.spend_ledger
+                           where run_id = $1 and provider = 'claude')
+     where id = $1`,
+    [runId],
+  ).catch(() => undefined);
+}
+
 /** Replace a reservation with what the provider actually charged. */
 export async function settleSpend(
   ledgerId: string, actualUsd: number, note: string,
 ): Promise<void> {
-  await query(
-    'update public.spend_ledger set amount_usd = $2, note = $3 where id = $1',
+  const [row] = await query<{ run_id: string | null }>(
+    'update public.spend_ledger set amount_usd = $2, note = $3 where id = $1 returning run_id',
     [ledgerId, actualUsd, note],
   );
+  await syncRunSpend(row?.run_id ?? null);
 }
 
 export async function recordSpend(
@@ -123,6 +144,7 @@ export async function recordSpend(
     'insert into public.spend_ledger (run_id, provider, amount_usd, note) values ($1,$2,$3,$4)',
     [runId, provider, amountUsd, note],
   );
+  await syncRunSpend(runId);
 }
 
 export async function apifySpend(runId: string): Promise<number> {

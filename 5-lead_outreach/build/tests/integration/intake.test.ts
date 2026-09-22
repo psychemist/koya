@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { query, one } from '../../lib/db.ts';
+import { hashPassword } from '../../lib/auth.ts';
 import { runCopyGates, isBlocked } from '../../lib/gates/copy.ts';
 import { seedRun, dropRun, skipWithoutDatabase } from '../helpers.ts';
 
@@ -15,27 +17,54 @@ async function serverUp(): Promise<boolean> {
 }
 const skipWithoutServer = skipWithoutDatabase || !(await serverUp());
 
-const post = (path: string, body: unknown) =>
+const post = (path: string, body: unknown, cookie = '') =>
   fetch(`${base}${path}`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
+    body: JSON.stringify(body),
+  });
+
+/** Starting a run needs an account, so the test needs one too. */
+async function signedInCookie(): Promise<{ cookie: string; userId: string }> {
+  const email = `intake-${randomUUID().slice(0, 8)}@koya.test`;
+  const password = 'lead-desk-test';
+  const user = await one<{ id: string }>(
+    `insert into public.users (email, name, role, password_hash)
+     values ($1,'Intake Test','operator',$2) returning id`,
+    [email, hashPassword(password)]);
+  const res = await post('/api/login', { email, password });
+  const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0];
+  assert.ok(cookie.includes('koya_lead_session'), 'sign in did not set a session cookie');
+  return { cookie, userId: user!.id };
+}
+
+test('an unauthenticated submit is refused before a run exists',
+  { skip: skipWithoutServer }, async () => {
+    const res = await post('/api/runs',
+      { objective: 'Find 10 US B2B SaaS companies with 10 to 100 employees' });
+    assert.equal(res.status, 401);
   });
 
 test('a double submit yields one run', { skip: skipWithoutServer }, async () => {
+  const { cookie, userId } = await signedInCookie();
   const objective = `Find 10 US B2B SaaS companies with 10 to 100 employees ${Date.now()}`;
   const [a, b] = await Promise.all([
-    post('/api/runs', { objective }).then((r) => r.json()),
-    post('/api/runs', { objective }).then((r) => r.json()),
+    post('/api/runs', { objective }, cookie).then((r) => r.json()),
+    post('/api/runs', { objective }, cookie).then((r) => r.json()),
   ]);
   assert.equal(a.id, b.id);
   const rows = await query('select id from runs where objective like $1', [`%${objective}%`]);
   assert.equal(rows.length, 1);
   await dropRun(a.id);
+  await query('delete from public.users where id = $1', [userId]);
 });
 
 test('an objective too short to search is refused before a run exists',
   { skip: skipWithoutServer }, async () => {
-    const res = await post('/api/runs', { objective: 'saas' });
+    const { cookie, userId } = await signedInCookie();
+    const res = await post('/api/runs', { objective: 'saas' }, cookie);
     assert.equal(res.status, 422);
+    await query('delete from public.users where id = $1', [userId]);
   });
 
 test('no route response contains a credential', { skip: skipWithoutServer }, async () => {

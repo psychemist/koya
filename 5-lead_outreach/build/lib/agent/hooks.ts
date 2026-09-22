@@ -1,6 +1,13 @@
 import type { HookInput } from '@anthropic-ai/claude-agent-sdk';
 import { loadRun, isTerminal } from '../runs.ts';
 import { query } from '../db.ts';
+import { apifySpend } from '../budget.ts';
+
+/** The tools that cost money. Everything else is bookkeeping. */
+const SPENDS = new Set([
+  'mcp__leadgen__discover_companies',
+  'mcp__leadgen__scrape_company_site',
+]);
 
 /** The SDK's HookJSONOutput is a union with an async variant that carries no
  *  decision. This is the half a PreToolUse hook actually returns. */
@@ -46,6 +53,30 @@ export async function budgetHook(input: HookInput): Promise<Decision> {
     return logDenial(runId, input.tool_name,
       `Run is ${run.status}. No further writes are accepted.`);
   }
+
+  /**
+   * A parked run is parked.
+   *
+   * `save_icp` tells the agent to stop, which is a request to a model and
+   * therefore not a control. This is the control: while a run is waiting on a
+   * person, nothing that costs money runs, whatever the agent decides next.
+   */
+  if (run.needs_clarification && SPENDS.has(input.tool_name)) {
+    return logDenial(runId, input.tool_name,
+      'This run is waiting on an answer from the operator. Nothing may be spent until ' +
+      'that question is answered. Stop here.');
+  }
+
+  /**
+   * The ICP is written before any paid call. That ordering is the first thing
+   * the brief asks to see, and until now it lived only in the system prompt.
+   */
+  if (input.tool_name === 'mcp__leadgen__discover_companies' && run.icp === null) {
+    return logDenial(runId, input.tool_name,
+      'No ICP has been saved for this run. Refine the objective and call save_icp first: ' +
+      'discovery costs money and a bad ICP spends it on the wrong companies.');
+  }
+
   if (input.tool_name === 'mcp__leadgen__discover_companies' &&
       run.candidates_used >= run.candidate_budget) {
     return logDenial(runId, input.tool_name,
@@ -55,6 +86,18 @@ export async function budgetHook(input: HookInput): Promise<Decision> {
       run.scrapes_used >= run.scrape_budget) {
     return logDenial(runId, input.tool_name, 'Scrape budget exhausted.');
   }
+
+  // The dollar caps, re-checked here rather than only inside the reservation.
+  // Three implementations is the point; two is a promise and a backstop.
+  if (input.tool_name === 'mcp__leadgen__discover_companies') {
+    const spent = await apifySpend(runId).catch(() => 0);
+    if (spent >= Number(run.apify_cap_usd)) {
+      return logDenial(runId, input.tool_name,
+        `This run has spent $${spent.toFixed(4)} on discovery and its cap is ` +
+        `$${Number(run.apify_cap_usd).toFixed(2)}.`);
+    }
+  }
+
   return allow;
 }
 

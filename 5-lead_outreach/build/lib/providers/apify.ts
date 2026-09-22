@@ -16,24 +16,39 @@ export function apify(): ApifyClient {
   return client;
 }
 
+export type ActorCall = {
+  /** Sent verbatim as the actor's own input. */
+  input: { query: string };
+  /** Sent as ActorStartOptions, which is where Apify reads the caps. */
+  options: {
+    memory: number; timeout: number; maxItems: number; maxTotalChargeUsd: number;
+  };
+};
+
 /**
  * Every Apify call carries a hard stop.
  *
- * `maxItems` is documented as the cap on CHARGED dataset items for a
- * pay-per-result actor, and `maxTotalChargeUsd` terminates the run gracefully
- * rather than letting it keep spending. There is no code path that omits
- * either, which is why the limit is an argument this function refuses to be
- * called without.
+ * `maxItems` caps CHARGED dataset items for a pay-per-result actor and
+ * `maxTotalChargeUsd` caps a pay-per-event one. Both are ActorStartOptions,
+ * NOT actor input: the client validates the options object against an exact
+ * shape and builds the query string from it, so a cap written into the input
+ * is handed to the actor as an unrecognised field and enforced by nobody.
+ * That is a silent failure, which is why input and options are built together
+ * here rather than assembled at the call site.
  */
-export function buildActorInput(queryText: string, limit: number) {
+export function buildActorCall(queryText: string, limit: number): ActorCall {
   if (typeof limit !== 'number' || !Number.isFinite(limit) || limit < 1) {
     throw new ProviderError('BUDGET_RUN',
       'Refusing to start an Apify run with no candidate budget left.');
   }
   return {
-    query: queryText,
-    maxItems: Math.floor(limit),
-    maxTotalChargeUsd: config.limits.runApifyCapUsd,
+    input: { query: queryText },
+    options: {
+      memory: 1024,
+      timeout: 180,                 // seconds. An actor left running is an actor still spending.
+      maxItems: Math.floor(limit),
+      maxTotalChargeUsd: config.limits.runApifyCapUsd,
+    },
   };
 }
 
@@ -85,7 +100,7 @@ export type Discovery = {
 export async function discover(
   runId: string, queryText: string, limit: number,
 ): Promise<Discovery> {
-  const input = buildActorInput(queryText, limit);
+  const call = buildActorCall(queryText, limit);
   const estimate = limit * config.limits.apifyPricePerResultUsd;
   const actorId = config.pinnedActorId();
 
@@ -93,11 +108,26 @@ export async function discover(
   // concurrent runs can both pass.
   const reservation = await reserveApifySpend(runId, estimate, `actor=${actorId}`);
 
+  /**
+   * A reservation that is never replaced is a lie the ledger keeps telling.
+   *
+   * Every exit from this function settles exactly once. The path that matters
+   * is the abort: a run that overran its wall clock is the one most likely to
+   * have spent MORE than the estimate, so leaving the estimate in place would
+   * understate the shared daily cap for everybody else.
+   */
+  let settled = false;
+  const settle = async (usd: number, note: string) => {
+    if (settled) return;
+    settled = true;
+    await settleSpend(reservation.ledgerId, usd, note).catch(() => undefined);
+  };
+
   let started;
   try {
-    started = await apify().actor(actorId).start(input, { memory: 1024, timeout: 180 });
+    started = await apify().actor(actorId).start(call.input, call.options);
   } catch (e: any) {
-    await settleSpend(reservation.ledgerId, 0, 'actor failed to start, nothing charged');
+    await settle(0, 'actor failed to start, nothing charged');
     const status = e?.statusCode ?? e?.status;
     throw new ProviderError(
       status === 429 ? 'APIFY_429' : status >= 500 ? 'APIFY_5XX' : 'APIFY_START_FAILED',
@@ -106,12 +136,29 @@ export async function discover(
     );
   }
 
-  const finished = await waitOrAbort(started.id, 200_000);
-  const { items } = await apify().dataset(finished.defaultDatasetId).listItems();
+  let finished;
+  let items: unknown[];
+  try {
+    finished = await waitOrAbort(started.id, 200_000);
+    ({ items } = await apify().dataset(finished.defaultDatasetId).listItems());
+  } catch (e) {
+    // Ask Apify what the run actually cost before giving up on it. If even
+    // that fails, the estimate stands rather than being zeroed: an unknown
+    // spend must not read as no spend.
+    const reported = await apify().run(started.id).get()
+      .then((r) => (r as any)?.usageTotalUsd)
+      .catch(() => undefined);
+    await settle(
+      typeof reported === 'number' ? reported : estimate,
+      typeof reported === 'number'
+        ? `actor=${actorId} runId=${started.id} did not complete, charged as reported`
+        : `actor=${actorId} runId=${started.id} did not complete, usage unknown, estimate held`,
+    );
+    throw e;
+  }
 
   const charged = (finished as any).usageTotalUsd;
-  await settleSpend(
-    reservation.ledgerId,
+  await settle(
     typeof charged === 'number' ? charged : items.length * config.limits.apifyPricePerResultUsd,
     `actor=${actorId} runId=${finished.id} items=${items.length}`,
   );

@@ -30,7 +30,10 @@ type Page = {
  *  reading the strip. */
 const NOTIFY_STATE: Record<string, { text: string; className: string }> = {
   sent: { text: 'Notified by email and Discord', className: 'state-sent' },
-  degraded: { text: 'Emailed. Discord was not reached.', className: 'state-degraded' },
+  // Covers both shapes of partial delivery: an email that went while Discord
+  // did not, and a feed-only event whose Discord post was lost with nobody
+  // owed an email. The strip cannot tell them apart, so it claims neither.
+  degraded: { text: 'Discord was not reached', className: 'state-degraded' },
   pending: { text: 'Emit did not complete', className: 'state-pending' },
   failed: { text: 'Nobody was notified', className: 'state-failed' },
   skipped_not_configured: { text: 'Notifications are not configured', className: 'state-skipped' },

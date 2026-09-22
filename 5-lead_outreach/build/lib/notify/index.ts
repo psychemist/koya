@@ -122,11 +122,22 @@ export async function notify(input: NotifyInput): Promise<void> {
   if (fb.ok) return mark(claimed.id, 'resend_fallback', 'degraded', primary.code);
 
   // A FEED-ONLY EVENT WITH NOBODY TO EMAIL IS NOT A FAILED NOTIFICATION.
+  //
   // `run_started` deliberately carries no recipients. Week 4 wrote that down
-  // as `failed` and put a red row on the UI for something working as designed.
+  // as `failed` and put a red row on the UI for something working as designed,
+  // and the first version of this module reproduced the bug exactly: with n8n
+  // configured but unreachable, `primary.configured` was true and the state
+  // landed on `failed` even though nobody was owed a message.
+  //
+  // `failed` is reserved for "a person who needed telling was not told". When
+  // there was nobody to tell, a lost feed post is `degraded`: something did
+  // not arrive, but no one is waiting on it.
   const nobodyToEmail = recipients.length === 0;
-  const state = (nobodyToEmail ? primary.configured : (fb.configured || primary.configured))
-    ? 'failed' : 'skipped_not_configured';
+  if (nobodyToEmail) {
+    return mark(claimed.id, 'none',
+      primary.configured ? 'degraded' : 'skipped_not_configured', primary.code);
+  }
+  const state = (fb.configured || primary.configured) ? 'failed' : 'skipped_not_configured';
   return mark(claimed.id, 'none', state, `${primary.code}/${fb.code}`);
 }
 

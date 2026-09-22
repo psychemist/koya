@@ -4,6 +4,7 @@ import { baseArgs, ok, failed, refused } from './shared.ts';
 import { withToolCall } from '../../toolcalls.ts';
 import { query } from '../../db.ts';
 import { loadRun } from '../../runs.ts';
+import { notify, operatorRecipients } from '../../notify/index.ts';
 
 /** Mirrors the shape the icp-refinement skill is told to produce, so the agent
  *  knows the contract rather than discovering it through a rejection. */
@@ -36,13 +37,33 @@ export const saveIcp = tool(
         // Parking is a legitimate outcome and costs nothing, so it is allowed
         // to skip the hard_filters requirement that a searchable ICP has.
         if (args.needs_clarification) {
+          const run = await loadRun(args.run_id);
           await query(
             `update public.runs set needs_clarification = $2, status = 'refining_icp'
               where id = $1`,
             [args.run_id, args.needs_clarification],
           );
+
+          /**
+           * Emitted here rather than at the end of the loop, because this is
+           * the one gate where nothing proceeds until a person answers and
+           * telling them when the agent finally unwinds is telling them late.
+           *
+           * This is not a tool the agent can choose to call: it is a fixed
+           * consequence of a database write, on our side of the boundary. The
+           * agent still has no way to compose or address a message.
+           */
+          await notify({
+            kind: 'run_needs_clarification',
+            runId: args.run_id,
+            title: 'Koya Lead Desk: a run is waiting on you',
+            lines: [`Objective: ${run.objective}`, args.needs_clarification],
+            to: operatorRecipients(),
+          });
+
           return {
-            value: ok('Run parked awaiting an operator answer. Stop here. Do not spend.'),
+            value: ok('Run parked awaiting an operator answer. Stop here. Do not spend. ' +
+                      'The tools that cost money are now closed to you for this run.'),
             resultSummary: { parked: true },
           };
         }

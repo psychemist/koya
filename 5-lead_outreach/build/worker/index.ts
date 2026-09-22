@@ -23,12 +23,24 @@ const HEARTBEAT_MS = 60_000;
 export async function claimOne(workerId: string): Promise<RunRow | null> {
   return one<RunRow>(
     `update public.runs
-        set claimed_by = $1, claimed_at = now(), version = version + 1
+        set claimed_by = $1,
+            claimed_at = now(),
+            version = version + 1,
+            -- Moving the run off 'queued' in the SAME statement is what makes
+            -- the claim stick. FOR UPDATE SKIP LOCKED only holds the row for
+            -- the length of this transaction: leaving the status alone meant a
+            -- claimed run still matched the predicate, so the next worker
+            -- claimed it again and both ran it, spending the budget twice.
+            status = case when status = 'queued' then 'refining_icp' else status end
       where id = (
         select id from public.runs
-         where status = 'queued'
-            or (status not in ('complete','partial','failed')
-                and claimed_at < now() - interval '15 minutes')
+         -- A run waiting on a person is not work. Without this clause a parked
+         -- run stays non-terminal forever, is reclaimed every lease window,
+         -- and burns a full agent loop each time for as long as it exists.
+         where needs_clarification is null
+           and ((status = 'queued' and claimed_at is null)
+                or (status not in ('complete','partial','failed')
+                    and claimed_at < now() - interval '15 minutes'))
          order by created_at
          for update skip locked
          limit 1
