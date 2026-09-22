@@ -1,0 +1,56 @@
+# Two long-running services, one Supabase project.
+#
+# The split is not tidiness. The shareable link is graded, and a dead link is an
+# unmarkable submission. If the agent OOMs or the native binary fails to
+# resolve, the worker dies and `web` keeps serving every run that already
+# completed. A single-process deployment loses the link along with the agent.
+services:
+  - type: web
+    name: koya-lead-desk-web
+    runtime: node
+    rootDir: 5-lead_outreach/build
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      # The web service holds NO provider key. It cannot leak what it never has.
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+
+  - type: worker
+    name: koya-lead-desk-worker
+    runtime: node
+    rootDir: 5-lead_outreach/build
+    plan: starter
+    # NOT `npm ci --omit=optional`: the Agent SDK ships its native binary through
+    # npm optional dependencies, and omitting them leaves no binary to spawn.
+    buildCommand: npm ci
+    startCommand: npm run worker
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APIFY_TOKEN
+        sync: false
+      - key: APIFY_EXPECTED_ACCOUNT
+        sync: false
+      - key: APIFY_ACTOR_ID
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: N8N_LEAD_NOTIFY_URL
+        sync: false
+      - key: N8N_LEAD_NOTIFY_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: NOTIFY_TO
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
