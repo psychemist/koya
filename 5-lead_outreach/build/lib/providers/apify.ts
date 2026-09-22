@@ -85,11 +85,11 @@ const START_ATTEMPTS = 3;
  * used to tell the model "this is transient, you may try once more", which
  * delegates a backoff decision to something with no clock.
  */
-async function startWithBackoff(actorId: string, call: ActorCall) {
+async function startWithBackoff(api: ApifyLike, actorId: string, call: ActorCall) {
   let lastError: any;
   for (let attempt = 1; attempt <= START_ATTEMPTS; attempt++) {
     try {
-      return await apify().actor(actorId).start(call.input, call.options);
+      return await api.actor(actorId).start(call.input, call.options);
     } catch (e: any) {
       lastError = e;
       const status = e?.statusCode ?? e?.status;
@@ -106,14 +106,14 @@ async function startWithBackoff(actorId: string, call: ActorCall) {
  * An actor left running is an actor still spending, so an overrun is aborted
  * rather than waited out.
  */
-async function waitOrAbort(runId: string, wallClockMs: number) {
+async function waitOrAbort(api: ApifyLike, runId: string, wallClockMs: number) {
   const started = Date.now();
   for (;;) {
-    const run = await apify().run(runId).get();
+    const run = await api.run(runId).get();
     if (!run) throw new ProviderError('APIFY_LOST', `Apify run ${runId} disappeared.`);
     if (run.status !== 'RUNNING' && run.status !== 'READY') return run;
     if (Date.now() - started > wallClockMs) {
-      await apify().run(runId).abort().catch(() => undefined);
+      await api.run(runId).abort().catch(() => undefined);
       throw new ProviderError('APIFY_ABORTED',
         `Apify run ${runId} passed its wall clock and was aborted.`);
     }
@@ -128,9 +128,28 @@ export type Discovery = {
   itemsCharged: number;
 };
 
+/**
+ * The slice of the Apify client this module uses.
+ *
+ * Injectable so a test can assert on the two arguments `.start()` receives
+ * without reaching the network. That distinction is the whole point here: the
+ * caps were once built correctly and passed as argument one, where the
+ * platform discards them, and no test that examined our own return value
+ * could tell. A test must also never be able to spend from the shared cohort
+ * account by accident.
+ */
+export type ApifyLike = {
+  actor(id: string): { start(input: unknown, options: unknown): Promise<any> };
+  run(id: string): { get(): Promise<any>; abort(): Promise<any> };
+  dataset(id: string): { listItems(): Promise<{ items: unknown[] }> };
+};
+
 export async function discover(
   runId: string, queryText: string, limit: number,
+  opts: { client?: ApifyLike; wallClockMs?: number } = {},
 ): Promise<Discovery> {
+  const api: ApifyLike = opts.client ?? (apify() as unknown as ApifyLike);
+  const wallClockMs = opts.wallClockMs ?? 200_000;
   const call = buildActorCall(queryText, limit);
   const estimate = limit * config.limits.apifyPricePerResultUsd;
   const actorId = config.pinnedActorId();
@@ -156,7 +175,7 @@ export async function discover(
 
   let started;
   try {
-    started = await startWithBackoff(actorId, call);
+    started = await startWithBackoff(api, actorId, call);
   } catch (e: any) {
     await settle(0, 'actor failed to start, nothing charged');
     const status = e?.statusCode ?? e?.status;
@@ -170,13 +189,13 @@ export async function discover(
   let finished;
   let items: unknown[];
   try {
-    finished = await waitOrAbort(started.id, 200_000);
-    ({ items } = await apify().dataset(finished.defaultDatasetId).listItems());
+    finished = await waitOrAbort(api, started.id, wallClockMs);
+    ({ items } = await api.dataset(finished.defaultDatasetId).listItems());
   } catch (e) {
     // Ask Apify what the run actually cost before giving up on it. If even
     // that fails, the estimate stands rather than being zeroed: an unknown
     // spend must not read as no spend.
-    const reported = await apify().run(started.id).get()
+    const reported = await api.run(started.id).get()
       .then((r) => (r as any)?.usageTotalUsd)
       .catch(() => undefined);
     await settle(
