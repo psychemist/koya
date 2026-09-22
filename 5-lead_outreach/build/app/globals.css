@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+/*
+ * A records desk, not a dashboard.
+ *
+ * The product exists because a lead list without its evidence is worthless, so
+ * the palette is institutional rather than promotional: cool paper, blue-black
+ * ink, and exactly three verdict colours that mean one thing each. Monospace is
+ * reserved for text retrieved from a third-party website, so quoted evidence
+ * never reads as something Koya wrote.
+ */
+:root {
+  --ink:      #17202a;
+  --ink-soft: #5b6873;
+  --paper:    #eef1f3;
+  --card:     #ffffff;
+  --rule:     #d3d9dd;
+  --verdict:  #1f5f4e;
+  --caution:  #8a5a00;
+  --refusal:  #8c2f2f;
+  --focus:    #2b5f9e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.55 'Public Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { font-weight: 620; letter-spacing: -0.01em; margin: 0; }
+h1 { font-size: 26px; }
+h2 { font-size: 19px; }
+h3 { font-size: 15px; }
+p { margin: 0 0 10px; max-width: 72ch; }
+a { color: var(--focus); }
+
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 72px; }
+.narrow { max-width: 640px; }
+
+.rule { border: 0; border-top: 1px solid var(--rule); margin: 24px 0; }
+.muted { color: var(--ink-soft); }
+.small { font-size: 13px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+}
+
+/* The verdict is carried by the card's left edge rather than a badge, so a
+   reviewer can scan a column of ten and see the shape of the list at once. */
+.lead { border-left: 4px solid var(--rule); margin-bottom: 18px; }
+.lead[data-verdict="qualified"]     { border-left-color: var(--verdict); }
+.lead[data-verdict="needs_review"]  { border-left-color: var(--caution); }
+.lead[data-verdict="not_qualified"] { border-left-color: var(--ink-soft); }
+
+.lead-head {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline;
+  padding: 14px 18px; border-bottom: 1px solid var(--rule);
+}
+.lead-cols { display: grid; grid-template-columns: 1fr 1fr 1.2fr; }
+.lead-cols > * { padding: 16px 18px; border-right: 1px solid var(--rule); }
+.lead-cols > *:last-child { border-right: 0; }
+@media (max-width: 900px) {
+  .lead-cols { grid-template-columns: 1fr; }
+  .lead-cols > * { border-right: 0; border-bottom: 1px solid var(--rule); }
+}
+
+.col-label {
+  font-size: 12px; font-weight: 650; color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+
+ul.tight { margin: 0 0 12px; padding-left: 18px; }
+ul.tight li { margin-bottom: 5px; }
+
+/* Retrieved text. Monospace marks it as something a machine fetched, not
+   something a person here wrote. */
+.excerpt {
+  font: 12.5px/1.5 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #f7f9fa; border: 1px solid var(--rule); border-radius: 2px;
+  padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 260px; overflow: auto;
+}
+
+.flagged {
+  border-left: 3px solid var(--refusal);
+  background: #fdf5f5; padding: 10px 12px; margin-bottom: 12px;
+}
+
+.strip { display: flex; flex-wrap: wrap; gap: 6px 20px; padding: 12px 18px; }
+.strip div { font-size: 13px; }
+.strip b { font-weight: 640; }
+
+.state-sent      { color: var(--verdict); }
+.state-degraded,
+.state-pending   { color: var(--caution); }
+.state-failed    { color: var(--refusal); }
+.state-skipped   { color: var(--ink-soft); }
+
+label { display: block; font-weight: 600; font-size: 13px; margin: 0 0 6px; }
+input, textarea, button { font: inherit; }
+input, textarea {
+  width: 100%; padding: 9px 11px; border: 1px solid var(--rule);
+  border-radius: 3px; background: var(--card); color: var(--ink);
+}
+textarea { min-height: 110px; resize: vertical; }
+.field { margin-bottom: 18px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+
+button {
+  padding: 9px 16px; border-radius: 3px; border: 1px solid var(--ink);
+  background: var(--ink); color: #fff; font-weight: 600; cursor: pointer;
+}
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.quiet { background: transparent; color: var(--ink); border-color: var(--rule); }
+button.danger { background: var(--refusal); border-color: var(--refusal); }
+
+.error {
+  border-left: 3px solid var(--refusal); background: #fdf5f5;
+  padding: 10px 12px; margin-bottom: 16px;
+}
+
+dialog {
+  border: 1px solid var(--rule); border-radius: 4px; padding: 22px;
+  max-width: 460px; color: var(--ink);
+}
+dialog::backdrop { background: rgba(23, 32, 42, .45); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
