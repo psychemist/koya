@@ -6,6 +6,7 @@ import { ConfirmDelete } from '../../ui/confirm';
 import { Progress } from './progress';
 import { DraftEditor } from './draft-editor';
 import { ClarifyForm } from './clarify-form';
+import { LeadVerdict } from './lead-verdict';
 import { requireUserPage, canSeeRun, canDeleteRun } from '../../../lib/auth.ts';
 
 export const dynamic = 'force-dynamic';
@@ -13,12 +14,14 @@ export const dynamic = 'force-dynamic';
 type Lead = {
   id: string; company_name: string; company_domain: string; qualification_status: string;
   confidence: string; fit_reasons: string[]; concerns: string[]; source_urls: string[];
-  source_summary: string | null; drafts_blocked: string | null; human_status: string | null;
+  source_summary: string | null; drafts_blocked: string | null;
+  human_status: string | null; human_note: string | null;
 };
 
 type Draft = {
   id: string; lead_id: string; step: number; subject: string | null; body: string;
   personalization_note: string | null; source_url: string | null; edited_by_human: boolean;
+  gate_results: { gate: string; severity: string; passed: boolean; detail?: string }[] | null;
 };
 
 type Page = {
@@ -55,13 +58,13 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
     runStats(id),
     query<Lead>(
       `select id, company_name, company_domain, qualification_status, confidence, fit_reasons,
-              concerns, source_urls, source_summary, drafts_blocked, human_status
+              concerns, source_urls, source_summary, drafts_blocked, human_status, human_note
          from public.leads where run_id = $1
         order by case qualification_status when 'qualified' then 0
                  when 'needs_review' then 1 else 2 end, company_name`, [id]),
     query<Draft>(
       `select d.id, d.lead_id, d.step, d.subject, d.body, d.personalization_note,
-              d.source_url, d.edited_by_human
+              d.source_url, d.edited_by_human, d.gate_results
          from public.outreach_drafts d join public.leads l on l.id = d.lead_id
         where l.run_id = $1 order by d.step`, [id]),
     query<Page>(
@@ -162,6 +165,12 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                 {lead.concerns.length
                   ? <ul className="tight">{lead.concerns.map((c, i) => <li key={i}>{c}</li>)}</ul>
                   : <p className="small muted">The agent recorded none.</p>}
+
+                <LeadVerdict
+                  leadId={lead.id}
+                  humanStatus={lead.human_status}
+                  humanNote={lead.human_note}
+                />
               </section>
 
               <section>
@@ -174,6 +183,22 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                 {lead.source_summary && (
                   <p className="small" style={{ marginTop: 10 }}>{lead.source_summary}</p>
                 )}
+
+                {/* The one-minute check is comparing the claim against the
+                    page, which needs the page. Showing only flagged pages
+                    meant a reviewer could never do that for a clean one. */}
+                {leadPages.filter((p) => !p.injection_flagged).map((p) => (
+                  <details key={p.url} style={{ marginTop: 8 }}>
+                    <summary className="small">
+                      What this page said{' '}
+                      <span className="muted">(checked, nothing addressed to a machine)</span>
+                    </summary>
+                    <pre className="excerpt" style={{ marginTop: 8 }}>
+                      {p.screened_summary || p.raw_text || 'Nothing was stored for this page.'}
+                    </pre>
+                  </details>
+                ))}
+
                 {leadPages.filter((p) => p.injection_flagged).map((p) => (
                   <div className="flagged" key={p.url}>
                     <b className="small">This page addressed an automated reader.</b>

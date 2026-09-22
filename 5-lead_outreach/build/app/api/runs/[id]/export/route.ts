@@ -8,7 +8,8 @@ export const dynamic = 'force-dynamic';
 type LeadRow = {
   id: string; company_name: string; company_domain: string; qualification_status: string;
   confidence: string; fit_reasons: string[]; concerns: string[]; source_urls: string[];
-  source_summary: string | null; human_status: string | null; drafts_blocked: string | null;
+  source_summary: string | null; human_status: string | null; human_note: string | null;
+  drafts_blocked: string | null;
 };
 
 type DraftRow = {
@@ -43,7 +44,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
 
   const leads = await query<LeadRow>(
     `select id, company_name, company_domain, qualification_status, confidence,
-            fit_reasons, concerns, source_urls, source_summary, human_status, drafts_blocked
+            fit_reasons, concerns, source_urls, source_summary,
+            human_status, human_note, drafts_blocked
        from public.leads where run_id = $1 order by qualification_status, company_name`,
     [id],
   );
@@ -112,19 +114,42 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     });
   }
 
+  // The ICP travels with every row. A lead list without the criteria it was
+  // judged against is the thing this system exists to replace, and the CSV is
+  // the copy that actually gets forwarded.
+  const icp = run.icp as Record<string, unknown> | null;
+  const hardFilters = Array.isArray(icp?.hard_filters)
+    ? (icp!.hard_filters as string[]).join(' | ') : '';
+  const softPreferences = Array.isArray(icp?.soft_preferences)
+    ? (icp!.soft_preferences as string[]).join(' | ') : '';
+
   const header = ['company_name', 'company_domain', 'qualification_status', 'confidence',
-    'fit_reasons', 'concerns', 'source_urls', 'source_summary', 'human_status',
-    'email_1_subject', 'email_1_body', 'email_2_subject', 'email_2_body',
-    'email_3_subject', 'email_3_body', 'linkedin_message', 'drafts_blocked', 'objective'];
+    'fit_reasons', 'concerns', 'source_urls', 'source_summary',
+    'human_status', 'human_note',
+    'email_1_subject', 'email_1_body', 'email_1_personalization',
+    'email_2_subject', 'email_2_body', 'email_2_personalization',
+    'email_3_subject', 'email_3_body', 'email_3_personalization',
+    'linkedin_message', 'linkedin_personalization',
+    'drafts_blocked', 'objective', 'icp_hard_filters', 'icp_soft_preferences'];
 
   const rows = leads.map((l) => {
     const d = (step: number) => draftsFor(l.id).find((x) => x.step === step);
+    const note = (step: number) => {
+      const draft = d(step);
+      if (!draft?.personalization_note) return '';
+      return draft.source_url
+        ? `${draft.personalization_note} (${draft.source_url})`
+        : draft.personalization_note;
+    };
     return [
       l.company_name, l.company_domain, l.qualification_status, l.confidence,
       l.fit_reasons.join(' | '), l.concerns.join(' | '), l.source_urls.join(' | '),
-      l.source_summary, l.human_status,
-      d(1)?.subject, d(1)?.body, d(2)?.subject, d(2)?.body, d(3)?.subject, d(3)?.body,
-      d(0)?.body, l.drafts_blocked, run.objective,
+      l.source_summary, l.human_status, l.human_note,
+      d(1)?.subject, d(1)?.body, note(1),
+      d(2)?.subject, d(2)?.body, note(2),
+      d(3)?.subject, d(3)?.body, note(3),
+      d(0)?.body, note(0),
+      l.drafts_blocked, run.objective, hardFilters, softPreferences,
     ].map(csvCell).join(',');
   });
 
