@@ -75,9 +75,16 @@ async function waitOrAbort(runId: string, wallClockMs: number) {
   }
 }
 
+export type Discovery = {
+  candidates: Candidate[];
+  /** Raw dataset rows. These were charged whether or not they deduplicated
+   *  away, so this is the number that decrements the candidate budget. */
+  itemsCharged: number;
+};
+
 export async function discover(
   runId: string, queryText: string, limit: number,
-): Promise<Candidate[]> {
+): Promise<Discovery> {
   const input = buildActorInput(queryText, limit);
   const estimate = limit * config.limits.apifyPricePerResultUsd;
   const actorId = config.pinnedActorId();
@@ -117,7 +124,7 @@ export async function discover(
     seen.add(c.companyDomain);
     out.push(c);
   }
-  return out;
+  return { candidates: out, itemsCharged: items.length };
 }
 
 /**
