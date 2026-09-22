@@ -41,7 +41,23 @@ export type AgentOutcome = {
   costUsd: number;
   turns: number;
   skillsLoaded: string[];
+  modelUsage: Record<string, unknown> | null;
 };
+
+/**
+ * Sums `cache_read_input_tokens` across whatever shape the SDK reports usage
+ * in. Zero means the frozen prefix was resent every turn, which is the
+ * expensive failure this figure exists to catch.
+ */
+export function cacheReadTokens(modelUsage: unknown): number {
+  if (!modelUsage || typeof modelUsage !== 'object') return 0;
+  let total = 0;
+  for (const entry of Object.values(modelUsage as Record<string, any>)) {
+    const n = entry?.cache_read_input_tokens ?? entry?.cacheReadInputTokens;
+    if (typeof n === 'number') total += n;
+  }
+  return total;
+}
 
 /**
  * Runs the agent and records what it cost.
@@ -59,6 +75,7 @@ export async function runAgent(runId: string): Promise<AgentOutcome> {
   let costUsd = 0;
   let subtype = 'unknown';
   let skillsLoaded: string[] = [];
+  let modelUsage: Record<string, unknown> | null = null;
 
   for await (const message of agentQuery({
     prompt: 'Begin this run. Start by refining the objective into an ICP.',
@@ -83,10 +100,14 @@ export async function runAgent(runId: string): Promise<AgentOutcome> {
       // total_cost_usd is subagent-inclusive, unlike usage. It is also a
       // client-side estimate, and the UI says so.
       costUsd = (message as any).total_cost_usd ?? 0;
+      // modelUsage carries cache_read_input_tokens, which is the only evidence
+      // that the cached prefix is working rather than merely intended.
+      modelUsage = (message as any).modelUsage ?? null;
     }
   }
 
-  await query('update public.runs set agent_turns = $2 where id = $1', [runId, turns]);
+  await query('update public.runs set agent_turns = $2, model_usage = $3 where id = $1',
+    [runId, turns, modelUsage ? JSON.stringify(modelUsage) : null]);
   // recordSpend refreshes runs.claude_cost_usd from the ledger, so the cost is
   // written in exactly one place rather than incremented here as well.
   if (costUsd > 0) await recordSpend(runId, 'claude', costUsd, 'agent loop');
@@ -123,5 +144,5 @@ export async function runAgent(runId: string): Promise<AgentOutcome> {
     });
   }
 
-  return { subtype, costUsd, turns, skillsLoaded };
+  return { subtype, costUsd, turns, skillsLoaded, modelUsage };
 }

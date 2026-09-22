@@ -79,6 +79,28 @@ export async function transition(
   return one<RunRow>(sql, [runId, to, froms, version ?? null, ...keys.map((k) => patch[k])]);
 }
 
+/** The working states, in the order a run passes through them. */
+export const WORKING_ORDER: RunStatus[] =
+  ['queued', 'refining_icp', 'discovering', 'researching', 'drafting'];
+
+/**
+ * Move a run forward to `to`, and only forward.
+ *
+ * The `from` list is every state earlier in the sequence, so this is
+ * idempotent (a run already drafting stays drafting), monotonic (research
+ * following a late second search does not drag the run backwards) and safe on
+ * a finished run (a terminal status is in no `from` list, so the update
+ * matches nothing).
+ *
+ * Without this the run sat in `discovering` from the first search to the last
+ * draft, and the progress strip said so.
+ */
+export async function advanceTo(runId: string, to: RunStatus): Promise<RunRow | null> {
+  const index = WORKING_ORDER.indexOf(to);
+  if (index <= 0) return null;
+  return transition(runId, WORKING_ORDER.slice(0, index), to);
+}
+
 /**
  * The scorecard, recomputed in code. `finish_run` compares this with what the
  * agent claims, and refuses to mark a run complete when the two disagree.

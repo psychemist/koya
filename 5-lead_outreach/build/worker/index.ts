@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { startup } from '@anthropic-ai/claude-agent-sdk';
 import { query, one, pool } from '../lib/db.ts';
 import { loadRun, transition, runStats, type RunRow } from '../lib/runs.ts';
+import { redact } from '../lib/sanitise.ts';
 import { notify, buildDigest, operatorRecipients, type NotifyKind } from '../lib/notify/index.ts';
 import { runAgent, agentOptions } from '../lib/agent/run-agent.ts';
 import { assertApifyAccount } from '../lib/providers/apify.ts';
@@ -60,15 +61,23 @@ function heartbeat(runId: string) {
   return () => clearInterval(timer);
 }
 
+/**
+ * Everything this process writes goes through the redactor first.
+ *
+ * Worker stdout is a log aggregator, a Render dashboard and, during a demo, a
+ * screen share. The objective is the field most likely to carry a pasted
+ * credential, and provider errors routinely echo an authorization header back.
+ */
 const log = (level: string, message: string, extra: Record<string, unknown> = {}) =>
-  console.log(JSON.stringify({ level, at: 'worker', worker: WORKER_ID, message, ...extra }));
+  console.log(JSON.stringify(
+    redact({ level, at: 'worker', worker: WORKER_ID, message, ...extra })));
 
 async function handle(run: RunRow): Promise<void> {
   const stop = heartbeat(run.id);
   try {
-    if (run.status === 'queued') {
-      await transition(run.id, 'queued', 'refining_icp');
-    }
+    // No status move here: claimOne already took the run off the queue in the
+    // same statement that claimed it, which is what stops a second worker
+    // picking it up.
 
     // Feed only, deliberately no recipients. An email per state change teaches
     // people to ignore the emails.

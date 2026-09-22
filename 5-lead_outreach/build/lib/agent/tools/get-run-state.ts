@@ -21,8 +21,12 @@ export const getRunState = tool(
     try {
       const run = await loadRun(args.run_id);
       const stats = await runStats(args.run_id);
-      const domains = await query<{ company_domain: string; assessed: boolean }>(
-        'select company_domain, assessed from public.candidates where run_id = $1',
+      const domains = await query<{
+        company_domain: string; company_name: string; assessed: boolean;
+        discovery_meta: Record<string, unknown>;
+      }>(
+        `select company_domain, company_name, assessed, discovery_meta
+           from public.candidates where run_id = $1`,
         [args.run_id],
       );
 
@@ -36,7 +40,19 @@ export const getRunState = tool(
           budget: run.candidate_budget,
           used: run.candidates_used,
           remaining: Math.max(0, run.candidate_budget - run.candidates_used),
-          unassessed: domains.filter((d) => !d.assessed).map((d) => d.company_domain),
+          /**
+           * What discovery already told us about each company it found.
+           *
+           * This is here so a candidate that fails a hard filter on its
+           * metadata alone can be disqualified without spending a scrape on
+           * it. Storing the metadata and never showing it to the agent meant
+           * every candidate cost a page fetch to rule out.
+           */
+          unassessed: domains.filter((d) => !d.assessed).map((d) => ({
+            domain: d.company_domain,
+            name: d.company_name,
+            from_discovery: d.discovery_meta,
+          })),
         },
         scrapes: {
           budget: run.scrape_budget,

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { baseArgs, ok, failed, refused } from './shared.ts';
 import { withToolCall } from '../../toolcalls.ts';
 import { query, one } from '../../db.ts';
-import { loadRun } from '../../runs.ts';
+import { loadRun, advanceTo } from '../../runs.ts';
 import { clampScrapes, recordSpend } from '../../budget.ts';
 import { ProviderError } from '../../errors.ts';
 import { normaliseDomain } from '../../domain.ts';
@@ -53,6 +53,8 @@ export const scrapeCompanySite = tool(
             throw new ProviderError('BUDGET_RUN',
               'Scrape budget is exhausted. Qualify the companies you have already read.');
           }
+
+          await advanceTo(args.run_id, 'researching');
 
           const page = await scrape(args.url);
           await query(

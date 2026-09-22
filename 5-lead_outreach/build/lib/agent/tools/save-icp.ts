@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { baseArgs, ok, failed, refused } from './shared.ts';
 import { withToolCall } from '../../toolcalls.ts';
 import { query } from '../../db.ts';
-import { loadRun } from '../../runs.ts';
+import { loadRun, advanceTo } from '../../runs.ts';
 import { notify, operatorRecipients } from '../../notify/index.ts';
 
 /** Mirrors the shape the icp-refinement skill is told to produce, so the agent
@@ -81,12 +81,12 @@ export const saveIcp = tool(
         const { run_id, purpose, needs_clarification, ...icp } = args;
         const run = await loadRun(run_id);
         await query(
-          `update public.runs
-              set icp = $2, needs_clarification = null,
-                  status = case when status = 'refining_icp' then 'discovering' else status end
-            where id = $1`,
+          'update public.runs set icp = $2, needs_clarification = null where id = $1',
           [run_id, JSON.stringify(icp)],
         );
+        // Through the state machine rather than a raw status write, so the
+        // version counter stays monotonic across every status change.
+        await advanceTo(run_id, 'discovering');
         return {
           value: ok({
             saved: true,

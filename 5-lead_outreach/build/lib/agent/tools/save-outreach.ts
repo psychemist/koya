@@ -4,6 +4,7 @@ import { baseArgs, ok, failed, refused } from './shared.ts';
 import { withToolCall } from '../../toolcalls.ts';
 import { query, one } from '../../db.ts';
 import { runCopyGates, isBlocked, blockingReasons } from '../../gates/copy.ts';
+import { advanceTo } from '../../runs.ts';
 
 /** Two rewrites, then a human writes it. Counted in the process because a
  *  worker that restarts mid-run should give the agent a fresh chance rather
@@ -94,6 +95,8 @@ export const saveOutreach = tool(
             resultSummary: { rejected: detail, attempt: n },
           };
         }
+
+        await advanceTo(args.run_id, 'drafting');
 
         for (const { step, results } of perStep) {
           await query(
