@@ -10,6 +10,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "migrate": "node --import tsx --env-file-if-exists=.env.local scripts/migrate.ts",
+    "seed": "node --import tsx --env-file-if-exists=.env.local scripts/seed.ts",
     "worker": "node --import tsx --env-file-if-exists=.env.local worker/index.ts",
     "discover:smoke": "node --import tsx --env-file-if-exists=.env.local scripts/discover-smoke.ts",
     "notify:smoke": "node --import tsx --env-file-if-exists=.env.local scripts/notify-smoke.ts",

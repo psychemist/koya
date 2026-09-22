@@ -25,6 +25,8 @@ export type RunRow = {
   agent_turns: number;
   shortfall_reason: string | null;
   error_message: string | null;
+  /** The person who started it. Null for runs created before accounts existed. */
+  created_by: string | null;
   claimed_by: string | null;
   claimed_at: Date | null;
   created_at: Date;

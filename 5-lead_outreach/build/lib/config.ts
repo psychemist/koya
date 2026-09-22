@@ -83,6 +83,10 @@ export const config = {
 
   appBaseUrl: opt('APP_BASE_URL') || 'http://localhost:3000',
 
+  /** Signs the session cookie. Required by the web service, which is the only
+   *  process that issues one. */
+  sessionSecret: () => req('SESSION_SECRET'),
+
   /** Presence only. A health route that returns a value is a health route that leaks one. */
   configured: () => ({
     database: Boolean(opt('DATABASE_URL')),
@@ -90,5 +94,6 @@ export const config = {
     apify: Boolean(opt('APIFY_TOKEN')) && Boolean(opt('APIFY_ACTOR_ID')),
     firecrawl: Boolean(opt('FIRECRAWL_API_KEY')),
     notifications: Boolean(opt('N8N_LEAD_NOTIFY_URL')) && Boolean(opt('N8N_LEAD_NOTIFY_SECRET')),
+    sessions: Boolean(opt('SESSION_SECRET')),
   }),
 } as const;

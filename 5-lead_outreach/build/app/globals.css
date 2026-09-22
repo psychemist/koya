@@ -104,6 +104,18 @@ ul.tight li { margin-bottom: 5px; }
 .state-failed    { color: var(--refusal); }
 .state-skipped   { color: var(--ink-soft); }
 
+.topbar {
+  display: flex; flex-wrap: wrap; gap: 12px 20px;
+  align-items: flex-start; justify-content: space-between;
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--rule); }
+th { font-weight: 640; color: var(--ink-soft); font-size: 12.5px; }
+tbody tr:last-child td { border-bottom: 0; }
+td a { text-decoration: none; }
+td a:hover { text-decoration: underline; }
+
 label { display: block; font-weight: 600; font-size: 13px; margin: 0 0 6px; }
 input, textarea, button { font: inherit; }
 input, textarea {

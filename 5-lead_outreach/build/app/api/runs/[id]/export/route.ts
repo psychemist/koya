@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '../../../../../lib/db.ts';
 import { loadRun } from '../../../../../lib/runs.ts';
+import { requireUser, canSeeRun } from '../../../../../lib/auth.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,11 +25,19 @@ const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
  * system exists to replace, so the evidence is not an optional column.
  */
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: 'Sign in first.' }, { status: 401 });
+
   const { id } = await ctx.params;
   const format = new URL(request.url).searchParams.get('format') ?? 'csv';
 
   let run;
   try { run = await loadRun(id); } catch {
+    return NextResponse.json({ error: 'No such run.' }, { status: 404 });
+  }
+  // An export carries every lead, every reason and every source. It is the
+  // most disclosive thing in the product, so it gets the same check as the page.
+  if (!canSeeRun(user, run)) {
     return NextResponse.json({ error: 'No such run.' }, { status: 404 });
   }
 

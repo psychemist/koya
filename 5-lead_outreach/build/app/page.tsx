@@ -1,91 +1,97 @@
-'use client';
+import { currentUser, roleLabel } from '../lib/auth.ts';
+import { query } from '../lib/db.ts';
+import { SignIn } from './ui/sign-in';
+import { IntakeForm } from './ui/intake-form';
+import { SignOut } from './ui/sign-out';
 
-import { useState } from 'react';
-import { usePersisted } from './ui/use-persisted';
+export const dynamic = 'force-dynamic';
 
-type Form = { objective: string; geography: string; headcount: string };
+type MyRun = {
+  id: string; objective: string; status: string; created_at: Date;
+  qualified: string; assessed: string; apify_spend_usd: string; claude_cost_usd: string;
+};
 
-const EMPTY: Form = { objective: '', geography: '', headcount: '' };
+const money = (v: string | number) => `$${Number(v ?? 0).toFixed(2)}`;
+const day = (d: Date) => new Date(d).toISOString().slice(0, 10);
 
-export default function Intake() {
-  const [form, setForm, clearStored] = usePersisted<Form>('koya-lead-intake', EMPTY);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+export default async function Home({ searchParams }: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = await searchParams;
+  const user = await currentUser();
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/runs', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      const body = await res.json();
-      if (!res.ok) { setError(body.error ?? 'The run could not be queued.'); return; }
-      clearStored();
-      window.location.href = `/runs/${body.id}`;
-    } catch {
-      setError('The server did not respond. Nothing was queued, so try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  if (!user) return <SignIn next={next} />;
 
-  const set = (patch: Partial<Form>) => setForm({ ...form, ...patch });
+  // What this person has created. An operator sees their own work; the
+  // team-wide view lives on the admin page, where the budget question belongs.
+  const runs = await query<MyRun>(
+    `select r.id, r.objective, r.status, r.created_at,
+            r.apify_spend_usd, r.claude_cost_usd,
+            count(l.*) filter (where l.qualification_status = 'qualified')::text as qualified,
+            count(l.*)::text as assessed
+       from public.runs r
+       left join public.leads l on l.run_id = r.id
+      where r.created_by = $1
+      group by r.id
+      order by r.created_at desc
+      limit 50`,
+    [user.id],
+  );
 
   return (
-    <main className="wrap narrow">
-      <h1>Koya Lead Desk</h1>
-      <p className="muted">
-        Describe who you want to reach. The agent refines that into criteria, finds companies,
-        reads their websites and writes a sequence for each one it can justify. Nothing is sent.
-      </p>
+    <main className="wrap">
+      <div className="topbar">
+        <div>
+          <h1>Koya Lead Desk</h1>
+          <p className="small muted" style={{ margin: 0 }}>
+            {user.name}, {roleLabel(user.role)}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {user.role === 'admin' && <a className="small" href="/admin">Team and spend</a>}
+          <SignOut />
+        </div>
+      </div>
 
       <hr className="rule" />
 
-      <form onSubmit={submit}>
-        {error && <div className="error">{error}</div>}
+      <IntakeForm />
 
-        <div className="field">
-          <label htmlFor="objective">Who are you looking for?</label>
-          <textarea
-            id="objective"
-            value={form.objective}
-            onChange={(e) => set({ objective: e.target.value })}
-            placeholder="US B2B SaaS companies with 10 to 100 employees that are hiring operations roles"
-            required
-          />
-          <p className="small muted">
-            Plain English is enough. If it is too vague to search, the run stops and asks you
-            one question rather than guessing and spending the budget.
-          </p>
+      <hr className="rule" />
+
+      <h2>Runs you have started</h2>
+      {runs.length === 0 ? (
+        <p className="muted">Nothing yet. The first run you start appears here.</p>
+      ) : (
+        <div className="card">
+          <table>
+            <thead>
+              <tr>
+                <th>Objective</th><th>Started</th><th>Status</th>
+                <th>Qualified</th><th>Assessed</th><th>Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id}>
+                  <td><a href={`/runs/${r.id}`}>{r.objective}</a></td>
+                  <td className="muted">{day(r.created_at)}</td>
+                  <td>{r.status.replace(/_/g, ' ')}</td>
+                  <td>{r.qualified}</td>
+                  <td>{r.assessed}</td>
+                  <td className="muted">
+                    {money(Number(r.apify_spend_usd) + Number(r.claude_cost_usd))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-
-        <div className="row">
-          <div className="field">
-            <label htmlFor="geography">Geography (optional)</label>
-            <input id="geography" value={form.geography}
-                   onChange={(e) => set({ geography: e.target.value })}
-                   placeholder="United States" />
-          </div>
-          <div className="field">
-            <label htmlFor="headcount">Headcount (optional)</label>
-            <input id="headcount" value={form.headcount}
-                   onChange={(e) => set({ headcount: e.target.value })}
-                   placeholder="10 to 100" />
-          </div>
-        </div>
-
-        <button type="submit" disabled={submitting || form.objective.trim().length < 10}>
-          {submitting ? 'Queueing the run' : 'Start the run'}
-        </button>
-        <p className="small muted" style={{ marginTop: 14 }}>
-          Germany is left out of suggested geography by default: its rules effectively require
-          consent for commercial email. Ask for it explicitly if you want it.
-        </p>
-      </form>
+      )}
+      <p className="small muted">
+        Cost combines the provider's reported discovery charge with a client-side model
+        estimate. It is not billing data.
+      </p>
     </main>
   );
 }

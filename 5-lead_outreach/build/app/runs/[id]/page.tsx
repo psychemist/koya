@@ -5,6 +5,7 @@ import { notificationStatus } from '../../../lib/notify/index.ts';
 import { ConfirmDelete } from '../../ui/confirm';
 import { Progress } from './progress';
 import { DraftEditor } from './draft-editor';
+import { requireUserPage, canSeeRun, canDeleteRun } from '../../../lib/auth.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,9 +38,14 @@ const NOTIFY_STATE: Record<string, { text: string; className: string }> = {
 
 export default async function RunPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const user = await requireUserPage(`/runs/${id}`);
 
   let run;
   try { run = await loadRun(id); } catch { notFound(); }
+
+  // Not found rather than forbidden. Telling someone a run exists but is not
+  // theirs is itself a disclosure.
+  if (!canSeeRun(user, run)) notFound();
 
   const [stats, leads, drafts, pages, notifications] = await Promise.all([
     runStats(id),
@@ -64,7 +70,10 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
 
   return (
     <main className="wrap">
-      <p className="small"><a href="/">Start another run</a></p>
+      <p className="small">
+        <a href="/">Your runs</a>
+        {user.role === 'admin' && <> · <a href="/admin">Team and spend</a></>}
+      </p>
       <h1>{run.objective}</h1>
 
       <Progress runId={id} initialStatus={run.status} />
@@ -209,7 +218,8 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         <a href={`/api/runs/${id}/export?format=md`}><button className="quiet">
           Download Markdown
         </button></a>
-        <ConfirmDelete runId={id} objective={run.objective} leadCount={leads.length} />
+        {canDeleteRun(user, run) &&
+          <ConfirmDelete runId={id} objective={run.objective} leadCount={leads.length} />}
       </div>
       <p className="small muted" style={{ marginTop: 12 }}>
         Both exports carry the criteria, the reasoning and the sources. A lead list without its
