@@ -7,8 +7,14 @@ import type { RunRow, RunStats } from '../runs.ts';
 
 /**
  * Notifications are EMITTED, not sent. The worker POSTs one signed event to
- * n8n, and n8n fans it out to email and the two Discord channels, so the
- * Resend key and both webhook URLs stay in n8n's credential store.
+ * n8n, and n8n fans it out to Gmail and the two Discord channels, so the Gmail
+ * credential and both webhook URLs stay in n8n's credential store.
+ *
+ * Resend stays HERE rather than in n8n, and that is the one deliberate
+ * exception. It is the lane that has to work when n8n is unreachable, so
+ * hosting it inside n8n would mean the fallback shares a failure mode with the
+ * thing it exists to cover. n8n answering any non-2xx, including the 502 it
+ * returns when Gmail refuses a message, drops through to this lane.
  *
  * The agent cannot reach this module. There is no notify tool and there will
  * not be one: a page that can make the agent post into the team's Discord is a

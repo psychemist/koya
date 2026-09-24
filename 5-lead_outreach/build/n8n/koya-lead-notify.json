@@ -12,18 +12,41 @@
       "name": "Notify webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-360, 0],
+      "position": [-420, 0],
       "webhookId": "koya-lead-notify"
     },
     {
       "parameters": {
-        "jsCode": "// Verify the HMAC before anything is posted anywhere.\n// The webhook is a public URL. Unsigned, it is an open relay into the team's\n// Discord for anyone who learns it, and a channel that can be spoofed is worse\n// than no channel because people trust what it says.\n//\n// FAIL CLOSED. n8n Cloud has no process environment a workflow can reach, so\n// the secret is read from $env first and from $vars second, and a missing\n// secret is a rejection rather than a skipped check.\nconst crypto = require('crypto');\n\nconst item = $input.first();\nconst raw = item.binary?.data\n  ? Buffer.from(item.binary.data.data, 'base64').toString('utf8')\n  : (typeof item.json.body === 'string' ? item.json.body : JSON.stringify(item.json.body));\n\nconst headers = item.json.headers || {};\nconst signature = headers['x-koya-signature'];\n\nlet secret;\ntry { secret = $env.KOYA_LEAD_NOTIFY_SECRET; } catch (e) { secret = undefined; }\nif (!secret) { try { secret = $vars.KOYA_LEAD_NOTIFY_SECRET; } catch (e) { secret = undefined; } }\nif (!secret) throw new Error('KOYA_LEAD_NOTIFY_SECRET is not set. Refusing to post unverified.');\nif (!signature) throw new Error('No signature on this request. Rejected.');\n\nconst expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');\nconst a = Buffer.from(String(signature));\nconst b = Buffer.from(expected);\nif (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {\n  throw new Error('Signature mismatch. Rejected before posting anywhere.');\n}\n\nconst payload = JSON.parse(raw);\nreturn [{ json: payload }];"
+        "jsCode": "/**\n * Verify the request actually came from Koya Lead Desk.\n *\n * The webhook URL is not a secret. It sits in an environment variable, in a\n * deploy log, and in this workflow's own definition, so the URL alone must\n * not be enough to make this workflow post into the team's Discord. A channel\n * that can be spoofed is worse than no channel, because people trust what it\n * says.\n *\n * THIS NODE RETURNS A VERDICT RATHER THAN THROWING, and is set to continue on\n * error. A throw here kills the workflow before the respond node runs, so the\n * app sees a generic 500 and cannot tell a rejected signature from n8n being\n * broken. The `Verified?` gate turns the verdict below into a 401 the app can\n * record and a human can read.\n */\nconst crypto = require('crypto');\n\nconst SECRET_NAME = 'KOYA_LEAD_NOTIFY_SECRET';\n\n/**\n * Where the shared secret comes from, and why this is not a one-liner.\n *\n * `$env` is not available on every n8n instance. n8n Cloud has no process\n * environment a workflow can reach, and self-hosted instances ship with\n * N8N_BLOCK_ENV_ACCESS_IN_NODE=true by default. On both, TOUCHING `$env`\n * THROWS rather than returning undefined, so a bare `$env.FOO` would kill the\n * node before the fail-closed branch below could run.\n */\nfunction readSecret(name) {\n  try {\n    if (typeof $env !== 'undefined' && $env && $env[name]) return String($env[name]);\n  } catch (err) {\n    // Env access is blocked on this instance. Not fatal, try Variables.\n  }\n  try {\n    if (typeof $vars !== 'undefined' && $vars && $vars[name]) return String($vars[name]);\n  } catch (err) {\n    // Neither source is readable. Handled by the fail-closed branch below.\n  }\n  return null;\n}\n\nconst secret = readSecret(SECRET_NAME);\nif (!secret) {\n  // Failing closed. A missing secret must never mean \"skip the check\".\n  return [{ json: { ok: false, status: 401, reason:\n    SECRET_NAME + ' is not readable on this n8n instance. Set it as a Variable ' +\n    '(Settings > Variables), or as an environment variable with ' +\n    'N8N_BLOCK_ENV_ACCESS_IN_NODE=false. Its value must match ' +\n    'N8N_LEAD_NOTIFY_SECRET in the application.' } }];\n}\n\nconst item = $input.first();\nconst headers = item.json.headers || {};\nconst signature = headers['x-koya-signature'];\nif (!signature) {\n  return [{ json: { ok: false, status: 401, reason: 'no signature on this request' } }];\n}\n\n/**\n * Signed over the exact bytes the app sent. The webhook is configured with\n * rawBody so those bytes are available here: re-serialising the parsed body\n * would depend on key order surviving a round trip through two JSON\n * implementations, which is not a thing to bet a security check on.\n */\nconst raw = item.binary && item.binary.data\n  ? Buffer.from(item.binary.data.data, 'base64').toString('utf8')\n  : (typeof item.json.body === 'string' ? item.json.body : JSON.stringify(item.json.body));\n\nconst expected = crypto.createHmac('sha256', secret).update(raw, 'utf8').digest('hex');\n\n// Constant time. A byte-by-byte early exit leaks how much of a forged\n// signature was correct, which is enough to recover one.\nconst a = Buffer.from(String(signature), 'utf8');\nconst b = Buffer.from(expected, 'utf8');\nconst valid = a.length === b.length && crypto.timingSafeEqual(a, b);\n\nif (!valid) {\n  return [{ json: { ok: false, status: 401, reason: 'signature mismatch' } }];\n}\n\nlet payload;\ntry {\n  payload = JSON.parse(raw);\n} catch (err) {\n  return [{ json: { ok: false, status: 400, reason: 'verified request carried unparseable JSON' } }];\n}\n\n// A verified request missing a field is a bug in the caller. Reporting it as\n// 400 rather than crashing is what makes it debuggable from the app's own\n// notification record.\nconst required = ['kind', 'level', 'runId', 'title', 'lines'];\nconst missing = required.filter(function (key) { return !payload[key]; });\nif (missing.length > 0) {\n  return [{ json: { ok: false, status: 400, reason: 'payload missing: ' + missing.join(', ') } }];\n}\n\nreturn [{\n  json: {\n    ok: true,\n    status: 200,\n    kind: payload.kind,\n    level: payload.level,\n    discordChannel: payload.discordChannel,\n    actionRequired: Boolean(payload.actionRequired),\n    runId: payload.runId,\n    scope: payload.scope || '',\n    title: payload.title,\n    lines: Array.isArray(payload.lines) ? payload.lines : [],\n    recipients: Array.isArray(payload.recipients) ? payload.recipients : [],\n    url: payload.url,\n    verifiedAt: new Date().toISOString()\n  }\n}];"
       },
       "id": "verify-signature",
       "name": "Verify signature",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-140, 0]
+      "position": [-200, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "id": "ok",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "verified",
+      "name": "Verified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [20, 0]
     },
     {
       "parameters": {
@@ -65,7 +88,7 @@
       "name": "Route by level",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
-      "position": [80, 0]
+      "position": [260, -40]
     },
     {
       "parameters": {
@@ -77,8 +100,9 @@
       "name": "Discord leads-errors",
       "type": "n8n-nodes-base.discord",
       "typeVersion": 2,
-      "position": [320, -120],
-      "credentials": { "discordWebhookApi": { "id": "REPLACE", "name": "Discord leads-errors" } }
+      "position": [500, -140],
+      "credentials": { "discordWebhookApi": { "id": "REPLACE", "name": "Discord leads-errors" } },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -90,16 +114,18 @@
       "name": "Discord leads-success",
       "type": "n8n-nodes-base.discord",
       "typeVersion": 2,
-      "position": [320, 40],
-      "credentials": { "discordWebhookApi": { "id": "REPLACE", "name": "Discord leads-success" } }
+      "position": [500, 40],
+      "credentials": { "discordWebhookApi": { "id": "REPLACE", "name": "Discord leads-success" } },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "version": 2 },
+          "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
           "conditions": [
             {
-              "leftValue": "={{ $json.recipients.length }}",
+              "id": "has-recipients",
+              "leftValue": "={{ $('Verify signature').item.json.recipients.length }}",
               "rightValue": 0,
               "operator": { "type": "number", "operation": "gt" }
             }
@@ -112,53 +138,93 @@
       "name": "Anyone to email?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [560, 0]
+      "position": [740, -40]
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.recipients.map(r => r.email).join(',') }}",
-        "subject": "={{ ($json.actionRequired ? 'Action required: ' : '') + $json.title }}",
-        "message": "={{ $json.lines.join('<br>') + '<br><br><a href=\"' + $json.url + '\">Open the run</a>' }}",
+        "sendTo": "={{ $('Verify signature').item.json.recipients.map(r => r.email).join(',') }}",
+        "subject": "={{ ($('Verify signature').item.json.actionRequired ? 'Action required: ' : '') + $('Verify signature').item.json.title }}",
+        "message": "={{ $('Verify signature').item.json.lines.join('<br>') + '<br><br><a href=\"' + $('Verify signature').item.json.url + '\">Open the run</a>' }}",
         "options": {}
       },
       "id": "email-gmail",
       "name": "Email via Gmail",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [800, -60],
+      "position": [980, -100],
       "credentials": { "gmailOAuth2": { "id": "REPLACE", "name": "Koya Gmail" } },
       "onError": "continueErrorOutput"
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.resend.com/emails",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ from: 'Koya Lead Desk <onboarding@resend.dev>', to: $json.recipients.map(r => r.email), subject: ($json.actionRequired ? 'Action required: ' : '') + $json.title, html: $json.lines.join('<br>') + '<br><br><a href=\"' + $json.url + '\">Open the run</a>' }) }}",
-        "options": {}
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, kind: $('Verify signature').item.json.kind, runId: $('Verify signature').item.json.runId }) }}",
+        "options": { "responseCode": 200 }
       },
-      "id": "email-resend",
-      "name": "Email via Resend",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1040, 40],
-      "credentials": { "httpHeaderAuth": { "id": "REPLACE", "name": "Resend API" } }
-    },
-    {
-      "parameters": { "options": {} },
       "id": "acknowledge",
       "name": "Acknowledge",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1280, 0]
+      "position": [1460, -40]
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Gmail refused the message.\n *\n * Discord has already been posted to, but the person who needed telling was\n * not emailed, so this must NOT answer 200. The application treats any\n * non-2xx as a failed primary lane and sends the same notification itself\n * through Resend, recording the result as `degraded` rather than `sent`.\n *\n * That is the whole reason the Resend lane lives in the application and not\n * here: a fallback inside the thing that just failed is not a fallback.\n */\nconst verified = $('Verify signature').item.json;\nconst failure = $input.first().json || {};\n\nreturn [{\n  json: {\n    ok: false,\n    status: 502,\n    kind: verified.kind,\n    runId: verified.runId,\n    reason: 'gmail_failed',\n    detail: String(failure.error || failure.message || 'Gmail node reported an error'),\n    title: verified.title,\n    url: verified.url\n  }\n}];"
+      },
+      "id": "build-failure-notice",
+      "name": "Build failure notice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [980, 80]
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "={{ '**Email lane failed** ' + $json.title + '\\nGmail did not accept the message: ' + $json.detail + '\\nThe application will send it directly and record the run as degraded.\\n' + $json.url }}",
+        "options": {}
+      },
+      "id": "alert-team",
+      "name": "Alert team",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [1220, 80],
+      "credentials": { "discordWebhookApi": { "id": "REPLACE", "name": "Discord leads-errors" } },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, reason: $json.reason, detail: $json.detail }) }}",
+        "options": { "responseCode": 502 }
+      },
+      "id": "respond-failed",
+      "name": "Respond failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1460, 80]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, reason: $json.reason }) }}",
+        "options": { "responseCode": "={{ $json.status || 401 }}" }
+      },
+      "id": "respond-rejected",
+      "name": "Respond rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [260, 180]
     }
   ],
   "connections": {
     "Notify webhook": { "main": [[{ "node": "Verify signature", "type": "main", "index": 0 }]] },
-    "Verify signature": { "main": [[{ "node": "Route by level", "type": "main", "index": 0 }]] },
+    "Verify signature": { "main": [[{ "node": "Verified?", "type": "main", "index": 0 }]] },
+    "Verified?": {
+      "main": [
+        [{ "node": "Route by level", "type": "main", "index": 0 }],
+        [{ "node": "Respond rejected", "type": "main", "index": 0 }]
+      ]
+    },
     "Route by level": {
       "main": [
         [{ "node": "Discord leads-errors", "type": "main", "index": 0 }],
@@ -176,10 +242,11 @@
     "Email via Gmail": {
       "main": [
         [{ "node": "Acknowledge", "type": "main", "index": 0 }],
-        [{ "node": "Email via Resend", "type": "main", "index": 0 }]
+        [{ "node": "Build failure notice", "type": "main", "index": 0 }]
       ]
     },
-    "Email via Resend": { "main": [[{ "node": "Acknowledge", "type": "main", "index": 0 }]] }
+    "Build failure notice": { "main": [[{ "node": "Alert team", "type": "main", "index": 0 }]] },
+    "Alert team": { "main": [[{ "node": "Respond failed", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" },
   "pinData": {}
