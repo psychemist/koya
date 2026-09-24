@@ -173,6 +173,7 @@ async function emitToN8n(
       url: meta.url,
       emittedAt: new Date().toISOString(),
     });
+    const timestamp = Math.floor(Date.now() / 1000);
 
     const res = await fetch(url, {
       method: 'POST',
@@ -181,7 +182,8 @@ async function emitToN8n(
         // The webhook is a public URL. Unsigned it is an open relay into the
         // team's Discord for anyone who learns it, and a channel that can be
         // spoofed is worse than no channel because people trust what it says.
-        'x-koya-signature': createHmac('sha256', secret).update(body).digest('hex'),
+        'x-koya-timestamp': String(timestamp),
+        'x-koya-signature': signPayload(secret, body, timestamp),
         'x-koya-idempotency-key': `${input.runId}:${input.kind}:${input.scope ?? ''}`,
       },
       body,
@@ -216,3 +218,22 @@ export async function notificationStatus(runId: string): Promise<NotificationRow
 }
 
 export const operatorRecipients = (): Recipient[] => config.notify.recipients();
+
+/** How far out of date a request may be and still be acted on. */
+export const SIGNATURE_TOLERANCE_SECONDS = 300;
+
+/**
+ * The signed material is `${timestamp}.${rawBody}`, not the body alone.
+ *
+ * A signature over the body by itself is valid for ever, so anyone who
+ * captures one request can replay it whenever they like and the team's Discord
+ * will repeat whatever it said. Putting the timestamp inside the signed
+ * material means the clock cannot be moved without invalidating the signature,
+ * and n8n rejects anything outside the window even when the signature checks
+ * out.
+ */
+export function signPayload(secret: string, rawBody: string, timestampSeconds: number): string {
+  return createHmac('sha256', secret)
+    .update(`${timestampSeconds}.${rawBody}`, 'utf8')
+    .digest('hex');
+}

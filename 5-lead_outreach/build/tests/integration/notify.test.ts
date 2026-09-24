@@ -112,9 +112,22 @@ test('the payload is signed with the raw body', { skip }, async () => {
   try {
     await notify({ kind: 'run_complete', runId: run.id, title: 't', lines: ['x'], to: [R] });
   } finally { s.restore(); }
+  const sent = s.captured.lastHeaders['x-koya-timestamp'];
+  assert.ok(sent, 'no timestamp header was sent');
+
+  // Signed over `${timestamp}.${rawBody}`, so the clock cannot be changed
+  // without invalidating the signature.
   const expected = createHmac('sha256', process.env.N8N_LEAD_NOTIFY_SECRET!)
-    .update(s.captured.lastRawBody).digest('hex');
+    .update(`${sent}.${s.captured.lastRawBody}`, 'utf8').digest('hex');
   assert.equal(s.captured.lastHeaders['x-koya-signature'], expected);
+
+  // A signature over the body alone would be valid for ever.
+  const bodyOnly = createHmac('sha256', process.env.N8N_LEAD_NOTIFY_SECRET!)
+    .update(s.captured.lastRawBody, 'utf8').digest('hex');
+  assert.notEqual(s.captured.lastHeaders['x-koya-signature'], bodyOnly);
+
+  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(sent));
+  assert.ok(age < 60, `timestamp is ${age}s out, which n8n would reject`);
   await dropRun(run.id);
 });
 

@@ -1,5 +1,5 @@
-import { createHmac } from 'node:crypto';
 import { config } from '../lib/config.ts';
+import { signPayload } from '../lib/notify/index.ts';
 
 /**
  * Proves the signature check works both ways against the live n8n instance.
@@ -34,7 +34,8 @@ const payload = {
 };
 
 const signedBody = JSON.stringify(payload);
-const signature = createHmac('sha256', secret).update(signedBody).digest('hex');
+const timestamp = Math.floor(Date.now() / 1000);
+const signature = signPayload(secret, signedBody, timestamp);
 
 // Sign one body, send a different one. This is exactly what an attacker who
 // learned the URL but not the secret would produce.
@@ -46,6 +47,7 @@ const res = await fetch(url, {
   method: 'POST',
   headers: {
     'content-type': 'application/json',
+    'x-koya-timestamp': String(timestamp),
     'x-koya-signature': signature,
     'x-koya-idempotency-key': `smoke:${kind}:${Date.now()}`,
   },

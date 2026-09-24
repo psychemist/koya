@@ -64,6 +64,19 @@ test('the verify node continues on error and returns a verdict', () => {
     'the verify node must read the shared secret by name');
 });
 
+/**
+ * A signature over the body alone never expires, so a captured request can be
+ * replayed into the team's Discord indefinitely.
+ */
+test('the verify node binds the signature to a timestamp and enforces a window', () => {
+  const code = byName('Verify signature')!.parameters.jsCode as string;
+  assert.match(code, /x-koya-timestamp/, 'the timestamp header is not read');
+  assert.match(code, /TOLERANCE_SECONDS\s*=\s*300/, 'no replay window is enforced');
+  assert.match(code, /timestamp \+ '\.' \+ raw/,
+    'the signature must cover the timestamp as well as the body');
+  assert.match(code, /outside the/, 'an out-of-window request must say why it was refused');
+});
+
 test('a missing secret fails closed rather than skipping the check', () => {
   const code = byName('Verify signature')!.parameters.jsCode as string;
   // Both lookups are guarded, because touching $env throws on n8n Cloud.
