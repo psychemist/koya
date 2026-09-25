@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clampCandidates, clampScrapes, clampTargetLeads } from '../../lib/budget.ts';
+import {
+  clampCandidates, clampScrapes, clampTargetLeads, discoveryCallsLeft,
+  dailyClaudeRefusal,
+} from '../../lib/budget.ts';
 import { config } from '../../lib/config.ts';
 
 const run = { candidate_budget: 40, candidates_used: 34 } as any;
@@ -68,4 +71,68 @@ test('a form value arrives as a string and still counts', () => {
 test('no target at all falls back to the configured default', () => {
   for (const v of [undefined, null, '', 'ten', NaN])
     assert.equal(clampTargetLeads(v), config.limits.targetLeads);
+});
+
+/**
+ * How many searches a run may pay to start.
+ *
+ * The run of 2026-09-25 made twenty-one discovery calls for forty charged
+ * rows. Three of the first six returned nothing and still paid the
+ * $0.001 start fee, and every call also lengthened the transcript that all
+ * later turns pay to re-send. Turn count is where an agent loop's cost
+ * compounds, and this is the largest avoidable contributor to it.
+ */
+test('a run may search several times, because the first query is rarely right', () => {
+  assert.ok(discoveryCallsLeft(0) > 1);
+  assert.equal(discoveryCallsLeft(0), config.limits.discoveryCalls);
+});
+
+test('the allowance runs out, and cannot go negative', () => {
+  const cap = config.limits.discoveryCalls;
+  assert.equal(discoveryCallsLeft(cap - 1), 1);
+  assert.equal(discoveryCallsLeft(cap), 0);
+  assert.equal(discoveryCallsLeft(cap + 9), 0);
+});
+
+test('a nonsense count is treated as none used rather than as unlimited', () => {
+  // A failed count must not hand out an unbounded allowance.
+  for (const v of [NaN, -1, undefined])
+    assert.equal(discoveryCallsLeft(v as number), config.limits.discoveryCalls);
+});
+
+/**
+ * The cap Claude did not have.
+ *
+ * Apify is bounded per run AND per day. Claude, the most expensive provider by
+ * far at roughly 89% of a run's cost, was bounded only per run, so ten runs in
+ * a day was $15 with nothing to stop it.
+ *
+ * The check reserves a whole run's ceiling rather than waiting for the day to
+ * be over the line, because a cap that can be overshot by a full run is not a
+ * cap.
+ */
+const CAP = config.limits.dailyClaudeCapUsd;
+const RUN = config.limits.maxBudgetUsd;
+
+test('a day with room for a whole run allows it', () => {
+  assert.equal(dailyClaudeRefusal(0), null);
+  assert.equal(dailyClaudeRefusal(CAP - RUN), null);
+});
+
+test('a day that cannot fund another whole run refuses it, and says so', () => {
+  const refusal = dailyClaudeRefusal(CAP - RUN + 0.01);
+  assert.ok(refusal, 'a run that could exceed the daily cap was allowed to start');
+  assert.match(refusal, /daily/i);
+  assert.ok(refusal.includes(CAP.toFixed(2)), 'the refusal does not name the cap');
+});
+
+test('an already exhausted day refuses', () => {
+  assert.ok(dailyClaudeRefusal(CAP));
+  assert.ok(dailyClaudeRefusal(CAP * 2));
+});
+
+test('a spend figure that cannot be read fails closed', () => {
+  // A glitched count must not read as an empty day and hand out a run.
+  for (const v of [NaN, Infinity, -1])
+    assert.ok(dailyClaudeRefusal(v as number), `${v} was treated as room to spend`);
 });

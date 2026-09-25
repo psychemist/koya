@@ -8,6 +8,7 @@ import { notify, buildDigest, operatorRecipients, type NotifyKind } from '../lib
 import { runAgent, agentOptions } from '../lib/agent/run-agent.ts';
 import { assertApifyAccount } from '../lib/providers/apify.ts';
 import { config } from '../lib/config.ts';
+import { claudeSpentToday, dailyClaudeRefusal } from '../lib/budget.ts';
 
 const WORKER_ID = `${hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
 const POLL_MS = 3_000;
@@ -78,6 +79,31 @@ async function handle(run: RunRow): Promise<void> {
     // No status move here: claimOne already took the run off the queue in the
     // same statement that claimed it, which is what stops a second worker
     // picking it up.
+
+    /**
+     * The daily Claude cap, checked before anything is announced or spent.
+     *
+     * Apify was bounded per run and per day; Claude, at roughly 89% of what a
+     * run costs, was bounded only per run. A refusal here ends the run rather
+     * than leaving it queued, because a queued run is reclaimed every lease
+     * window and would refuse in a loop for as long as it existed.
+     */
+    const refusal = dailyClaudeRefusal(await claudeSpentToday());
+    if (refusal) {
+      log('warn', 'daily claude cap reached, run not started', { run: run.id });
+      await transition(run.id,
+        ['queued', 'refining_icp', 'discovering', 'researching', 'drafting'], 'failed',
+        undefined, { error_message: refusal, finished_at: new Date() });
+      await notify({
+        kind: 'budget_exhausted_daily',
+        runId: run.id,
+        scope: new Date().toISOString().slice(0, 10),
+        title: 'Koya Talent Lead Desk: daily Claude cap reached',
+        lines: [refusal, 'This account is shared across the cohort.'],
+        to: operatorRecipients(),
+      });
+      return;
+    }
 
     // Feed only, deliberately no recipients. An email per state change teaches
     // people to ignore the emails.

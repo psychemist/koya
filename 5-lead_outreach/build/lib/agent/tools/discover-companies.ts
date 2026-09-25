@@ -4,7 +4,7 @@ import { baseArgs, ok, failed } from './shared.ts';
 import { withToolCall } from '../../toolcalls.ts';
 import { query } from '../../db.ts';
 import { loadRun } from '../../runs.ts';
-import { clampCandidates } from '../../budget.ts';
+import { clampCandidates, discoveryCallsLeft } from '../../budget.ts';
 import { ProviderError } from '../../errors.ts';
 import {
   discover, headcountBuckets, parseHeadcount, type Candidate,
@@ -73,6 +73,28 @@ export const discoverCompanies = tool(
            * agent's argument, so they are the criteria that were actually
            * agreed and written down.
            */
+          /**
+           * Searches are budgeted separately from candidates.
+           *
+           * Every search pays a start fee whatever it returns, and every one
+           * adds a turn to a transcript that all later turns pay to re-send.
+           * The run of 2026-09-25 made twenty-one for forty rows, three of its
+           * first six returning nothing. The row for THIS call is already
+           * inserted but not yet 'ok', so it is not counted against itself.
+           */
+          const [prior] = await query<{ n: string }>(
+            `select count(*)::text as n from public.tool_calls
+              where run_id = $1 and tool_name = 'discover_companies' and status = 'ok'`,
+            [args.run_id],
+          );
+          const searchesLeft = discoveryCallsLeft(Number(prior?.n ?? 0));
+          if (searchesLeft === 0) {
+            throw new ProviderError('BUDGET_RUN',
+              `This run has already paid for ${prior?.n ?? 0} searches, which is the limit. ` +
+              'Work with the candidates you already have. If they are too few, finish the run ' +
+              'with a shortfall reason naming this limit rather than searching again.');
+          }
+
           const icp = (run.icp ?? {}) as {
             geography?: string[]; headcount_range?: string; industries?: string[];
           };
@@ -112,6 +134,15 @@ export const discoverCompanies = tool(
               returned: candidates.length,
               skipped_already_delivered: candidates.length - stored.length,
               candidate_budget_remaining: Math.max(0, limit - itemsCharged),
+              /** Searches, not candidates. Spend them on a WIDER query rather
+               *  than a narrower retry: a search that returned nothing was too
+               *  narrow, and narrowing it further returns nothing again. */
+              searches_left: searchesLeft - 1,
+              ...(candidates.length === 0
+                ? { hint: 'This search returned nothing usable and still cost a start fee. ' +
+                          'Widen the query before trying again, and check ' +
+                          'icp_industries_not_filtered below.' }
+                : {}),
               /**
                * Charged and then discarded. Given to the model so that a query
                * returning mostly unusable rows can be narrowed on the next

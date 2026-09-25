@@ -60,9 +60,15 @@ export const config = {
   limits: {
     candidateBudget: num('RUN_CANDIDATE_BUDGET', 40),
     scrapeBudget: num('RUN_SCRAPE_BUDGET', 30),
+    /** How many times one run may pay to start a search. Twenty-one searches
+     *  for forty rows is where an agent loop's cost actually compounds. */
+    discoveryCalls: num('RUN_DISCOVERY_CALLS', 8),
     targetLeads: 10,
     runApifyCapUsd: num('RUN_APIFY_CAP_USD', 0.30),
     dailyApifyCapUsd: num('DAILY_APIFY_CAP_USD', 1.50),
+    /** Claude is roughly 89% of a run's cost and was the only provider with no
+     *  ceiling across runs: ten runs a day was $15 with nothing to stop it. */
+    dailyClaudeCapUsd: num('DAILY_CLAUDE_CAP_USD', 2.50),
     apifyPricePerResultUsd: num('APIFY_ACTOR_PRICE_PER_RESULT_USD', 0.005),
     /** Charged once per actor run, whatever it returns. A run that finds
      *  nothing is not a free run, and the agent may search more than once. */

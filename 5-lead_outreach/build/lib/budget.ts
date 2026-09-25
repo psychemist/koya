@@ -24,6 +24,63 @@ export function clampScrapes(run: Pick<RunRow, 'scrape_budget' | 'scrapes_used'>
   return Math.max(0, Math.min(Math.floor(requested), remaining));
 }
 
+/** What Claude has cost across every run today, from the ledger rather than
+ *  the denormalised column, because the column is a cache of it. */
+export async function claudeSpentToday(): Promise<number> {
+  const [row] = await query<{ total: string }>(
+    `select coalesce(sum(amount_usd),0)::text as total from public.spend_ledger
+      where provider = 'claude'
+        and created_at >= date_trunc('day', now() at time zone 'utc')`,
+  );
+  return Number(row?.total ?? 0);
+}
+
+/**
+ * Whether the day can still fund a whole agent run.
+ *
+ * Apify is capped per run and per day. Claude, which is roughly 89% of what a
+ * run costs, was capped only per run, so nothing bounded a day's spend at all.
+ *
+ * A whole run's ceiling is reserved rather than waiting for the day to cross
+ * the line, because a cap that a single run can overshoot by its full budget
+ * is not a cap. A figure that cannot be read fails closed: a glitched query
+ * must not read as an empty day.
+ *
+ * Returns the refusal to show a person, or null when the run may start.
+ */
+export function dailyClaudeRefusal(daySpentUsd: number): string | null {
+  const cap = config.limits.dailyClaudeCapUsd;
+  const spent = Number(daySpentUsd);
+  if (!Number.isFinite(spent) || spent < 0) {
+    return `The day's Claude spend could not be read, so this run is not starting. ` +
+      `The daily cap is $${cap.toFixed(2)}.`;
+  }
+  if (spent + config.limits.maxBudgetUsd > cap) {
+    return `The daily Claude cap of $${cap.toFixed(2)} cannot fund another run today: ` +
+      `$${spent.toFixed(2)} is already spent and one run may cost up to ` +
+      `$${config.limits.maxBudgetUsd.toFixed(2)}. This account is shared, so no further ` +
+      'runs start until tomorrow.';
+  }
+  return null;
+}
+
+/**
+ * How many more searches this run may pay to start.
+ *
+ * Every search costs a start fee whatever it returns, and more importantly
+ * every one adds a turn to a transcript that all later turns pay to re-send.
+ * The run of 2026-09-25 made twenty-one, three of its first six returning
+ * nothing at all.
+ *
+ * A count we could not read yields the full allowance rather than none: a
+ * failed query must not silently hand out an unbounded one.
+ */
+export function discoveryCallsLeft(used: number): number {
+  const n = Number(used);
+  if (!Number.isFinite(n) || n < 0) return config.limits.discoveryCalls;
+  return Math.max(0, config.limits.discoveryCalls - Math.floor(n));
+}
+
 /**
  * How many qualified leads this run is being asked for.
  *
