@@ -136,7 +136,7 @@ services:
       - key: RUN_APIFY_CAP_USD
         value: "0.30"
       - key: DAILY_APIFY_CAP_USD
-        value: "1.50"
+        value: "2.50"
 
       # Searches. The ceiling only catches a loop; the empty streak is the real
       # control, because counting searches punishes a run for an actor
