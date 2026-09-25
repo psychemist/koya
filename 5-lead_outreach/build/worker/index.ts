@@ -207,6 +207,25 @@ async function boot() {
     log('warn', 'prewarm failed, first run will pay the handshake',
       { error: e instanceof Error ? e.message : String(e) }));
 
+  /**
+   * The effective budgets, stated at boot.
+   *
+   * Config is read once at module load, so a worker started before an edit to
+   * .env.local goes on enforcing the old numbers with no sign that it is. That
+   * cost three separate debugging sessions on 2026-09-25, twice with a refusal
+   * message quoting a cap the file no longer contained. One line here makes a
+   * stale process visible immediately.
+   */
+  log('info', 'budgets in force', {
+    perRunClaudeUsd: config.limits.maxBudgetUsd,
+    dailyClaudeUsd: config.limits.dailyClaudeCapUsd,
+    perRunApifyUsd: config.limits.runApifyCapUsd,
+    dailyApifyUsd: config.limits.dailyApifyCapUsd,
+    candidates: config.limits.candidateBudget,
+    scrapes: config.limits.scrapeBudget,
+    effort: config.models.effort,
+  });
+
   log('info', 'worker ready');
 }
 
