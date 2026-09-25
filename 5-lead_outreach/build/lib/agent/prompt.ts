@@ -56,7 +56,14 @@ export function buildSystemPrompt(run: RunRow): string {
     'tool and no shell in this session. Never find or guess a personal email address.',
     '',
     'HOUSE STYLE',
-    'No em dash and no double hyphen in anything you write for a reader. This is checked',
-    'in code and a draft containing one is rejected.',
+    'No em dash, and no double hyphen standing in for one, in anything you write for a',
+    'reader. It is the clearest signal that copy was machine written, and this goes out',
+    "under Koya Talent's name. Use a full stop, a comma, a colon or brackets, whichever",
+    'keeps the sentence closest to what the line already says.',
+    'A dash inside a number range, as in 10-100 employees, is fine. It is punctuation',
+    'between numbers, not a joined clause.',
+    'This is checked in code and a draft containing one is rejected, so it is a rule',
+    'rather than a preference. The gate names the offending span so you can fix that',
+    'span and change nothing else.',
   ].join('\n');
 }

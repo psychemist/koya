@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runCopyGates, isBlocked } from '../../lib/gates/copy.ts';
+import { EM_DASH, emDashContext } from '../../lib/gates/house-style.ts';
 
 const SOURCE = 'Acme runs onboarding for mid-market payroll teams and is hiring a ' +
                'revenue operations manager to handle manual invoice reconciliation.';
@@ -79,4 +80,31 @@ test('advisory findings are reported but never block', () => {
     { ...ok, body: ok.body + ' Does that land? Is next week possible? Who owns this?' }, SOURCE);
   assert.equal(isBlocked(r), false);
   assert.ok(r.some(g => g.severity === 'advisory' && !g.passed));
+});
+
+/**
+ * A headcount range is punctuation between numbers, not a joined clause.
+ *
+ * The previous pattern matched an en dash anywhere, so "10-100 employees"
+ * written with one failed house style. That is the single phrase this product
+ * cannot avoid writing: it is in every ICP. Week 4's gate matches an en dash
+ * only beside whitespace, and week 5 now does the same.
+ */
+test('a dash between numbers is not a house style violation', () => {
+  const range = 'We work with teams of 10\u2013100 people.';
+  assert.equal(EM_DASH.test(range), false, `"${range}" was rejected as an em dash`);
+});
+
+test('a dash standing as punctuation still is one', () => {
+  for (const v of [
+    'We help teams \u2014 quickly \u2014 hire.',
+    'We help teams \u2013 quickly.',
+    'We help teams -- quickly.',
+  ]) assert.equal(EM_DASH.test(v), true, `"${v}" slipped through`);
+});
+
+test('the gate names the offending span so it can be fixed in place', () => {
+  const hits = emDashContext('Retention is leaking \u2014 and nobody has noticed yet.');
+  assert.equal(hits.length, 1);
+  assert.match(hits[0], /Retention is leaking/);
 });

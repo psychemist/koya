@@ -55,6 +55,16 @@ export const config = {
   models: {
     agent: opt('AGENT_MODEL') || 'claude-sonnet-5',
     screen: opt('SCREEN_MODEL') || 'claude-haiku-4-5',
+    /**
+     * Reasoning depth. The SDK's own default is 'high'.
+     *
+     * Output is where this agent's money goes: the run of 2026-09-25 spent
+     * 40% of its Claude cost on output tokens, 9,791 of them thinking, against
+     * 58 tokens of uncached input. Effort is the one knob that moves that
+     * number, which is why it is a setting rather than a constant.
+     */
+    effort: (opt('AGENT_EFFORT') || 'high') as
+      'low' | 'medium' | 'high' | 'xhigh' | 'max',
   },
 
   limits: {

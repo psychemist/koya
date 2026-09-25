@@ -1,6 +1,30 @@
-/** The em dash is the most recognisable tell of machine-written prose, and models
- *  reach for a double hyphen the moment you forbid the character. Catch both. */
-export const EM_DASH = /[—–]|(?<!-)--(?!-)/;
+/**
+ * The em dash is the most recognisable tell of machine-written prose, and
+ * models reach for a double hyphen the moment you forbid the character.
+ *
+ * Matched the way week 4's gate matches it, which is looser in exactly the
+ * right place: an en dash counts only when it stands as PUNCTUATION, beside
+ * whitespace. The previous pattern caught it anywhere, so "10-100 employees"
+ * written with an en dash failed house style, and a headcount range is the
+ * one phrase this product cannot avoid writing.
+ */
+export const EM_DASH = /—|–\s|\s–|(?<![-\w])--(?![-\w])/;
+
+/** Enough of the sentence around the mark to find it by eye. A gate that says
+ *  "an em dash appears in the body" leaves the reviser hunting for it. */
+export function emDashContext(text: string, radius = 42): string[] {
+  const hits: string[] = [];
+  for (const m of text.matchAll(new RegExp(EM_DASH, 'g'))) {
+    const at = m.index ?? 0;
+    const start = Math.max(0, at - radius);
+    const end = Math.min(text.length, at + radius);
+    hits.push(`${start > 0 ? '...' : ''}`
+      + `${text.slice(start, end).replace(/\s+/g, ' ').trim()}`
+      + `${end < text.length ? '...' : ''}`);
+    if (hits.length === 4) break;
+  }
+  return hits;
+}
 
 export const BANNED_OPENERS = [
   'loved what you are building', "loved what you're building",

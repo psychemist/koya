@@ -1,5 +1,6 @@
 import {
-  EM_DASH, BANNED_OPENERS, FAKE_URGENCY, SEND_INTENT, EMAIL_RE, ROLE_LOCALPARTS,
+  EM_DASH, emDashContext, BANNED_OPENERS, FAKE_URGENCY, SEND_INTENT, EMAIL_RE,
+  ROLE_LOCALPARTS,
 } from './house-style.ts';
 import { isGrounded } from './grounding.ts';
 
@@ -43,7 +44,15 @@ export function runCopyGates(draft: DraftInput, sourceText: string): GateResult[
   // House style. Standing rule, and this goes out under Koya's name.
   const emDashIn = EM_DASH.test(subject) ? 'subject' : EM_DASH.test(body) ? 'body' : null;
   results.push(emDashIn
-    ? fail('house-style', `An em dash or double hyphen appears in the ${emDashIn}.`)
+    // Naming the offending spans, as week 4's gate does. "An em dash appears in
+    // the body" leaves whoever revises it hunting for the character.
+    ? fail('house-style',
+        `An em dash or double hyphen appears in the ${emDashIn}. House style forbids it, ` +
+        'because it is the clearest signal that copy was machine written. Replace each with ' +
+        'a full stop, a comma, a colon or brackets, whichever keeps the sentence closest to ' +
+        'what it already says, and change nothing else. Found: ' +
+        emDashContext(emDashIn === 'subject' ? subject : body)
+          .map((h) => `"${h}"`).join('; '))
     : pass('house-style'));
 
   // Grounding. The LinkedIn message is short enough that a 3-gram is a hard

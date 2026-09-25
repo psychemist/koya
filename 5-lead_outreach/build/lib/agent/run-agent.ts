@@ -18,7 +18,8 @@ export const SKILLS = ['icp-refinement', 'lead-qualification', 'outbound-copywri
 
 export function agentOptions(run: RunRow): Options {
   return {
-    model: config.models.agent,                       // Sonnet 5: judgment inside a frame
+    model: config.models.agent,
+    effort: config.models.effort,                       // Sonnet 5: judgment inside a frame
     cwd: WORKSPACE,
     settingSources: ['project'],
     skills: SKILLS,
