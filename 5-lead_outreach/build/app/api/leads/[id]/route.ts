@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { one } from '../../../../lib/db.ts';
 import { requireUser, canSeeRun } from '../../../../lib/auth.ts';
+import { applyHumanVerdict } from '../../../../lib/review.ts';
+import { ProviderError } from '../../../../lib/errors.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,12 +30,17 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ error: 'No such lead.' }, { status: 404 });
   }
 
-  await one(
-    `update public.leads
-        set human_status = coalesce($2, human_status),
-            human_note   = coalesce($3, human_note)
-      where id = $1 returning id`,
-    [id, body.human_status ?? null, body.human_note ?? null],
-  );
-  return NextResponse.json({ saved: true });
+  try {
+    const outcome = await applyHumanVerdict(
+      id, (body.human_status ?? null) as 'accepted' | 'rejected' | null,
+      body.human_note ?? null);
+    return NextResponse.json({ saved: true, ...outcome });
+  } catch (e) {
+    // A lead that cannot carry a qualified verdict is a 422 naming what is
+    // missing, not a 500. The reviewer can act on the first and not the second.
+    if (e instanceof ProviderError && e.code === 'REVIEW_NO_EVIDENCE') {
+      return NextResponse.json({ error: e.message }, { status: 422 });
+    }
+    throw e;
+  }
 }

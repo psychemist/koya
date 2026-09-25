@@ -9,6 +9,7 @@ type LeadRow = {
   id: string; company_name: string; company_domain: string; qualification_status: string;
   confidence: string; fit_reasons: string[]; concerns: string[]; source_urls: string[];
   source_summary: string | null; human_status: string | null; human_note: string | null;
+  agent_verdict: string | null;
   drafts_blocked: string | null;
 };
 
@@ -45,7 +46,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const leads = await query<LeadRow>(
     `select id, company_name, company_domain, qualification_status, confidence,
             fit_reasons, concerns, source_urls, source_summary,
-            human_status, human_note, drafts_blocked
+            human_status, human_note, agent_verdict, drafts_blocked
        from public.leads where run_id = $1 order by qualification_status, company_name`,
     [id],
   );
@@ -77,7 +78,13 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
         `### ${l.company_name} (${l.company_domain})`,
         '',
         `Verdict: **${l.qualification_status}**, confidence ${l.confidence}` +
-          (l.human_status ? `. Reviewer marked it ${l.human_status}.` : ''),
+          (l.human_status
+            ? `. Reviewer marked it ${l.human_status}`
+              + (l.agent_verdict
+                  ? `, overriding the agent verdict of `
+                    + `${l.agent_verdict.replace(/_/g, ' ')}.`
+                  : '.')
+            : ''),
         '',
         '**Why it fits**',
         ...l.fit_reasons.map((r) => `- ${r}`),
@@ -125,7 +132,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
 
   const header = ['company_name', 'company_domain', 'qualification_status', 'confidence',
     'fit_reasons', 'concerns', 'source_urls', 'source_summary',
-    'human_status', 'human_note',
+    'human_status', 'human_note', 'agent_verdict',
     'email_1_subject', 'email_1_body', 'email_1_personalization',
     'email_2_subject', 'email_2_body', 'email_2_personalization',
     'email_3_subject', 'email_3_body', 'email_3_personalization',
@@ -144,7 +151,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     return [
       l.company_name, l.company_domain, l.qualification_status, l.confidence,
       l.fit_reasons.join(' | '), l.concerns.join(' | '), l.source_urls.join(' | '),
-      l.source_summary, l.human_status, l.human_note,
+      l.source_summary, l.human_status, l.human_note, l.agent_verdict,
       d(1)?.subject, d(1)?.body, note(1),
       d(2)?.subject, d(2)?.body, note(2),
       d(3)?.subject, d(3)?.body, note(3),

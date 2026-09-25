@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { useHumanMark } from './lead-card';
 
@@ -21,6 +22,7 @@ export function LeadVerdict({ leadId, humanNote }: {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   async function mark(next: 'accepted' | 'rejected', withNote?: string) {
     setBusy(true);
@@ -37,6 +39,10 @@ export function LeadVerdict({ leadId, humanNote }: {
       }
       setStatus(next);
       setOpen(false);
+      // A decision that moves the verdict also moves the chip, the card edge
+      // and which tab the lead belongs in, none of which this component owns.
+      const outcome = await res.json().catch(() => ({}));
+      if (outcome.promoted || outcome.demoted) router.refresh();
     } catch {
       setError('The server did not respond.');
     } finally {
