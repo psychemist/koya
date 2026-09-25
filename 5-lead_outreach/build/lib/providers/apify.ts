@@ -219,11 +219,27 @@ export function withinHeadcount(
 ): boolean {
   if (!bounds) return true;
 
+  /**
+   * The member count is a LOWER BOUND, not a headcount.
+   *
+   * It counts LinkedIn members who list the company, which systematically
+   * undercounts. So a count above the ceiling is confident evidence the
+   * company is too big and drops it whatever its bucket says, while a count
+   * below the floor proves nothing and must never drop a real company. This
+   * closes the high side of the bucket leak: SandboxAQ sits in a bucket that
+   * overlaps 10 to 100 while being far larger.
+   */
+  const counted = Number(meta.employeeCount);
+  if (Number.isFinite(counted) && counted > bounds.max) return false;
+
   const range = meta.employeeCountRange as { start?: unknown; end?: unknown } | undefined;
   if (range && typeof range === 'object') {
     const start = Number(range.start);
     const end = Number(range.end);
     if (Number.isFinite(start) && Number.isFinite(end)) {
+      // Overlap, not containment: a 51-200 bucket can hold a 90-person company
+      // and requiring containment would drop it. The low side of this stays
+      // open by design, because a 1-10 bucket can hold a company of exactly 10.
       return end >= bounds.min && start <= bounds.max;
     }
   }

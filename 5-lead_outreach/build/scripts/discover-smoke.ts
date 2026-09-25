@@ -165,6 +165,13 @@ for (const item of items as Record<string, unknown>[]) {
     console.log(`  (dropped: size ${r?.start ?? '?'}-${r?.end ?? '?'} is outside the ICP)  ${name}`);
     continue;
   }
-  console.log(`  ${c.companyDomain}  ${c.companyName}`);
+  // Kept rows print what they were kept ON, so a leak in a filter is visible
+  // here rather than only in a run that has already paid to judge them.
+  const r = c.meta.employeeCountRange as { start?: number; end?: number } | undefined;
+  const loc = (c.meta.locations as any[])?.find((l) => l?.headquarter)
+    ?? (c.meta.locations as any[])?.[0];
+  const size = r ? `${r.start ?? '?'}-${r.end ?? '?'}` : `count=${c.meta.employeeCount ?? 'none'}`;
+  console.log(`  ${c.companyDomain.padEnd(24)} size=${String(size).padEnd(10)} ` +
+    `hq=${loc?.parsed?.country ?? loc?.country ?? 'none'}  ${c.companyName}`);
 }
 console.log('\nOpen the run in the Apify Console and read the reported charge before pinning.');

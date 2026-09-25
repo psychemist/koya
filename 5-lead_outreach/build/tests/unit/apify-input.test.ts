@@ -333,3 +333,33 @@ test('an unknown location is kept, because absent evidence is not evidence of a 
   assert.equal(withinGeography({ locations: [] }, ['United States']), true);
   assert.equal(withinGeography(US, []), true, 'no stated geography is no filter');
 });
+
+/**
+ * The buckets are coarse, so overlap lets both ends leak.
+ *
+ * A "10 to 100" ICP accepts a 2-10 company (it touches 10) and a 51-200 one
+ * (it touches 100). Measured on 2026-09-25: saasmaker.com at 2-10 passed, and
+ * SandboxAQ, which is well over 100, passed on the same rule.
+ *
+ * Only the HIGH side can be closed. `employeeCount` counts LinkedIn members,
+ * which systematically UNDERCOUNTS a company, so it is a lower bound: a count
+ * above the ceiling is confident evidence the company is too big, while a
+ * count below the floor proves nothing and must not drop a real company.
+ */
+test('a member count above the ICP ceiling drops the company, whatever its bucket says', () => {
+  const icp = parseHeadcount('10 to 100');
+  assert.equal(withinHeadcount(
+    { employeeCountRange: { start: 51, end: 200 }, employeeCount: 800 }, icp), false);
+});
+
+test('a member count below the ICP floor does not drop it, because it undercounts', () => {
+  const icp = parseHeadcount('10 to 100');
+  assert.equal(withinHeadcount(
+    { employeeCountRange: { start: 11, end: 50 }, employeeCount: 6 }, icp), true);
+});
+
+test('a bucket comfortably inside the range is unaffected', () => {
+  const icp = parseHeadcount('10 to 100');
+  assert.equal(withinHeadcount(
+    { employeeCountRange: { start: 11, end: 50 }, employeeCount: 40 }, icp), true);
+});
