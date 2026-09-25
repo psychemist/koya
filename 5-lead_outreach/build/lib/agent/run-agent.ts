@@ -4,6 +4,7 @@ import { config } from '../config.ts';
 import { query } from '../db.ts';
 import { loadRun, transition, runStats, type RunRow, type RunStatus } from '../runs.ts';
 import { recordSpend } from '../budget.ts';
+import { capReached, agentCostFloorUsd } from './caps.ts';
 import { leadgenServer } from './server.ts';
 import { budgetHook } from './hooks.ts';
 import { buildSystemPrompt } from './prompt.ts';
@@ -77,6 +78,15 @@ export async function runAgent(runId: string): Promise<AgentOutcome> {
   let skillsLoaded: string[] = [];
   let modelUsage: Record<string, unknown> | null = null;
 
+  /**
+   * The loop is wrapped because a cap arrives as a THROW, not only as a result
+   * message. On 2026-09-25 the SDK raised "Reached maximum budget ($1.5)", the
+   * exception escaped this loop, and every line below it was skipped: the cost
+   * was never recorded, `model_usage` was never written, and a run holding 8
+   * qualified leads was marked `failed` rather than `partial`.
+   */
+  let thrown: unknown = null;
+  try {
   for await (const message of agentQuery({
     prompt: 'Begin this run. Start by refining the objective into an ICP.',
     options,
@@ -105,25 +115,50 @@ export async function runAgent(runId: string): Promise<AgentOutcome> {
       modelUsage = (message as any).modelUsage ?? null;
     }
   }
+  } catch (e) {
+    // Held, not rethrown yet. The accounting below has to happen first, and a
+    // failure that is really a cap has to be reclassified before it is raised.
+    thrown = e;
+  }
+
+  const thrownMessage = thrown instanceof Error ? thrown.message
+    : thrown != null ? String(thrown) : undefined;
+  const cap = capReached(subtype, thrownMessage);
+
+  // A run stopped by the spend cap spent at least the cap. On the thrown path
+  // no result message arrives, so the SDK's own figure never came back and
+  // recording it unchanged books a $1.50 run at $0.00.
+  const settledCostUsd = agentCostFloorUsd(costUsd, cap);
 
   await query('update public.runs set agent_turns = $2, model_usage = $3 where id = $1',
     [runId, turns, modelUsage ? JSON.stringify(modelUsage) : null]);
   // recordSpend refreshes runs.claude_cost_usd from the ledger, so the cost is
   // written in exactly one place rather than incremented here as well.
-  if (costUsd > 0) await recordSpend(runId, 'claude', costUsd, 'agent loop');
+  if (settledCostUsd > 0) {
+    await recordSpend(runId, 'claude', settledCostUsd,
+      cap === 'error_max_budget_usd' && costUsd <= 0
+        ? 'agent loop, stopped by the spend cap, priced at the cap'
+        : 'agent loop');
+  }
+  costUsd = settledCostUsd;
 
   const WORKING: RunStatus[] =
     ['queued', 'refining_icp', 'discovering', 'researching', 'drafting'];
 
   // A cap is never reported as success. The run ends partial naming the cap,
   // with everything produced so far preserved.
-  if (subtype === 'error_max_turns' || subtype === 'error_max_budget_usd') {
+  if (cap) {
     await transition(runId, WORKING, 'partial', undefined, {
-      shortfall_reason: subtype === 'error_max_turns'
+      shortfall_reason: cap === 'error_max_turns'
         ? `The agent reached its turn cap of ${config.limits.maxTurns} before finishing.`
         : `The agent reached its spend cap of $${config.limits.maxBudgetUsd}.`,
       finished_at: new Date(),
     });
+    subtype = cap;
+  } else if (thrown) {
+    // Not a cap, so it is a real failure. Raised only now that the cost and
+    // the usage are on record, which is what the worker's catch then reports.
+    throw thrown;
   } else if (subtype !== 'success') {
     /**
      * Partial results are never discarded.
