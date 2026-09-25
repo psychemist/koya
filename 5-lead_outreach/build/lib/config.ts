@@ -37,6 +37,11 @@ export function assertPinnedActor(v: string | undefined): string {
   return v;
 }
 
+/** A base URL a path can be concatenated on to: no trailing slash, ever. */
+export function baseUrl(v: string | undefined): string {
+  return (v?.trim() || 'http://localhost:3000').replace(/\/+$/, '');
+}
+
 /** Comma separated list, empty entries dropped. An unset value is no recipients, not a crash. */
 export function parseRecipients(v: string | undefined): { email: string; role: string }[] {
   if (!v) return [];
@@ -112,7 +117,14 @@ export const config = {
     recipients: () => parseRecipients(opt('NOTIFY_TO')),
   },
 
-  appBaseUrl: opt('APP_BASE_URL') || 'http://localhost:3000',
+  /**
+   * Trailing slashes stripped here, once, rather than at the one place that
+   * builds a link from it. A dashboard field is exactly where a URL picks up a
+   * trailing slash, and the notification lane concatenates a path straight on
+   * to this, so `https://host/` produced `https://host//runs/<id>` in an email
+   * that had already been sent by the time anyone noticed.
+   */
+  appBaseUrl: baseUrl(opt('APP_BASE_URL')),
 
   /** Signs the session cookie. Required by the web service, which is the only
    *  process that issues one. */
