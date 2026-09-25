@@ -108,3 +108,29 @@ test('the gate names the offending span so it can be fixed in place', () => {
   assert.equal(hits.length, 1);
   assert.match(hits[0], /Retention is leaking/);
 });
+
+/**
+ * A limit worth enforcing is worth stating.
+ *
+ * The length limits lived as literals inside the gate, so anything ASKING for
+ * copy had to guess them or find them by being rejected. A live redraft on
+ * 2026-09-25 spent two model calls and was refused for a 132 word body,
+ * because the prompt requesting it never mentioned 120.
+ */
+test('the drafting prompt states every limit the gate enforces', async () => {
+  const { draftingSystemPrompt } = await import('../../lib/drafting.ts');
+  const { COPY_LIMITS } = await import('../../lib/gates/copy.ts');
+  const prompt = draftingSystemPrompt('guidance');
+
+  for (const n of Object.values(COPY_LIMITS)) {
+    assert.ok(prompt.includes(String(n)),
+      `the prompt never mentions the limit ${n}, so the model must discover it by failing`);
+  }
+});
+
+test('a rejection reason is carried back into the next attempt', async () => {
+  const { draftingSystemPrompt } = await import('../../lib/drafting.ts');
+  const retry = draftingSystemPrompt('guidance', 'step 1: length: Body is 132 words');
+  assert.match(retry, /132 words/);
+  assert.match(retry, /change nothing else/);
+});

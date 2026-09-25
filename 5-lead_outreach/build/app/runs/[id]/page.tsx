@@ -4,6 +4,7 @@ import { loadRun, runStats } from '../../../lib/runs.ts';
 import { notificationStatus } from '../../../lib/notify/index.ts';
 import { ConfirmDelete } from '../../ui/confirm';
 import { ContinueRun } from './continue-run';
+import { Redraft } from './redraft';
 import { Nav } from '../../ui/nav';
 import { Progress } from './progress';
 import { DraftEditor } from './draft-editor';
@@ -172,6 +173,9 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               <div className="flagged">
                 <b className="small">Copy needs writing by hand.</b>
                 <p className="small" style={{ margin: '4px 0 0' }}>{lead.drafts_blocked}</p>
+                {/* The block names a gate the copy failed, or says the agent
+                    never wrote any. Both are answerable by trying again. */}
+                {lead.qualification_status === 'qualified' && <Redraft leadId={lead.id} />}
               </div>
             )}
             {leadDrafts.length === 0 && !lead.drafts_blocked && (

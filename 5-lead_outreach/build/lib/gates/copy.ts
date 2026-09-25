@@ -34,6 +34,20 @@ function firstMatch(haystack: string, needles: readonly string[]): string | unde
  * what gates are for. Every one of them runs before `save_outreach` writes a
  * row, so a draft that fails one never reaches a reviewer at all.
  */
+/**
+ * The hard limits, in one place.
+ *
+ * They were literals inside the gate, so anything ASKING for copy had to guess
+ * them or discover them by failing. A live redraft on 2026-09-25 burned two
+ * model calls and was refused for a 132 word body, because the prompt that
+ * requested it never said 120. A limit worth enforcing is worth stating.
+ */
+export const COPY_LIMITS = {
+  emailBodyWords: 120,
+  subjectChars: 60,
+  linkedInChars: 300,
+} as const;
+
 export function runCopyGates(draft: DraftInput, sourceText: string): GateResult[] {
   const results: GateResult[] = [];
   const body = draft.body ?? '';
@@ -88,9 +102,13 @@ export function runCopyGates(draft: DraftInput, sourceText: string): GateResult[
 
   // Length. Deliverability, and short is the guide's rule.
   const lengthProblem = isLinkedIn
-    ? (body.length > 300 ? `LinkedIn message is ${body.length} characters, limit 300.` : null)
-    : subject.length > 60 ? `Subject is ${subject.length} characters, limit 60.`
-    : wordCount(body) > 120 ? `Body is ${wordCount(body)} words, limit 120.`
+    ? (body.length > COPY_LIMITS.linkedInChars
+        ? `LinkedIn message is ${body.length} characters, limit ${COPY_LIMITS.linkedInChars}.`
+        : null)
+    : subject.length > COPY_LIMITS.subjectChars
+      ? `Subject is ${subject.length} characters, limit ${COPY_LIMITS.subjectChars}.`
+    : wordCount(body) > COPY_LIMITS.emailBodyWords
+      ? `Body is ${wordCount(body)} words, limit ${COPY_LIMITS.emailBodyWords}.`
     : null;
   results.push(lengthProblem ? fail('length', lengthProblem) : pass('length'));
 
