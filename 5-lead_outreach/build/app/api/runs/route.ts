@@ -3,6 +3,7 @@ import { one } from '../../../lib/db.ts';
 import { sha256 } from '../../../lib/hash.ts';
 import { config } from '../../../lib/config.ts';
 import { requireUser } from '../../../lib/auth.ts';
+import { clampTargetLeads } from '../../../lib/budget.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,9 @@ export async function POST(request: Request) {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: 'Sign in first.' }, { status: 401 });
 
-  let body: { objective?: string; geography?: string; headcount?: string };
+  let body: {
+    objective?: string; geography?: string; headcount?: string; target_leads?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -40,12 +43,13 @@ export async function POST(request: Request) {
   const run = await one<{ id: string; status: string }>(
     `insert into public.runs
        (idempotency_key, objective, status, candidate_budget, scrape_budget, apify_cap_usd,
-        created_by)
-     values ($1,$2,'queued',$3,$4,$5,$6)
+        target_leads, created_by)
+     values ($1,$2,'queued',$3,$4,$5,$6,$7)
      on conflict (idempotency_key) do update set objective = public.runs.objective
      returning id, status`,
     [idempotencyKey(objective, user.id), full, config.limits.candidateBudget,
-     config.limits.scrapeBudget, config.limits.runApifyCapUsd, user.id],
+     config.limits.scrapeBudget, config.limits.runApifyCapUsd,
+     clampTargetLeads(body.target_leads), user.id],
   );
 
   return NextResponse.json({ id: run!.id, status: run!.status }, { status: 201 });

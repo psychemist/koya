@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import { usePersisted } from './use-persisted';
 
-type Form = { objective: string; geography: string; headcount: string };
+type Form = {
+  objective: string; geography: string; headcount: string; target_leads: string;
+};
 
-const EMPTY: Form = { objective: '', geography: '', headcount: '' };
+const EMPTY: Form = { objective: '', geography: '', headcount: '', target_leads: '10' };
 
 export function IntakeForm() {
   const [form, setForm, clearStored] = usePersisted<Form>('koya-lead-intake', EMPTY);
@@ -66,6 +68,16 @@ export function IntakeForm() {
           <input id="headcount" value={form.headcount}
                  onChange={(e) => set({ headcount: e.target.value })}
                  placeholder="10 to 100" />
+        </div>
+        <div className="field">
+          <label htmlFor="target_leads">How many leads do you want?</label>
+          <input id="target_leads" type="number" min={1} max={25} value={form.target_leads}
+                 onChange={(e) => set({ target_leads: e.target.value })} />
+          <p className="small muted" style={{ margin: '6px 0 0' }}>
+            The run works to this number and stops when a budget runs out. If it
+            finishes short it tells you which budget ended and how many companies
+            it assessed, rather than padding the list.
+          </p>
         </div>
       </div>
 

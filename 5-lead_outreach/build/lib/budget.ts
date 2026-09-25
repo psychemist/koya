@@ -24,6 +24,32 @@ export function clampScrapes(run: Pick<RunRow, 'scrape_budget' | 'scrapes_used'>
   return Math.max(0, Math.min(Math.floor(requested), remaining));
 }
 
+/**
+ * How many qualified leads this run is being asked for.
+ *
+ * `runs.target_leads` was read by the prompt, `get_run_state` and
+ * `finish_run` from the start, but nothing ever wrote it, so every run used
+ * the column default and a requester could not ask for a number.
+ *
+ * The ceiling is deliberate and the budgets behind it stay fixed. A narrow
+ * ICP cannot be made productive by spending more on it: one discovery query
+ * in the run of 2026-09-25 returned nineteen companies in total. Asking for
+ * more than a run can reach is answered by `finish_run` demanding a shortfall
+ * reason, which is honest, rather than by a budget that grows to chase it.
+ */
+const MAX_TARGET_LEADS = 25;
+
+export function clampTargetLeads(requested: unknown): number {
+  const n = Math.floor(Number(requested));
+  if (!Number.isFinite(n) || n <= 0) {
+    return requested === undefined || requested === null || requested === ''
+      || !Number.isFinite(n)
+      ? config.limits.targetLeads
+      : 1;
+  }
+  return Math.min(n, MAX_TARGET_LEADS);
+}
+
 /** One advisory lock key for the whole spend ledger, so the check and the
  *  reservation below cannot interleave with another worker's. */
 const SPEND_LOCK = 8_150_2026;
