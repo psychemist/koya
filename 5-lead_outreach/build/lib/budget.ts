@@ -65,6 +65,19 @@ export function budgetConfigError(perRunUsd: number, dailyCapUsd: number): strin
 }
 
 export function dailyClaudeRefusal(daySpentUsd: number): string | null {
+  return dailyClaudeRefusalFor(daySpentUsd, config.limits.maxBudgetUsd);
+}
+
+/**
+ * The same cap, reserving what THIS piece of work might cost.
+ *
+ * A whole agent run reserves a run's ceiling. A single drafting call costs
+ * cents, and reserving $3.50 for it would refuse a redraft on a day with
+ * plenty of room left. The cap is the same; what differs is the claim on it.
+ */
+export function dailyClaudeRefusalFor(
+  daySpentUsd: number, estimateUsd: number,
+): string | null {
   const cap = config.limits.dailyClaudeCapUsd;
   const misconfigured = budgetConfigError(config.limits.maxBudgetUsd, cap);
   if (misconfigured) return misconfigured;
@@ -73,11 +86,11 @@ export function dailyClaudeRefusal(daySpentUsd: number): string | null {
     return `The day's Claude spend could not be read, so this run is not starting. ` +
       `The daily cap is $${cap.toFixed(2)}.`;
   }
-  if (spent + config.limits.maxBudgetUsd > cap) {
-    return `The daily Claude cap of $${cap.toFixed(2)} cannot fund another run today: ` +
-      `$${spent.toFixed(2)} is already spent and one run may cost up to ` +
-      `$${config.limits.maxBudgetUsd.toFixed(2)}. This account is shared, so no further ` +
-      'runs start until tomorrow.';
+  if (spent + estimateUsd > cap) {
+    return `The daily Claude cap of $${cap.toFixed(2)} cannot fund this work today: ` +
+      `$${spent.toFixed(2)} is already spent and this may cost up to ` +
+      `$${estimateUsd.toFixed(2)}. This account is shared, so nothing further starts ` +
+      'until tomorrow.';
   }
   return null;
 }
@@ -151,6 +164,43 @@ export function clampTargetLeads(requested: unknown): number {
       : 1;
   }
   return Math.min(n, MAX_TARGET_LEADS);
+}
+
+/**
+ * Take a scrape slot, atomically.
+ *
+ * The budget used to be CHECKED against a row loaded at the top of the tool
+ * call and incremented afterwards. Serially that holds. The moment the agent
+ * issues several scrapes in one turn, which is what makes a run fast, every
+ * one reads the same row, every one sees budget left, and the run overshoots
+ * by however many it issued at once.
+ *
+ * The predicate and the increment are one statement, so the database decides
+ * the winner. Returns false when there was nothing left to take.
+ */
+export async function reserveScrape(runId: string): Promise<boolean> {
+  const rows = await query<{ scrapes_used: number }>(
+    `update public.runs
+        set scrapes_used = scrapes_used + 1
+      where id = $1 and scrapes_used < scrape_budget
+      returning scrapes_used`,
+    [runId],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Give a slot back when the fetch never happened.
+ *
+ * A page that could not be retrieved cost no credit and no model call, so it
+ * must not cost a slot either: a run against flaky sites would otherwise lose
+ * its research budget to failures rather than to pages.
+ */
+export async function releaseScrape(runId: string): Promise<void> {
+  await query(
+    `update public.runs set scrapes_used = greatest(0, scrapes_used - 1) where id = $1`,
+    [runId],
+  );
 }
 
 /** One advisory lock key for the whole spend ledger, so the check and the
