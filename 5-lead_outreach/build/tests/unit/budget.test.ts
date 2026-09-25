@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clampCandidates, clampScrapes, clampTargetLeads, discoveryCallsLeft,
-  dailyClaudeRefusal,
+  dailyClaudeRefusal, budgetConfigError,
 } from '../../lib/budget.ts';
 import { config } from '../../lib/config.ts';
 
@@ -135,4 +135,24 @@ test('a spend figure that cannot be read fails closed', () => {
   // A glitched count must not read as an empty day and hand out a run.
   for (const v of [NaN, Infinity, -1])
     assert.ok(dailyClaudeRefusal(v as number), `${v} was treated as room to spend`);
+});
+
+/**
+ * Two caps that can never agree.
+ *
+ * A daily cap below one run's ceiling refuses every run for ever while reading
+ * exactly like an ordinary exhausted day, so the reader goes looking at
+ * today's spend rather than at the two numbers in conflict.
+ */
+test('a per-run budget larger than the daily cap is named as a misconfiguration', () => {
+  const err = budgetConfigError(3.50, 2.50);
+  assert.ok(err);
+  assert.match(err, /AGENT_MAX_BUDGET_USD/);
+  assert.match(err, /DAILY_CLAUDE_CAP_USD/);
+  assert.ok(err.includes('3.50') && err.includes('2.50'));
+});
+
+test('a per-run budget that fits inside the day is not an error', () => {
+  assert.equal(budgetConfigError(1.50, 2.50), null);
+  assert.equal(budgetConfigError(2.50, 2.50), null, 'exactly one run a day is a choice');
 });

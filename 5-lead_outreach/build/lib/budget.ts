@@ -48,8 +48,26 @@ export async function claudeSpentToday(): Promise<number> {
  *
  * Returns the refusal to show a person, or null when the run may start.
  */
+/**
+ * A daily cap below a single run's ceiling is a contradiction, not a budget.
+ *
+ * It refuses every run for ever while reading exactly like an ordinary
+ * exhausted day, which sends the reader looking at today's spend instead of at
+ * the two numbers that can never agree. Found on 2026-09-25 with
+ * AGENT_MAX_BUDGET_USD raised to $3.50 against a $2.50 daily cap.
+ */
+export function budgetConfigError(perRunUsd: number, dailyCapUsd: number): string | null {
+  if (!(perRunUsd > dailyCapUsd)) return null;
+  return `AGENT_MAX_BUDGET_USD is $${perRunUsd.toFixed(2)} and DAILY_CLAUDE_CAP_USD is ` +
+    `$${dailyCapUsd.toFixed(2)}, so a single run can never fit inside a day and no run ` +
+    'will ever start. Raise the daily cap above the per-run budget, or lower the per-run ' +
+    'budget below it.';
+}
+
 export function dailyClaudeRefusal(daySpentUsd: number): string | null {
   const cap = config.limits.dailyClaudeCapUsd;
+  const misconfigured = budgetConfigError(config.limits.maxBudgetUsd, cap);
+  if (misconfigured) return misconfigured;
   const spent = Number(daySpentUsd);
   if (!Number.isFinite(spent) || spent < 0) {
     return `The day's Claude spend could not be read, so this run is not starting. ` +

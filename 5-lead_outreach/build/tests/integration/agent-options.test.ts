@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { config } from '../../lib/config.ts';
 import { agentOptions, SKILLS } from '../../lib/agent/run-agent.ts';
 import { budgetHook } from '../../lib/agent/hooks.ts';
 import { seedRun, dropRun, skipWithoutDatabase } from '../helpers.ts';
@@ -20,10 +21,17 @@ test('dangerous built-ins are not available at all', () => {
 });
 
 test('caps are set and are not the primary control', () => {
+  /**
+   * Asserted against the configuration rather than against literals. The
+   * literals were 60 and 1.5, and when AGENT_MAX_BUDGET_USD was raised to 3.50
+   * this failed while the code was entirely correct: it was testing the
+   * operator's chosen number, not that the number reaches the agent.
+   */
   const o = agentOptions(fakeRun);
-  assert.equal(o.maxTurns, 60);
-  assert.equal(o.maxBudgetUsd, 1.5);
-  assert.equal(o.model, 'claude-sonnet-5');
+  assert.equal(o.maxTurns, config.limits.maxTurns);
+  assert.equal(o.maxBudgetUsd, config.limits.maxBudgetUsd);
+  assert.ok(o.maxTurns > 0 && o.maxBudgetUsd > 0, 'a cap of zero is no cap');
+  assert.equal(o.model, config.models.agent);
 });
 
 test('only the five project skills are enabled', () => {

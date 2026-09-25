@@ -39,6 +39,19 @@ export async function seedRun(patch: Partial<RunRow> = {}): Promise<RunRow> {
  */
 export async function dropRun(runId: string): Promise<void> {
   await query('delete from public.spend_ledger where run_id = $1', [runId]);
+  /**
+   * Both of these outlive the cascade, and both are GLOBAL.
+   *
+   * `delivered_domains.first_run_id` is ON DELETE SET NULL, so a promotion made
+   * during a test left a row behind that suppressed a domain for every future
+   * run. Thirty-three of them had accumulated by 2026-09-25, all synthetic.
+   * `judged_companies.run_id` is the same shape and feeds the overlap
+   * measurement, where leftovers read as repeats that never happened.
+   *
+   * Deleted BEFORE the run, while first_run_id still points at it.
+   */
+  await query('delete from public.delivered_domains where first_run_id = $1', [runId]);
+  await query('delete from public.judged_companies where run_id = $1', [runId]);
   await query('delete from public.runs where id = $1', [runId]);
 }
 
