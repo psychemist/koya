@@ -4,15 +4,20 @@ import { useEffect, useState } from 'react';
 
 import { runStateClass } from '../../ui/status';
 
+/**
+ * Deliberately no cost.
+ *
+ * Spend is a shared budget question, asked once on the admin page rather than
+ * on every operator's run. What belongs here is what is LEFT, because that is
+ * what tells a reviewer whether the run can still reach the target, and it is
+ * the number they can act on.
+ */
 type Snapshot = {
   status: string; turns: number; candidatesRemaining: number; scrapesRemaining: number;
-  apifySpendUsd: number; claudeCostUsd: number;
   stats: { qualified: number; assessed: number; flaggedPages: number; blockedDrafts: number };
 };
 
 const TERMINAL = ['complete', 'partial', 'failed'];
-
-const money = (v: number) => `$${Number(v ?? 0).toFixed(2)}`;
 
 export function Progress({ runId, initialStatus }: { runId: string; initialStatus: string }) {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -52,11 +57,8 @@ export function Progress({ runId, initialStatus }: { runId: string; initialStatu
             <div><b>Turns</b> {snap.turns}</div>
             <div><b>Candidates left</b> {snap.candidatesRemaining}</div>
             <div><b>Pages left</b> {snap.scrapesRemaining}</div>
-            <div><b>Apify</b> {money(snap.apifySpendUsd)}</div>
-            <div>
-              <b>Claude</b> {money(snap.claudeCostUsd)}{' '}
-              <span className="muted">(estimate, not billing data)</span>
-            </div>
+            <div><b>Qualified</b> {snap.stats.qualified}</div>
+            <div><b>Judged</b> {snap.stats.assessed}</div>
           </>
         )}
       </div>

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { loadRun, runStats } from '../../../../../lib/runs.ts';
-import { apifySpend } from '../../../../../lib/budget.ts';
 import { requireUser, canSeeRun } from '../../../../../lib/auth.ts';
 
 export const dynamic = 'force-dynamic';
@@ -24,10 +23,9 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
       shortfallReason: run.shortfall_reason,
       candidatesRemaining: Math.max(0, run.candidate_budget - run.candidates_used),
       scrapesRemaining: Math.max(0, run.scrape_budget - run.scrapes_used),
-      apifySpendUsd: await apifySpend(id),
-      // The SDK's own caveat, repeated wherever the number is shown.
-      claudeCostUsd: Number(run.claude_cost_usd),
-      costIsEstimate: true,
+      // No cost here either. Taking it off the strip and leaving it in the
+      // payload would move the disclosure rather than remove it: any operator
+      // could still read a run's spend straight from this endpoint.
       stats: await runStats(id),
     });
   } catch {
