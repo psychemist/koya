@@ -4,7 +4,9 @@ import { config } from '../config.ts';
 import { query } from '../db.ts';
 import { loadRun, transition, runStats, type RunRow, type RunStatus } from '../runs.ts';
 import { recordSpend } from '../budget.ts';
-import { capReached, agentCostFloorUsd } from './caps.ts';
+import {
+  capReached, agentCostFloorUsd, remainingRunBudgetUsd, tooLittleLeftToStart,
+} from './caps.ts';
 import { leadgenServer } from './server.ts';
 import { budgetHook } from './hooks.ts';
 import { buildSystemPrompt } from './prompt.ts';
@@ -32,7 +34,10 @@ export function agentOptions(run: RunRow): Options {
                       'Task', 'Read(**/.env*)', 'Read(**/*.pem)'],
     permissionMode: 'default',
     maxTurns: config.limits.maxTurns,                 // backstop
-    maxBudgetUsd: config.limits.maxBudgetUsd,         // backstop
+    // What is LEFT of this run's cap, not the whole cap. A reclaimed run has
+    // already spent some of it, and handing over the full figure again is how
+    // one run costs three times its ceiling. See remainingRunBudgetUsd.
+    maxBudgetUsd: remainingRunBudgetUsd(run.claude_cost_usd),
     hooks: { PreToolUse: [{ hooks: [budgetHook] }] },
     systemPrompt: buildSystemPrompt(run),
   };
@@ -71,6 +76,32 @@ export function cacheReadTokens(modelUsage: unknown): number {
  */
 export async function runAgent(runId: string): Promise<AgentOutcome> {
   const run = await loadRun(runId);
+
+  /**
+   * A reclaimed run that has already spent its cap stops here.
+   *
+   * Without this it would be invoked with an allowance of nothing, buy one
+   * turn of thinking, and come back as a cap: money spent to produce a result
+   * that reads in the record exactly like a genuine short run. Ending it
+   * `partial` keeps everything the earlier attempts produced and says plainly
+   * why there was no further attempt.
+   */
+  const remaining = remainingRunBudgetUsd(run.claude_cost_usd);
+  if (tooLittleLeftToStart(remaining)) {
+    const stats = await runStats(runId);
+    await transition(runId,
+      ['queued', 'refining_icp', 'discovering', 'researching', 'drafting'], 'partial', undefined, {
+        shortfall_reason:
+          `This run has already spent its $${config.limits.maxBudgetUsd} ceiling across ` +
+          'earlier attempts, so it was not started again. ' +
+          `It assessed ${stats.assessed} companies. Continue it to carry the criteria and ` +
+          'the companies it never reached into a run with a fresh budget.',
+        finished_at: new Date(),
+      });
+    return { subtype: 'error_max_budget_usd', costUsd: 0, turns: 0,
+             skillsLoaded: [], modelUsage: null };
+  }
+
   const options = agentOptions(run);
 
   let turns = 0;

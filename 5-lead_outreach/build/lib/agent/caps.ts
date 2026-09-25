@@ -46,3 +46,36 @@ export function agentCostFloorUsd(reportedUsd: number, cap: CapReached | null): 
   if (cap === 'error_max_budget_usd') return Math.max(reported, config.limits.maxBudgetUsd);
   return reported;
 }
+
+/**
+ * Below this there is no point invoking the agent at all: it buys a turn of
+ * thinking, no tool calls, and a cap message that reads in the record exactly
+ * like a genuine short run.
+ */
+export const MIN_AGENT_BUDGET_USD = 0.10;
+
+/**
+ * WHAT THIS INVOCATION MAY SPEND, which is not what the RUN may spend.
+ *
+ * `AGENT_MAX_BUDGET_USD` was passed to the SDK as a flat number every time the
+ * agent started. That is correct exactly once. A run whose worker dies is left
+ * non-terminal with a stale lease, reclaimed fifteen minutes later and invoked
+ * AGAIN, and the second invocation got a whole fresh cap. Three reclaims meant
+ * three times the per-run ceiling, with nothing but the daily cap behind it.
+ *
+ * The ledger already knows what the run has spent, because `recordSpend`
+ * refreshes `runs.claude_cost_usd` from it. Subtracting makes the cap mean per
+ * RUN, which is what its name has always claimed.
+ */
+export function remainingRunBudgetUsd(alreadySpentUsd: string | number): number {
+  // pg returns numeric columns as strings, and an unparseable one must read as
+  // nothing spent: refusing a run because its own accounting is unreadable is
+  // worse than letting it have the full cap.
+  const spent = Number(alreadySpentUsd);
+  const safe = Number.isFinite(spent) && spent > 0 ? spent : 0;
+  return Math.max(0, config.limits.maxBudgetUsd - safe);
+}
+
+export function tooLittleLeftToStart(remainingUsd: number): boolean {
+  return remainingUsd < MIN_AGENT_BUDGET_USD;
+}
