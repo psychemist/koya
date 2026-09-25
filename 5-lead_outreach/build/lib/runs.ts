@@ -133,3 +133,50 @@ export async function runStats(runId: string): Promise<RunStats> {
     flaggedPages: Number(pages?.flagged ?? 0),
   };
 }
+
+/**
+ * Let an objective be tried again when its run produced nothing.
+ *
+ * Idempotency is keyed on (objective, operator, day) so an impatient double
+ * submit cannot queue two paid runs. A run refused before it started is a
+ * different case: it produced nothing, and under that key its objective was
+ * unusable for the rest of the day. On 2026-09-25 a stale daily cap refused a
+ * run and locked out the objective until midnight.
+ *
+ * Only a `failed` run with no leads qualifies. A run that produced leads is
+ * never restarted, because restarting it would re-run an agent over delivered
+ * work and double its spend.
+ */
+export async function requeueIfNothingProduced(runId: string): Promise<boolean> {
+  const rows = await query<{ id: string }>(
+    `update public.runs
+        set status = 'queued',
+            error_message = null,
+            shortfall_reason = null,
+            claimed_by = null,
+            claimed_at = null,
+            finished_at = null,
+            version = version + 1
+      where id = $1
+        and status = 'failed'
+        and not exists (select 1 from public.leads where run_id = $1)
+      returning id`,
+    [runId],
+  );
+  if (!rows.length) return false;
+
+  /**
+   * The old attempt's notifications go with it.
+   *
+   * A run refused on a budget emits `budget_exhausted_daily`. Requeueing left
+   * that row attached, so the run's own history showed a budget alert against
+   * an attempt that then succeeded, and the operator had an email telling them
+   * something was blocked while it ran fine. Observed on 2026-09-25: an alert
+   * at 16:22 on a run that was still healthy at 17:38.
+   *
+   * The unique key is (run_id, kind, scope), so leaving them would also stop
+   * the new attempt emitting the same kinds at all.
+   */
+  await query('delete from public.notifications where run_id = $1', [runId]);
+  return true;
+}

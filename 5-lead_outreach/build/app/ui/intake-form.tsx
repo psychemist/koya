@@ -27,6 +27,10 @@ export function IntakeForm() {
       const body = await res.json();
       if (!res.ok) { setError(body.error ?? 'The run could not be queued.'); return; }
       clearStored();
+      // A reduced target is worth a pause. Sending the person straight to the
+      // run page would hide the fact that they asked for a number they are not
+      // going to get.
+      if (body.notice) window.alert(body.notice);
       window.location.href = `/runs/${body.id}`;
     } catch {
       setError('The server did not respond. Nothing was queued, so try again.');
