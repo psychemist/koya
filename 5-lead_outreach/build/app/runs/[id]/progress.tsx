@@ -12,9 +12,33 @@ import { runStateClass } from '../../ui/status';
  * what tells a reviewer whether the run can still reach the target, and it is
  * the number they can act on.
  */
+type Activity = {
+  tool_name: string; purpose: string | null; status: string; created_at: string;
+};
+
 type Snapshot = {
   status: string; turns: number; candidatesRemaining: number; scrapesRemaining: number;
   stats: { qualified: number; assessed: number; flaggedPages: number; blockedDrafts: number };
+  activity: Activity[];
+};
+
+/** The tool name is an implementation detail. What a reviewer is watching for
+ *  is which of the five stages the run is in. */
+const STAGE: Record<string, string> = {
+  save_icp: 'Agreeing the criteria',
+  discover_companies: 'Searching for companies',
+  scrape_company_site: 'Reading a company site',
+  save_lead: 'Recording a verdict',
+  save_outreach: 'Drafting outreach',
+  get_run_state: 'Checking what is left',
+  finish_run: 'Checking the list before finishing',
+};
+
+const stageOf = (t: string) => STAGE[t.replace(/^mcp__leadgen__/, '')] ?? t.replace(/_/g, ' ');
+
+const clock = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { timeStyle: 'medium' });
 };
 
 const TERMINAL = ['complete', 'partial', 'failed'];
@@ -62,6 +86,36 @@ export function Progress({ runId, initialStatus }: { runId: string; initialStatu
           </>
         )}
       </div>
+
+      {/* Only while something is happening. On a finished run the leads below
+          are the answer, and a frozen activity list reads like a stalled one. */}
+      {snap && !TERMINAL.includes(status) && snap.activity?.length > 0 && (
+        <div style={{ marginTop: 14, borderTop: '1px solid var(--rule, #e5e5e5)', paddingTop: 10 }}>
+          <div className="small muted" style={{ marginBottom: 6 }}>Latest activity</div>
+          <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {snap.activity.map((a, i) => (
+              <li
+                key={`${a.created_at}-${i}`}
+                className="small"
+                style={{ display: 'flex', gap: 10, padding: '3px 0', opacity: i === 0 ? 1 : 0.62 }}
+              >
+                <span className="muted" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {clock(a.created_at)}
+                </span>
+                <span style={{ flex: 1 }}>
+                  {stageOf(a.tool_name)}
+                  {a.purpose && <span className="muted">{' '}&middot; {a.purpose}</span>}
+                </span>
+                {a.status !== 'ok' && (
+                  <span className={a.status === 'denied' ? 'state-degraded' : 'state-failed'}>
+                    {a.status === 'started' ? 'running' : a.status}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
     </div>
   );
 }

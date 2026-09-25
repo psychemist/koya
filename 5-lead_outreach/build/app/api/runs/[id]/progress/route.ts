@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { loadRun, runStats } from '../../../../../lib/runs.ts';
+import { query } from '../../../../../lib/db.ts';
 import { requireUser, canSeeRun } from '../../../../../lib/auth.ts';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,28 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
       // payload would move the disclosure rather than remove it: any operator
       // could still read a run's spend straight from this endpoint.
       stats: await runStats(id),
+
+      /**
+       * What the agent is actually doing, which the strip above could never
+       * show: turns and budgets say how much is left, not what is happening.
+       * `purpose` is the agent's own statement of why it made the call, and it
+       * is already written to this table on every call.
+       *
+       * Four columns, not the row. `input_summary` and `result_summary` are
+       * redacted but they are still the scraped world, and a live feed is not
+       * where that belongs. `cost_usd` is left out for the same reason the
+       * strip leaves it out.
+       */
+      activity: await query<{
+        tool_name: string; purpose: string | null; status: string; created_at: Date;
+      }>(
+        `select tool_name, purpose, status, created_at
+           from public.tool_calls
+          where run_id = $1
+          order by created_at desc
+          limit 8`,
+        [id],
+      ),
     });
   } catch {
     return NextResponse.json({ error: 'No such run.' }, { status: 404 });
