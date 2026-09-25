@@ -45,8 +45,11 @@ async function storeCandidates(runId: string, found: Candidate[]) {
 
 export const discoverCompanies = tool(
   'discover_companies',
-  'Search for candidate companies matching a query. The number of results is set ' +
-  'by the run budget, not by you. Returns company names and domains.',
+  'Search for candidate companies. The number of results is set by the run budget, ' +
+  'not by you. Keep the query to the product or market words only: geography, ' +
+  'headcount and industry are applied as filters from the stored ICP, not from your ' +
+  'text, so repeating them narrows the search to nothing. Returns company names and ' +
+  'domains.',
   {
     ...baseArgs,
     query: z.string().describe('The search query you composed from the refined ICP.'),
