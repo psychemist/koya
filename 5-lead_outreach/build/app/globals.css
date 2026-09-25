@@ -4,21 +4,46 @@
  * A records desk, not a dashboard.
  *
  * The product exists because a lead list without its evidence is worthless, so
- * the palette is institutional rather than promotional: cool paper, blue-black
- * ink, and exactly three verdict colours that mean one thing each. Monospace is
- * reserved for text retrieved from a third-party website, so quoted evidence
- * never reads as something Koya wrote.
+ * the surface is an instrument: true black on true white, no tint, no shadow,
+ * no rounded corners.
+ *
+ * Colour buys exactly one thing: whether a piece of machinery worked. Green
+ * went through, amber wants a look, red did not happen. It is never spent on
+ * the verdict, which stays monochrome and carried by FILL DENSITY: a solid
+ * edge is qualified, an outline is needs-review, a hairline is not qualified.
+ * Keeping the two apart is what stops a page of thirty leads from reading as
+ * thirty alarms.
+ *
+ * Every coloured state keeps the weight, the underline or the inversion it had
+ * before the colour arrived, so the surface still answers a reviewer who
+ * cannot separate red from green, and still answers on a printer.
+ *
+ * Monospace is reserved for text retrieved from a third-party website, so
+ * quoted evidence never reads as something Koya wrote.
  */
 :root {
-  --ink:      #17202a;
-  --ink-soft: #5b6873;
-  --paper:    #eef1f3;
-  --card:     #ffffff;
-  --rule:     #d3d9dd;
-  --verdict:  #1f5f4e;
-  --caution:  #8a5a00;
-  --refusal:  #8c2f2f;
-  --focus:    #2b5f9e;
+  --ink:   #000000;
+  --paper: #ffffff;
+  --wash:  #f4f4f4;
+  --rule:  #dcdcdc;
+  --mute:  #6b6b6b;
+  --edge:  #9a9a9a;
+
+  /* Held down to what stays legible on paper white and dark enough to carry
+     small text: each ink clears 5:1 against the page, and white clears 5:1
+     against the solid red. */
+  --good:      #0f7a3d;
+  --good-edge: #1d8f4d;
+  --good-wash: #e9f6ee;
+  --warn:      #8a5a00;
+  --warn-edge: #c78a00;
+  --warn-wash: #fdf3d8;
+  --bad:       #b3261e;
+  --bad-edge:  #b3261e;
+  --bad-wash:  #fdecea;
+
+  --nav-h: 52px;
+  --tap:   110ms;
 }
 
 * { box-sizing: border-box; }
@@ -27,44 +52,198 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font: 15px/1.55 'Public Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  font: 15px/1.6 var(--font-sans), 'Archivo', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-h1, h2, h3 { font-weight: 620; letter-spacing: -0.01em; margin: 0; }
-h1 { font-size: 26px; }
-h2 { font-size: 19px; }
-h3 { font-size: 15px; }
+/* Scale: 12 13 15 18 22 30 44. Tracking tightens as size grows, which is what
+   keeps a grotesque from looking loose at display sizes. */
+h1, h2, h3 { margin: 0; font-weight: 700; }
+h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.022em; }
+h2 { font-size: 18px; line-height: 1.3;  letter-spacing: -0.012em; }
+h3 { font-size: 15px; line-height: 1.35; letter-spacing: -0.008em; }
+
 p { margin: 0 0 10px; max-width: 72ch; }
-a { color: var(--focus); }
 
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+a { color: var(--ink); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
 
-.wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 72px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 96px; }
 .narrow { max-width: 640px; }
 
-.rule { border: 0; border-top: 1px solid var(--rule); margin: 24px 0; }
-.muted { color: var(--ink-soft); }
+.rule { border: 0; border-top: 1px solid var(--rule); margin: 26px 0; }
+.muted { color: var(--mute); }
 .small { font-size: 13px; }
 
-.card {
-  background: var(--card);
-  border: 1px solid var(--rule);
-  border-radius: 3px;
+/* ---------- navigation ---------- */
+
+/*
+ * One bar, on every signed-in page. The run page previously had no way back
+ * except a pair of links joined by a middle dot, so the place a reviewer
+ * spends all their time was the one place with no navigation.
+ */
+.nav {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; gap: 4px;
+  height: var(--nav-h);
+  padding: 0 20px;
+  background: var(--ink);
+  color: var(--paper);
 }
 
-/* The verdict is carried by the card's left edge rather than a badge, so a
-   reviewer can scan a column of ten and see the shape of the list at once. */
-.lead { border-left: 4px solid var(--rule); margin-bottom: 18px; }
-.lead[data-verdict="qualified"]     { border-left-color: var(--verdict); }
-.lead[data-verdict="needs_review"]  { border-left-color: var(--caution); }
-.lead[data-verdict="not_qualified"] { border-left-color: var(--ink-soft); }
+.nav-mark {
+  font-size: 13px; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-right: 24px; white-space: nowrap;
+  text-decoration: none; color: var(--paper);
+}
 
+.nav-links { display: flex; align-items: center; gap: 2px; }
+.nav-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+.nav a,
+.nav .nav-link {
+  color: var(--paper);
+  font-size: 13.5px; font-weight: 500;
+  text-decoration: none;
+  padding: 7px 11px;
+  border: 1px solid transparent;
+  transition: background var(--tap) linear, color var(--tap) linear;
+}
+.nav a:hover,
+.nav .nav-link:hover { background: var(--paper); color: var(--ink); }
+
+/* The current page is marked by a rule under it, not by a filled pill: a pill
+   would be indistinguishable from the hover state. */
+.nav a[aria-current="page"] {
+  border-bottom-color: var(--paper);
+  border-bottom-width: 2px;
+  padding-bottom: 6px;
+}
+
+.nav-who { font-size: 12.5px; color: #b9b9b9; white-space: nowrap; }
+.nav :focus-visible { outline-color: var(--paper); }
+
+/* A sign-out button sits in the bar and must not look like a page action.
+   Both selectors are needed: `button.quiet` carries the same specificity as
+   `.nav button` and is declared later, so it would otherwise paint the control
+   white on a black bar. */
+.nav button,
+.nav button.quiet {
+  background: transparent; color: var(--paper);
+  border: 1px solid #4a4a4a;
+  padding: 6px 11px; font-size: 13px; font-weight: 500;
+}
+.nav button:hover:not(:disabled),
+.nav button.quiet:hover:not(:disabled) {
+  background: var(--paper); color: var(--ink); border-color: var(--paper);
+}
+
+/* On a narrow screen the links and the sign-out are what a reviewer needs;
+   their own name is the first thing that can go. */
+@media (max-width: 720px) {
+  .nav { padding: 0 14px; gap: 2px; }
+  .nav-mark { margin-right: 12px; font-size: 12px; letter-spacing: 0.1em; }
+  .nav-who { display: none; }
+}
+
+/* ---------- surfaces ---------- */
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+}
+
+/*
+ * Verdict by fill density. The left edge is the only thing that differs, and
+ * it differs in weight rather than hue.
+ */
+.lead { border-left: 6px solid var(--rule); margin-bottom: 18px; }
+.lead[data-verdict="qualified"]     { border-left-color: var(--ink); }
+.lead[data-verdict="needs_review"]  { border-left-color: var(--edge); }
+.lead[data-verdict="not_qualified"] { border-left-color: var(--rule); }
+
+/*
+ * A reviewer's own answer outranks the agent's, so it takes the edge, and it
+ * is the one place on a lead where colour is allowed: green accepted, red
+ * rejected. An undecided lead keeps the density of its bucket, which is what
+ * makes a ruled-on card findable while scrolling a list of thirty. The head
+ * says which in words, so the edge is never the only carrier.
+ */
+.lead[data-human="accepted"] { border-left-color: var(--good); }
+.lead[data-human="rejected"] { border-left-color: var(--bad); }
+
+/*
+ * One grid, spent the same way by every card. A head that sizes itself to its
+ * own company name makes a reviewer re-find the verdict on every row; here the
+ * name, the domain, the chip and the confidence sit at the same four offsets
+ * down a list of thirty. Long values are clipped rather than wrapped, with the
+ * full text on the title, because a second line would break the alignment the
+ * grid exists to hold.
+ */
 .lead-head {
-  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.3fr) 152px 124px minmax(0, 1.1fr);
+  gap: 8px 16px; align-items: baseline;
   padding: 14px 18px; border-bottom: 1px solid var(--rule);
 }
-.lead-cols { display: grid; grid-template-columns: 1fr 1fr 1.2fr; }
+.lead-name, .lead-domain, .lead-confidence, .lead-mark {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lead-confidence { font-variant-numeric: tabular-nums; }
+/* One width for all three verdicts, so the eye can read the column by fill
+   alone without reading the word. The track is wider than the chip on purpose:
+   the slack sits to the right of it, holding the verdict away from the
+   confidence figure it would otherwise read as part of. */
+.lead-head .chip { display: block; width: 118px; text-align: center; }
+/* Nothing to say about a lead nobody has marked, and an empty line of grid
+   is still a line on a narrow screen. */
+.lead-mark:empty { display: none; }
+
+@media (max-width: 900px) {
+  .lead-head { grid-template-columns: minmax(0, 1fr) 118px; }
+  .lead-head .chip { justify-self: end; }
+  .lead-name       { grid-column: 1; grid-row: 1; }
+  .lead-head .chip { grid-column: 2; grid-row: 1; }
+  .lead-domain     { grid-column: 1; grid-row: 2; }
+  .lead-confidence { grid-column: 2; grid-row: 2; }
+  .lead-mark       { grid-column: 1 / -1; grid-row: 3; }
+}
+
+/*
+ * Verdict tabs. A reviewer works one verdict at a time: accept the qualified,
+ * argue with the held, audit the rejected only when the count looks wrong. The
+ * count rides in the tab so an empty group is answered without opening it, and
+ * the selected tab is the solid fill every other committed control on this
+ * surface already uses.
+ */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 18px; }
+.tabs button { padding: 8px 14px; font-size: 13px; }
+.tabs .count { margin-left: 9px; font-variant-numeric: tabular-nums; opacity: .65; }
+
+/* The same three-step density, repeated as a chip, because the left edge is
+   invisible once a reviewer has scrolled past the top of the card. */
+.chip {
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em;
+  padding: 2px 8px; border: 1px solid var(--ink); white-space: nowrap;
+}
+.chip[data-verdict="qualified"]     { background: var(--ink); color: var(--paper); }
+.chip[data-verdict="needs_review"]  { background: var(--paper); color: var(--ink); }
+.chip[data-verdict="not_qualified"] {
+  background: var(--paper); color: var(--mute); border-color: var(--rule);
+}
+
+/* A sentence, not a label. At display size a long objective takes over the
+   page it is only meant to introduce. */
+.run-title { font-size: 22px; letter-spacing: -0.014em; max-width: 62ch; }
+
+/* Set a step down from body copy: a reviewer is scanning thirty of these, and
+   the evidence columns are for comparison rather than for reading through. */
+.lead-cols { display: grid; grid-template-columns: 1fr 1fr 1.2fr; font-size: 13.5px; }
 .lead-cols > * { padding: 16px 18px; border-right: 1px solid var(--rule); }
 .lead-cols > *:last-child { border-right: 0; }
 @media (max-width: 900px) {
@@ -73,7 +252,7 @@ a { color: var(--focus); }
 }
 
 .col-label {
-  font-size: 12px; font-weight: 650; color: var(--ink-soft);
+  font-size: 12px; font-weight: 700; color: var(--ink);
   margin-bottom: 10px;
 }
 
@@ -83,68 +262,146 @@ ul.tight li { margin-bottom: 5px; }
 /* Retrieved text. Monospace marks it as something a machine fetched, not
    something a person here wrote. */
 .excerpt {
-  font: 12.5px/1.5 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: #f7f9fa; border: 1px solid var(--rule); border-radius: 2px;
-  padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: 12.5px/1.6 var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--wash); border: 1px solid var(--rule); border-radius: 0;
+  padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere;
   max-height: 260px; overflow: auto;
 }
 
-.flagged {
-  border-left: 3px solid var(--refusal);
-  background: #fdf5f5; padding: 10px 12px; margin-bottom: 12px;
+/*
+ * Two panels, and the difference between them is whether anything is broken.
+ *
+ * A page that addressed an automated reader, or copy the gates will not let a
+ * draft carry, is caution: it was caught, handled, and now wants a human eye.
+ * That is amber, and it keeps the solid left bar it needs to stay findable
+ * once the colour is gone in print.
+ */
+.warning, .flagged {
+  background: var(--warn-wash); color: var(--ink);
+  border: 1px solid var(--warn-edge); border-left: 4px solid var(--warn-edge);
+  padding: 12px 14px; margin-bottom: 12px;
+}
+.warning .excerpt, .flagged .excerpt {
+  background: var(--paper); border-color: var(--warn-edge);
 }
 
-.strip { display: flex; flex-wrap: wrap; gap: 6px 20px; padding: 12px 18px; }
+.strip { display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 13px 18px; }
 .strip div { font-size: 13px; }
-.strip b { font-weight: 640; }
+.strip b { font-weight: 600; }
 
-.state-sent      { color: var(--verdict); }
-.state-degraded,
-.state-pending   { color: var(--caution); }
-.state-failed    { color: var(--refusal); }
-.state-skipped   { color: var(--ink-soft); }
+/*
+ * Severity twice over: weight, underline and inversion say it without colour,
+ * and colour says it again for the reviewer skimming the strip. The semantic
+ * names are the ones new code should reach for; the delivery names are what
+ * the notification strip already speaks.
+ */
+.state-sent, .state-good {
+  color: var(--good); font-weight: 600;
+}
+.state-degraded, .state-pending, .state-warn {
+  color: var(--warn); font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.state-failed, .state-bad {
+  background: var(--bad); color: var(--paper); padding: 1px 6px; font-weight: 600;
+}
+/* Work still in flight is not a severity. It gets weight and no colour, so a
+   running run does not sit in the table looking like a verdict. */
+.state-working   { font-weight: 600; }
+/* A lane nobody configured is not a failure, and colouring it as one is what
+   teaches people to stop reading the strip. */
+.state-skipped   { color: var(--mute); }
 
 .topbar {
   display: flex; flex-wrap: wrap; gap: 12px 20px;
   align-items: flex-start; justify-content: space-between;
 }
 
+/* ---------- tables ---------- */
+
 table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--rule); }
-th { font-weight: 640; color: var(--ink-soft); font-size: 12.5px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th {
+  font-weight: 700; font-size: 12px; color: var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+tbody tr { transition: background var(--tap) linear; }
+tbody tr:hover { background: var(--wash); }
 tbody tr:last-child td { border-bottom: 0; }
-td a { text-decoration: none; }
+td a { text-decoration: none; font-weight: 500; }
 td a:hover { text-decoration: underline; }
+
+/* ---------- forms ---------- */
 
 label { display: block; font-weight: 600; font-size: 13px; margin: 0 0 6px; }
 input, textarea, button { font: inherit; }
 input, textarea {
-  width: 100%; padding: 9px 11px; border: 1px solid var(--rule);
-  border-radius: 3px; background: var(--card); color: var(--ink);
+  width: 100%; padding: 10px 12px;
+  border: 1px solid var(--edge); border-radius: 0;
+  background: var(--paper); color: var(--ink);
+  transition: border-color var(--tap) linear;
 }
+input:hover, textarea:hover { border-color: var(--ink); }
+input:focus, textarea:focus { border-color: var(--ink); }
 textarea { min-height: 110px; resize: vertical; }
 .field { margin-bottom: 18px; }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
 
-button {
-  padding: 9px 16px; border-radius: 3px; border: 1px solid var(--ink);
-  background: var(--ink); color: #fff; font-weight: 600; cursor: pointer;
-}
-button:disabled { opacity: .5; cursor: not-allowed; }
-button.quiet { background: transparent; color: var(--ink); border-color: var(--rule); }
-button.danger { background: var(--refusal); border-color: var(--refusal); }
+/* ---------- buttons ---------- */
 
-.error {
-  border-left: 3px solid var(--refusal); background: #fdf5f5;
-  padding: 10px 12px; margin-bottom: 16px;
+/*
+ * Every actionable thing answers the pointer by inverting, and depresses on
+ * click. One idea, applied everywhere, so a control's behaviour is learnable
+ * from any other control.
+ */
+button {
+  padding: 10px 18px;
+  border: 1px solid var(--ink); border-radius: 0;
+  background: var(--ink); color: var(--paper);
+  font-size: 14px; font-weight: 600; letter-spacing: -0.004em;
+  cursor: pointer;
+  transition: background var(--tap) linear, color var(--tap) linear,
+              border-color var(--tap) linear, transform 60ms linear;
 }
+button:hover:not(:disabled)  { background: var(--paper); color: var(--ink); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: .35; cursor: not-allowed; }
+
+button.quiet {
+  background: var(--paper); color: var(--ink); border-color: var(--edge);
+}
+button.quiet:hover:not(:disabled) {
+  background: var(--ink); color: var(--paper); border-color: var(--ink);
+}
+
+/* Destructive work earns a heavier rule rather than a colour, and inverts to
+   solid black on hover so the commitment is visible before the click. */
+button.danger {
+  background: var(--paper); color: var(--ink);
+  border: 2px solid var(--ink); font-weight: 700;
+}
+button.danger:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+
+/* Something did not happen. Inverted, because on this surface a solid block is
+   still the loudest thing available, and now it is red as well. */
+.error {
+  background: var(--bad); color: var(--paper);
+  padding: 12px 14px; margin-bottom: 16px;
+}
+.error a { color: var(--paper); }
+/* A failure reported inside a caution panel: the panel is amber, the sentence
+   that failed is not. */
+.warning .state-bad, .flagged .state-bad { background: var(--bad); color: var(--paper); }
 
 dialog {
-  border: 1px solid var(--rule); border-radius: 4px; padding: 22px;
-  max-width: 460px; color: var(--ink);
+  border: 2px solid var(--ink); border-radius: 0; padding: 24px;
+  max-width: 460px; color: var(--ink); background: var(--paper);
 }
-dialog::backdrop { background: rgba(23, 32, 42, .45); }
+dialog::backdrop { background: rgba(0, 0, 0, .6); }
+
+details > summary { cursor: pointer; }
+details > summary:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }

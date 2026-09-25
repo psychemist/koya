@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 
+import { useHumanMark } from './lead-card';
+
 /**
  * The reviewer's verdict on the agent's verdict.
  *
@@ -10,10 +12,11 @@ import { useState } from 'react';
  * offered with a rejection because "no" without a reason teaches the next run
  * nothing.
  */
-export function LeadVerdict({ leadId, humanStatus, humanNote }: {
-  leadId: string; humanStatus: string | null; humanNote: string | null;
+export function LeadVerdict({ leadId, humanNote }: {
+  leadId: string; humanNote: string | null;
 }) {
-  const [status, setStatus] = useState(humanStatus);
+  // Shared with the card, because the left edge answers this button.
+  const { status, setStatus } = useHumanMark();
   const [note, setNote] = useState(humanNote ?? '');
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);

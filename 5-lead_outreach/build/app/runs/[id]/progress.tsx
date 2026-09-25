@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
+import { runStateClass } from '../../ui/status';
+
 type Snapshot = {
   status: string; turns: number; candidatesRemaining: number; scrapesRemaining: number;
   apifySpendUsd: number; claudeCostUsd: number;
@@ -41,7 +43,10 @@ export function Progress({ runId, initialStatus }: { runId: string; initialStatu
   return (
     <div className="card" style={{ marginBottom: 18 }}>
       <div className="strip">
-        <div><b>Status</b> {status.replace(/_/g, ' ')}</div>
+        <div>
+          <b>Status</b>{' '}
+          <span className={runStateClass(status)}>{status.replace(/_/g, ' ')}</span>
+        </div>
         {snap && (
           <>
             <div><b>Turns</b> {snap.turns}</div>

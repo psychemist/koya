@@ -10,7 +10,7 @@ type Draft = {
   gate_results: GateResult[] | null;
 };
 
-const title = (step: number) => (step === 0 ? 'LinkedIn message' : `Email ${step}`);
+const title = (step: number) => (step === 0 ? 'LinkedIn Message' : `Email ${step}`);
 
 export function DraftEditor({ draft }: { draft: Draft }) {
   const [subject, setSubject] = useState(draft.subject ?? '');
@@ -84,11 +84,16 @@ export function DraftEditor({ draft }: { draft: Draft }) {
         <button className="quiet" onClick={save} disabled={!dirty || state === 'saving'}>
           {state === 'saving' ? 'Checking the edit' : state === 'saved' ? 'Saved' : 'Save changes'}
         </button>
-        <span className="small muted" style={{ marginLeft: 10 }}>
-          {checksPassed > 0
-            ? `${checksPassed} checks passed. Edits are checked the same way.`
-            : 'Edits pass the same checks the draft did.'}
-        </span>
+        {checksPassed > 0 ? (
+          <span className="small" style={{ marginLeft: 10 }}>
+            <span className="state-good">{checksPassed} checks passed.</span>{' '}
+            <span className="muted">Edits are checked the same way.</span>
+          </span>
+        ) : (
+          <span className="small muted" style={{ marginLeft: 10 }}>
+            Edits pass the same checks the draft did.
+          </span>
+        )}
       </div>
     </div>
   );

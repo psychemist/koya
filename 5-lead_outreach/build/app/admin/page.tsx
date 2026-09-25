@@ -1,7 +1,8 @@
 import { requireAdminPage, roleLabel } from '../../lib/auth.ts';
 import { query } from '../../lib/db.ts';
 import { config } from '../../lib/config.ts';
-import { SignOut } from '../ui/sign-out';
+import { Nav } from '../ui/nav';
+import { runStateClass } from '../ui/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,19 +81,10 @@ export default async function AdminPage() {
   const totalFlagged = history.reduce((n, r) => n + Number(r.flagged), 0);
 
   return (
-    <main className="wrap">
-      <div className="topbar">
-        <div>
-          <h1>Team and spend</h1>
-          <p className="small muted" style={{ margin: 0 }}>
-            {admin.name}, {roleLabel(admin.role)}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <a className="small" href="/">Start a run</a>
-          <SignOut />
-        </div>
-      </div>
+    <>
+      <Nav user={admin} current="admin" />
+      <main className="wrap">
+      <h1>Team and spend</h1>
 
       <hr className="rule" />
 
@@ -183,7 +175,11 @@ export default async function AdminPage() {
                     </td>
                     <td>{r.owner ?? <span className="muted">unowned</span>}</td>
                     <td className="muted">{day(r.created_at)}</td>
-                    <td>{r.status.replace(/_/g, ' ')}</td>
+                    <td>
+                      <span className={runStateClass(r.status)}>
+                        {r.status.replace(/_/g, ' ')}
+                      </span>
+                    </td>
                     <td>{r.qualified}</td>
                     <td>{r.assessed}</td>
                     <td>{r.agent_turns}</td>
@@ -202,6 +198,7 @@ export default async function AdminPage() {
         Model cost is a client-side estimate from the SDK, not billing data. The discovery
         figure is what the provider reported for the run.
       </p>
-    </main>
+      </main>
+    </>
   );
 }

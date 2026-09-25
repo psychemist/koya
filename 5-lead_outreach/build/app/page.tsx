@@ -1,8 +1,9 @@
-import { currentUser, roleLabel } from '../lib/auth.ts';
+import { currentUser } from '../lib/auth.ts';
 import { query } from '../lib/db.ts';
 import { SignIn } from './ui/sign-in';
 import { IntakeForm } from './ui/intake-form';
-import { SignOut } from './ui/sign-out';
+import { Nav } from './ui/nav';
+import { runStateClass } from './ui/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,19 +40,11 @@ export default async function Home({ searchParams }: {
   );
 
   return (
-    <main className="wrap">
-      <div className="topbar">
-        <div>
-          <h1>Koya Lead Desk</h1>
-          <p className="small muted" style={{ margin: 0 }}>
-            {user.name}, {roleLabel(user.role)}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {user.role === 'admin' && <a className="small" href="/admin">Team and spend</a>}
-          <SignOut />
-        </div>
-      </div>
+    <>
+      <Nav user={user} current="runs" />
+      <main className="wrap">
+      <h1>Start a run</h1>
+      <p className="small muted">Describe what you are looking for. Nothing is sent to anyone.</p>
 
       <hr className="rule" />
 
@@ -76,7 +69,11 @@ export default async function Home({ searchParams }: {
                 <tr key={r.id}>
                   <td><a href={`/runs/${r.id}`}>{r.objective}</a></td>
                   <td className="muted">{day(r.created_at)}</td>
-                  <td>{r.status.replace(/_/g, ' ')}</td>
+                  <td>
+                    <span className={runStateClass(r.status)}>
+                      {r.status.replace(/_/g, ' ')}
+                    </span>
+                  </td>
                   <td>{r.qualified}</td>
                   <td>{r.assessed}</td>
                   <td className="muted">
@@ -92,6 +89,7 @@ export default async function Home({ searchParams }: {
         Cost combines the provider's reported discovery charge with a client-side model
         estimate. It is not billing data.
       </p>
-    </main>
+      </main>
+    </>
   );
 }

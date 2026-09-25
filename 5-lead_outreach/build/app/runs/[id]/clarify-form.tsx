@@ -30,12 +30,16 @@ export function ClarifyForm({ runId, question }: { runId: string; question: stri
   }
 
   return (
-    <div className="error">
+    <div className="warning">
       <b>This run is waiting on you.</b>
       <p className="small" style={{ margin: '6px 0 10px' }}>{question}</p>
 
       <form onSubmit={submit}>
-        {error && <p className="small" style={{ margin: '0 0 8px' }}>{error}</p>}
+        {error && (
+          <p className="small state-bad" style={{ display: 'inline-block', margin: '0 0 8px' }}>
+            {error}
+          </p>
+        )}
         <textarea
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}

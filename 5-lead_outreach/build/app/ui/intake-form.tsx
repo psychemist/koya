@@ -70,7 +70,7 @@ export function IntakeForm() {
       </div>
 
       <button type="submit" disabled={submitting || form.objective.trim().length < 10}>
-        {submitting ? 'Queueing the run' : 'Start the run'}
+        {submitting ? 'Queueing the run' : 'Start the Run'}
       </button>
       <p className="small muted" style={{ marginTop: 14 }}>
         Germany is left out of suggested geography by default: its rules effectively require
