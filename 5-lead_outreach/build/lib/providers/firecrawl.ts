@@ -15,6 +15,15 @@ export type ScrapeResult = {
   usable: boolean;
   fromCache: boolean;
   provider: ScrapeProvider;
+  /**
+   * When the page was FETCHED, which for a cache hit is not now.
+   *
+   * The caller stamps this into the evidence envelope the qualification model
+   * reads. Stamping the serving time instead tells the model a weeks-old page
+   * was read this second, which is a false citation in the one place this
+   * build promises sourced evidence.
+   */
+  retrievedAt: Date;
 };
 
 /**
@@ -170,19 +179,30 @@ function mapError(e: any): ProviderError {
 }
 
 /**
- * Do not pay to read a page twice.
+ * Do not pay to read a page twice, and do not read a stale page at all.
  *
  * The cache is global rather than per run, because the same company turns up
- * in two runs a week apart and the second one should cost nothing.
+ * in two runs a week apart and the second one should not pay Firecrawl again.
+ * It is bounded by `SCRAPE_CACHE_MAX_AGE_DAYS`, because a company's website is
+ * exactly the thing that changes, and `fetched_at` was previously written on
+ * every insert and read by nobody.
+ *
+ * Note that a cache hit is free of FIRECRAWL cost, not free: the caller still
+ * runs the injection screen over the text, which is a model call.
  */
 export async function scrape(
   url: string, opts: { fetcher?: Fetcher } = {},
 ): Promise<ScrapeResult> {
   const urlNorm = normaliseUrl(url);
 
-  const cached = await one<{ markdown: string; content_hash: string; http_status: number }>(
-    'select markdown, content_hash, http_status from public.scrape_cache where url_norm = $1',
-    [urlNorm],
+  const cached = await one<{
+    markdown: string; content_hash: string; http_status: number; fetched_at: Date;
+  }>(
+    `select markdown, content_hash, http_status, fetched_at
+       from public.scrape_cache
+      where url_norm = $1
+        and fetched_at > now() - ($2 || ' days')::interval`,
+    [urlNorm, String(config.limits.scrapeCacheMaxAgeDays)],
   );
   if (cached) {
     return {
@@ -192,6 +212,7 @@ export async function scrape(
       usable: isUsable(cached.markdown),
       fromCache: true,
       provider: 'cache',
+      retrievedAt: new Date(cached.fetched_at),
     };
   }
 
@@ -234,5 +255,6 @@ export async function scrape(
     usable: isUsable(fetched.markdown),
     fromCache: false,
     provider,
+    retrievedAt: new Date(),
   };
 }

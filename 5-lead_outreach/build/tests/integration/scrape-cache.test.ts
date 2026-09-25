@@ -56,3 +56,62 @@ test('a failed fetch leaves nothing in the cache to be served later',
       [`%${host}%`]);
     assert.equal(rows.length, 0);
   });
+
+/**
+ * The cache had no upper age.
+ *
+ * `fetched_at` was written on every insert and read by nobody, so a page
+ * fetched in March was served as current evidence in September. Qualification
+ * judges a company on this text, and a company's site is exactly the thing
+ * that changes.
+ */
+test('a cache entry past its age is refetched rather than served',
+  { skip: skipWithoutDatabase }, async () => {
+    const host = `stale-${randomUUID().slice(0, 8)}.example`;
+    let calls = 0;
+    const fake = async () => { calls++; return { markdown: long('payroll'), statusCode: 200 }; };
+
+    await scrape(`https://${host}/about`, { fetcher: fake });
+    assert.equal(calls, 1);
+
+    // Age the row past any plausible freshness window.
+    await query(
+      `update public.scrape_cache set fetched_at = now() - interval '400 days'
+        where url_norm like $1`, [`%${host}%`]);
+
+    const stale = await scrape(`https://${host}/about`, { fetcher: fake });
+    assert.equal(calls, 2, 'a year-old page was served as current evidence');
+    assert.equal(stale.fromCache, false);
+
+    await query('delete from public.scrape_cache where url_norm like $1', [`%${host}%`]);
+  });
+
+/**
+ * A cache hit must carry the time the page was actually fetched.
+ *
+ * `scrape_company_site` stamps the retrieval time into the evidence envelope
+ * the qualification model reads. Stamping "now" on a cached page tells the
+ * model the page was read this second when it may be weeks old, which is a
+ * false citation in the one place the build promises sourced evidence.
+ */
+test('a cached page reports when it was really fetched, not when it was served',
+  { skip: skipWithoutDatabase }, async () => {
+    const host = `dated-${randomUUID().slice(0, 8)}.example`;
+    const fake = async () => ({ markdown: long('payroll'), statusCode: 200 });
+
+    const fresh = await scrape(`https://${host}/about`, { fetcher: fake });
+
+    await query(
+      `update public.scrape_cache set fetched_at = now() - interval '5 days'
+        where url_norm like $1`, [`%${host}%`]);
+
+    const served = await scrape(`https://${host}/about`, { fetcher: fake });
+    assert.equal(served.fromCache, true);
+
+    const ageMs = Date.now() - served.retrievedAt.getTime();
+    assert.ok(ageMs > 4 * 24 * 3600_000,
+      `a five day old page reported an age of ${Math.round(ageMs / 1000)}s`);
+    assert.ok(fresh.retrievedAt instanceof Date);
+
+    await query('delete from public.scrape_cache where url_norm like $1', [`%${host}%`]);
+  });

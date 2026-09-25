@@ -99,7 +99,9 @@ export const scrapeCompanySite = tool(
 
           const envelope = fence({
             url: args.url,
-            retrieved: new Date().toISOString(),
+            // The time the PAGE was fetched. For a cache hit that is not now,
+            // and saying otherwise dates the evidence falsely.
+            retrieved: page.retrievedAt.toISOString(),
             injectionFlagged: screened.flagged,
             // NEVER fall back to the raw page here. An empty summary means the
             // screen produced nothing usable, and handing the unscreened

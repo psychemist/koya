@@ -64,6 +64,10 @@ export const config = {
     runApifyCapUsd: num('RUN_APIFY_CAP_USD', 0.30),
     dailyApifyCapUsd: num('DAILY_APIFY_CAP_USD', 1.50),
     apifyPricePerResultUsd: num('APIFY_ACTOR_PRICE_PER_RESULT_USD', 0.005),
+    /** How long a scraped page stays good enough to judge a company on. The
+     *  cache is what stops a rerun paying twice; this is what stops it
+     *  answering with a page that has since changed. */
+    scrapeCacheMaxAgeDays: num('SCRAPE_CACHE_MAX_AGE_DAYS', 30),
     maxTurns: num('AGENT_MAX_TURNS', 60),
     maxBudgetUsd: num('AGENT_MAX_BUDGET_USD', 1.50),
   },
