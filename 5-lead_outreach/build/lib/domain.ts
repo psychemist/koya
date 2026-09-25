@@ -28,9 +28,42 @@ const AGGREGATOR_LABELS = new Set([
   'wikipedia', 'medium', 'youtube', 'yelp', 'trustpilot', 'zoominfo', 'apollo',
   'producthunt', 'angel', 'wellfound', 'owler', 'dnb', 'bloomberg', 'substack',
   'github', 'gitlab', 'notion', 'wordpress', 'blogspot', 'wixsite', 'squarespace',
+
+  /**
+   * Booking pages, forms and link-in-bio hosts.
+   *
+   * These are not search results; they are what a small company types into
+   * LinkedIn's own `website` field instead of a website. Discovery returned
+   * "NorthHarbor Growth Solutions" with `website` set to a Calendly link,
+   * which parsed to the candidate domain `calendly.com`.
+   *
+   * Rejecting a registrable domain also rejects the company that owns it, so
+   * this list costs us Typeform, Eventbrite and Google as leads. None of them
+   * is a plausible lead for this ICP and every one of them is a plausible
+   * booking link, which is the trade being made deliberately.
+   */
+  'calendly', 'typeform', 'jotform', 'hsforms', 'eventbrite', 'google',
+  'linktree', 'beacons', 'carrd', 'mailchi', 'myshopify',
+
+  // Publishing hosts, found the same way: the smoke run of 2026-09-24 returned
+  // "SaaS Growth Strategies" whose website was its beehiiv newsletter.
+  'beehiiv', 'buttondown',
 ]);
 
-const EXACT_AGGREGATORS = new Set(['x.com', 't.co', 'fb.com', 'lnkd.in', 'bit.ly']);
+const EXACT_AGGREGATORS = new Set([
+  'x.com', 't.co', 'fb.com', 'lnkd.in', 'bit.ly',
+
+  // Same reason as above, but matched whole so the vendor's own company
+  // domain survives: webflow.io is a customer's site, webflow.com is Webflow.
+  'linktr.ee', 'bio.link', 'cal.com', 'lu.ma', 'forms.gle',
+  'wa.me', 'm.me', 'youtu.be', 'goo.gl', 'tinyurl.com',
+
+  // Deploy targets. Every customer of these shares one registrable domain, so
+  // accepting them would deduplicate unrelated companies onto the same key.
+  'webflow.io', 'vercel.app', 'netlify.app', 'pages.dev', 'framer.website',
+  'ghost.io',
+  'github.io', 'onrender.com', 'herokuapp.com',
+]);
 
 const HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
