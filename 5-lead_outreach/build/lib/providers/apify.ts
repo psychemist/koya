@@ -16,10 +16,37 @@ export function apify(): ApifyClient {
   return client;
 }
 
+/**
+ * The ICP's hard filters, in the shape the pinned actor accepts.
+ *
+ * These are filters, not keywords. LinkedIn treats `searchQuery` as free text:
+ * a smoke run asking for "US B2B SaaS companies 10-100 employees" returned
+ * eight results, the first being a UK IT consultancy, because none of the
+ * constraints in that sentence were applied as constraints.
+ */
+/** `searchQuery` maxLength, from the pinned actor's input schema. */
+const MAX_QUERY_CHARS = 300;
+
+export type DiscoveryFilters = {
+  locations?: string[];
+  companySize?: string[];
+  /** LinkedIn industry ids, resolved from the ICP's industry names by
+   *  `industries.ts`. The single filter that separates a B2B SaaS company from
+   *  a consultancy that sells to one. */
+  industryIds?: string[];
+};
+
 export type ActorCall = {
-  /** Sent verbatim as the actor's own input. */
-  input: { query: string };
-  /** Sent as ActorStartOptions, which is where Apify reads the caps. */
+  /** Sent verbatim as the actor's own input. Shaped for the pinned actor. */
+  input: {
+    searchQuery: string;
+    scraperMode: 'short' | 'full';
+    maxItems: number;
+    locations?: string[];
+    companySize?: string[];
+    industryIds?: string[];
+  };
+  /** Sent as ActorStartOptions, which is where Apify reads the billing caps. */
   options: {
     memory: number; timeout: number; maxItems: number; maxTotalChargeUsd: number;
   };
@@ -36,26 +63,80 @@ export type ActorCall = {
  * That is a silent failure, which is why input and options are built together
  * here rather than assembled at the call site.
  */
-export function buildActorCall(queryText: string, limit: number): ActorCall {
+export function buildActorCall(
+  queryText: string, limit: number, filters: DiscoveryFilters = {},
+): ActorCall {
   if (typeof limit !== 'number' || !Number.isFinite(limit) || limit < 1) {
     throw new ProviderError('BUDGET_RUN',
       'Refusing to start an Apify run with no candidate budget left.');
   }
+  const capped = Math.floor(limit);
   return {
-    input: { query: queryText },
+    // Field names are the pinned actor's own. The first smoke run sent a
+    // field called `query` and the actor answered "No search parameters
+    // provided, exiting": a wrong key is not an error, it is an empty run.
+    input: {
+      // maxLength 300 in the actor's input schema. The agent writes this
+      // string and nothing else bounds it, and an input the schema rejects is
+      // a run that fails to start after the start fee is already owed.
+      searchQuery: queryText.slice(0, MAX_QUERY_CHARS),
+      // Full mode, and the extra cost is not optional. Short mode returns
+      // id, universalName, linkedinUrl, name, industry, location, followers,
+      // summary and logo. No website, and a LinkedIn profile URL is not a
+      // company to research: it is rejected as an aggregator, so every row
+      // from short mode is dropped. Full mode adds website, employeeCount,
+      // employeeCountRange, industries, specialities and description, which
+      // is also the metadata that disqualifies a company without a scrape.
+      scraperMode: 'full',
+      ...(filters.locations?.length ? { locations: filters.locations } : {}),
+      ...(filters.companySize?.length ? { companySize: filters.companySize } : {}),
+      ...(filters.industryIds?.length ? { industryIds: filters.industryIds } : {}),
+      // The scraper's own stop. It appears in BOTH places on purpose: this one
+      // makes the actor stop collecting, and the one in `options` below makes
+      // Apify stop charging. They are different mechanisms and a pay-per-event
+      // actor needs both.
+      maxItems: capped,
+    },
     options: {
       memory: 1024,
       timeout: 180,                 // seconds. An actor left running is an actor still spending.
-      maxItems: Math.floor(limit),
+      maxItems: capped,
       maxTotalChargeUsd: config.limits.runApifyCapUsd,
     },
   };
+}
+
+/**
+ * What a run is known to have cost, at minimum.
+ *
+ * `usageTotalUsd` reads LOW at the moment a run finishes. A pay-per-event
+ * actor's per-event charges are aggregated after the fact, so the smoke run of
+ * 2026-09-24 that returned two `full-company` records reported $0.001, which
+ * is the `apify-actor-start` fee on its own. The run before it reported $0.
+ *
+ * Settling at that figure records a run as very nearly free, and since the
+ * ledger is what both `RUN_APIFY_CAP_USD` and the shared `DAILY_APIFY_CAP_USD`
+ * are measured against, believing it leaves neither cap enforcing anything.
+ *
+ * So the reported figure is a floor to rise to, never a ceiling to fall to.
+ * Over-recording trips a cap early; under-recording lets a run exceed a cap it
+ * believed it was under, on an account shared across the cohort.
+ */
+export function settlementUsd(reportedUsd: unknown, itemsCharged: number): number {
+  const priced = config.limits.apifyActorStartUsd
+    + Math.max(0, itemsCharged) * config.limits.apifyPricePerResultUsd;
+  return typeof reportedUsd === 'number' && Number.isFinite(reportedUsd)
+    ? Math.max(reportedUsd, priced)
+    : priced;
 }
 
 /** Actors disagree on field names, so read the plausible ones and drop the row
  *  if none of them yields a domain. A candidate without a domain is not a
  *  candidate; it is a row that will waste a scrape. */
 export function toCandidate(item: Record<string, unknown>): Candidate | null {
+  // `linkedinUrl` is deliberately NOT in this list. A LinkedIn profile is not
+  // a company website: normaliseDomain rejects it as an aggregator, and
+  // researching one would breach the scope this build committed to.
   const raw = (item.website ?? item.url ?? item.domain ?? item.link ?? item.companyUrl) as
     string | undefined;
   if (typeof raw !== 'string') return null;
@@ -63,12 +144,119 @@ export function toCandidate(item: Record<string, unknown>): Candidate | null {
   if (!companyDomain) return null;
 
   const name = (item.name ?? item.title ?? item.companyName ?? item.company) as string | undefined;
-  const { website, url, domain, link, companyUrl, name: _n, title: _t, ...meta } = item as any;
+
+  /**
+   * Only the fields a qualification decision can use. The raw row carries
+   * logos, background covers, follower counts and a similar-organisations
+   * list, none of which says anything about fit, and all of which would sit
+   * in the database on every candidate for ever.
+   */
+  const meta: Record<string, unknown> = {};
+  for (const key of ['employeeCount', 'employeeCountRange', 'industries', 'industry',
+                     'specialities', 'description', 'tagline', 'foundedOn', 'locations',
+                     'location', 'linkedinUrl', 'pageVerified'] as const) {
+    if (item[key] !== undefined && item[key] !== null) meta[key] = item[key];
+  }
+
   return {
     companyName: (typeof name === 'string' && name.trim()) || companyDomain,
     companyDomain,
-    meta: meta as Record<string, unknown>,
+    meta,
   };
+}
+
+/**
+ * A showcase page is a sub-brand, not a company.
+ *
+ * The smoke run of 2026-09-24 returned
+ * `linkedin.com/showcase/advids-b2b-saas-enterprise-software-video-production-service`
+ * as its top result. A showcase page belongs to a parent company and carries
+ * the parent's website, but has its own name, follower count and headcount
+ * range, so it arrives looking like a separate company. Keeping it either
+ * duplicates the parent under a near-identical domain or spends a scrape on a
+ * marketing sub-page that describes one product line.
+ */
+export function isShowcase(item: Record<string, unknown>): boolean {
+  if (item.showcase === true) return true;
+  const pageType = item.pageType;
+  if (typeof pageType === 'string' && pageType.toUpperCase().includes('SHOWCASE')) return true;
+  const url = item.linkedinUrl;
+  return typeof url === 'string' && /\/showcase\//i.test(url);
+}
+
+export type HeadcountBounds = { min: number; max: number };
+
+/** The bounds the ICP actually stated, as opposed to the buckets that have to
+ *  be requested to cover them. */
+export function parseHeadcount(range: string | undefined): HeadcountBounds | null {
+  if (!range) return null;
+  const numbers = String(range).match(/\d[\d,]*/g)?.map((n) => Number(n.replace(/,/g, '')));
+  if (!numbers?.length || !Number.isFinite(numbers[0])) return null;
+  return {
+    min: numbers[0],
+    max: numbers.length > 1 ? numbers[1] : Number.MAX_SAFE_INTEGER,
+  };
+}
+
+/**
+ * The buckets widen the ICP, so the stated size is re-checked on the way back.
+ *
+ * "10 to 100" spans three LinkedIn buckets, so asking for `1-10` through
+ * `51-200` is really asking for 1 to 200. Against exactly that ICP discovery
+ * returned companies with an `employeeCountRange` of `{ start: 0, end: 1 }`.
+ *
+ * Only positive evidence disqualifies. A row with no size at all is kept,
+ * because dropping on missing data loses real companies and the row has been
+ * paid for either way; qualification judges it later against the scraped site.
+ *
+ * The range is preferred over `employeeCount`, which counts LinkedIn members
+ * who list the company rather than staff, and which reads 0 for most small
+ * companies. The range is the size the company states in its About tab, and is
+ * what LinkedIn's own size filter matches on.
+ */
+export function withinHeadcount(
+  meta: Record<string, unknown>, bounds: HeadcountBounds | null,
+): boolean {
+  if (!bounds) return true;
+
+  const range = meta.employeeCountRange as { start?: unknown; end?: unknown } | undefined;
+  if (range && typeof range === 'object') {
+    const start = Number(range.start);
+    const end = Number(range.end);
+    if (Number.isFinite(start) && Number.isFinite(end)) {
+      return end >= bounds.min && start <= bounds.max;
+    }
+  }
+
+  const count = Number(meta.employeeCount);
+  if (Number.isFinite(count) && count > 0) return count >= bounds.min && count <= bounds.max;
+
+  return true;
+}
+
+/**
+ * LinkedIn's own headcount buckets. A range like "10 to 100" spans three of
+ * them, and sending a bucket LinkedIn does not recognise returns nothing at
+ * all rather than erroring, so anything unparseable yields no filter instead
+ * of a guess.
+ */
+const SIZE_BUCKETS: Array<[string, number, number]> = [
+  ['1-10', 1, 10],
+  ['11-50', 11, 50],
+  ['51-200', 51, 200],
+  ['201-500', 201, 500],
+  ['501-1000', 501, 1000],
+  ['1001-5000', 1001, 5000],
+  ['5001-10000', 5001, 10000],
+  ['10001+', 10001, Number.MAX_SAFE_INTEGER],
+];
+
+export function headcountBuckets(range: string | undefined): string[] {
+  const bounds = parseHeadcount(range);
+  if (!bounds) return [];
+  return SIZE_BUCKETS
+    .filter(([, lo, hi]) => hi >= bounds.min && lo <= bounds.max)
+    .map(([label]) => label);
 }
 
 const START_ATTEMPTS = 3;
@@ -126,6 +314,14 @@ export type Discovery = {
   /** Raw dataset rows. These were charged whether or not they deduplicated
    *  away, so this is the number that decrements the candidate budget. */
   itemsCharged: number;
+  /**
+   * Everything that was paid for and then thrown away, by reason.
+   *
+   * Dropping a row does not refund it. A run that returns ten rows and keeps
+   * one is a fact the agent needs in order to widen its query, and a fact the
+   * operator needs in order to explain where a budget went.
+   */
+  dropped: { showcase: number; noDomain: number; headcount: number; duplicate: number };
 };
 
 /**
@@ -146,12 +342,23 @@ export type ApifyLike = {
 
 export async function discover(
   runId: string, queryText: string, limit: number,
-  opts: { client?: ApifyLike; wallClockMs?: number } = {},
+  opts: {
+    client?: ApifyLike;
+    wallClockMs?: number;
+    filters?: DiscoveryFilters;
+    /** Re-checked on the way back, because the LinkedIn buckets requested on
+     *  the way out are wider than the range the ICP stated. */
+    headcount?: HeadcountBounds | null;
+  } = {},
 ): Promise<Discovery> {
   const api: ApifyLike = opts.client ?? (apify() as unknown as ApifyLike);
   const wallClockMs = opts.wallClockMs ?? 200_000;
-  const call = buildActorCall(queryText, limit);
-  const estimate = limit * config.limits.apifyPricePerResultUsd;
+  const call = buildActorCall(queryText, limit, opts.filters ?? {});
+  // The start fee is charged whatever the run returns, so it belongs in the
+  // reservation. Leaving it out means a search that finds nothing reserves
+  // nothing while still costing money, and several narrow searches in one run
+  // each pay it.
+  const estimate = settlementUsd(undefined, limit);
   const actorId = config.pinnedActorId();
 
   // Reserve before calling. A check that does not reserve is a check two
@@ -198,30 +405,43 @@ export async function discover(
     const reported = await api.run(started.id).get()
       .then((r) => (r as any)?.usageTotalUsd)
       .catch(() => undefined);
+    // How many items it managed before dying is unknowable, so the run is
+    // priced as though it did all the work it was allowed to do.
     await settle(
-      typeof reported === 'number' ? reported : estimate,
-      typeof reported === 'number'
-        ? `actor=${actorId} runId=${started.id} did not complete, charged as reported`
-        : `actor=${actorId} runId=${started.id} did not complete, usage unknown, estimate held`,
+      settlementUsd(reported, limit),
+      `actor=${actorId} runId=${started.id} did not complete, priced at the full reservation`,
     );
     throw e;
   }
 
-  const charged = (finished as any).usageTotalUsd;
+  const reported = (finished as any).usageTotalUsd;
+  const charged = settlementUsd(reported, items.length);
   await settle(
-    typeof charged === 'number' ? charged : items.length * config.limits.apifyPricePerResultUsd,
-    `actor=${actorId} runId=${finished.id} items=${items.length}`,
+    charged,
+    `actor=${actorId} runId=${finished.id} items=${items.length} ` +
+    `reported=${typeof reported === 'number' ? reported : 'none'} settled=${charged}`,
   );
 
   const seen = new Set<string>();
   const out: Candidate[] = [];
+  const dropped = { showcase: 0, noDomain: 0, headcount: 0, duplicate: 0 };
+
   for (const item of items as Record<string, unknown>[]) {
+    // Order matters only for the counts: a row is reported under the first
+    // reason it fails, so the numbers add up to the rows that were charged.
+    if (isShowcase(item)) { dropped.showcase++; continue; }
+
     const c = toCandidate(item);
-    if (!c || seen.has(c.companyDomain)) continue;
+    if (!c) { dropped.noDomain++; continue; }
+
+    if (!withinHeadcount(c.meta, opts.headcount ?? null)) { dropped.headcount++; continue; }
+
+    if (seen.has(c.companyDomain)) { dropped.duplicate++; continue; }
     seen.add(c.companyDomain);
     out.push(c);
   }
-  return { candidates: out, itemsCharged: items.length };
+
+  return { candidates: out, itemsCharged: items.length, dropped };
 }
 
 /**

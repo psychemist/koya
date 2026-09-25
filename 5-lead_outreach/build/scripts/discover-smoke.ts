@@ -1,6 +1,10 @@
 import { ApifyClient } from 'apify-client';
 import { config } from '../lib/config.ts';
-import { buildActorCall, toCandidate, assertApifyAccount } from '../lib/providers/apify.ts';
+import {
+  buildActorCall, toCandidate, assertApifyAccount, headcountBuckets, settlementUsd,
+  isShowcase, parseHeadcount, withinHeadcount,
+} from '../lib/providers/apify.ts';
+import { industryIds } from '../lib/industries.ts';
 
 /**
  * The required first step before any 10-lead run.
@@ -9,15 +13,61 @@ import { buildActorCall, toCandidate, assertApifyAccount } from '../lib/provider
  * cost, so the actor choice is made from the Console's reported usage rather
  * than from its pricing page.
  */
-const queryText = process.argv.slice(2).join(' ').trim();
+/**
+ * Usage:
+ *   npm run discover:smoke -- "B2B SaaS" \
+ *     --location "United States" --headcount "10 to 100" --industry "B2B SaaS"
+ *
+ * The query is KEYWORDS ONLY. Geography, headcount and industry are filters,
+ * and writing them into the query instead returns companies matching none of
+ * them: without --industry, "B2B SaaS" matches the consultancies that sell to
+ * B2B SaaS just as well as it matches a B2B SaaS company.
+ */
+const USAGE = 'Usage: npm run discover:smoke -- "B2B SaaS" --location "United States" ' +
+  '--headcount "10 to 100" --industry "B2B SaaS"';
+
+const FLAGS = ['location', 'headcount', 'industry'] as const;
+const argv = process.argv.slice(2);
+
+const flag = (name: string): string | undefined => {
+  const i = argv.indexOf(`--${name}`);
+  return i >= 0 ? argv[i + 1] : undefined;
+};
+
+// A flag and the value after it are both removed, so adding a flag above
+// cannot leak its value into the query.
+const consumed = new Set<number>();
+for (const name of FLAGS) {
+  const i = argv.indexOf(`--${name}`);
+  if (i >= 0) { consumed.add(i); consumed.add(i + 1); }
+}
+
+const location = flag('location');
+const headcount = flag('headcount');
+const industries = (flag('industry') ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+
+const queryText = argv.filter((_, i) => !consumed.has(i)).join(' ').trim();
+
 if (!queryText) {
-  console.error('Usage: npm run discover:smoke -- "US B2B SaaS companies 10-100 employees"');
+  console.error(USAGE);
   process.exit(1);
 }
 
+const industry = industryIds(industries);
+const bounds = parseHeadcount(headcount);
+
 const account = await assertApifyAccount();
 const actorId = config.pinnedActorId();
-const call = buildActorCall(queryText, 2);
+const call = buildActorCall(queryText, 2, {
+  locations: location ? [location] : [],
+  companySize: headcountBuckets(headcount),
+  industryIds: industry.ids,
+});
+
+if (industry.unmatched.length) {
+  console.log(`WARNING:  no LinkedIn industry matches ${industry.unmatched.join(', ')}. ` +
+    'That part of the ICP is not being filtered on. Add an alias in lib/industries.ts.');
+}
 
 console.log(`account:  ${account}`);
 console.log(`actor:    ${actorId}`);
@@ -31,10 +81,70 @@ const { items } = await client.dataset(run.defaultDatasetId).listItems();
 console.log(`run id:   ${run.id}`);
 console.log(`status:   ${run.status}`);
 console.log(`items:    ${items.length} returned for maxItems ${call.options.maxItems}`);
-console.log(`usage:    $${(run as any).usageTotalUsd ?? 'not reported'}`);
+/**
+ * Reported and settled, side by side.
+ *
+ * `usageTotalUsd` reads low at the moment a run finishes because a
+ * pay-per-event actor's charges are aggregated afterwards, so printing it
+ * alone is how a run looks free. The settled figure is what the ledger holds,
+ * and it is what the run and daily caps are measured against.
+ */
+const reported = (run as any).usageTotalUsd;
+const settled = settlementUsd(reported, items.length);
+console.log(`usage:    reported $${reported ?? 'none'}, settled $${settled.toFixed(4)}`);
+if (typeof reported !== 'number' || reported < settled) {
+  console.log(`          reported is below the priced cost of ${items.length} result(s) at ` +
+    `$${config.limits.apifyPricePerResultUsd} plus $${config.limits.apifyActorStartUsd} to ` +
+    'start. The ledger takes the higher of the two.');
+}
+
+const fullRun = settlementUsd(undefined, config.limits.candidateBudget);
+console.log(`projection: a full ${config.limits.candidateBudget}-candidate run prices at ` +
+  `$${fullRun.toFixed(4)} against a $${config.limits.runApifyCapUsd} run cap and a ` +
+  `$${config.limits.dailyApifyCapUsd} daily cap` +
+  (fullRun > config.limits.runApifyCapUsd ? '  <-- OVER THE RUN CAP' : ''));
+/**
+ * The raw shape, printed before anything tries to interpret it.
+ *
+ * A field name we guessed wrong does not raise an error, it silently drops
+ * every row, so the only reliable way to write the parser is to look at what
+ * the actor actually returned.
+ */
+const first = items[0] as Record<string, unknown> | undefined;
+if (first) {
+  console.log('\nfields on the first item:');
+  console.log(`  ${Object.keys(first).join(', ')}`);
+
+  const urlish = Object.entries(first).filter(([k, v]) =>
+    typeof v === 'string' && (/url|site|domain|link/i.test(k) || /^https?:\/\//.test(v)));
+  console.log('\nanything that looks like a URL:');
+  for (const [k, v] of urlish) console.log(`  ${k}: ${v}`);
+
+  console.log('\nfirst item in full:');
+  console.log(JSON.stringify(first, null, 2).slice(0, 2000));
+}
+
+/**
+ * The same drop rules `discover()` applies, so the smoke run shows what a real
+ * run would actually keep rather than what the actor returned.
+ */
 console.log('\ncandidates parsed:');
 for (const item of items as Record<string, unknown>[]) {
+  const name = (item.name as string) ?? '(unnamed)';
+  if (isShowcase(item)) {
+    console.log(`  (dropped: showcase page, not a company)  ${name}`);
+    continue;
+  }
   const c = toCandidate(item);
-  console.log(c ? `  ${c.companyDomain}  ${c.companyName}` : '  (dropped: no usable domain)');
+  if (!c) {
+    console.log(`  (dropped: no usable company domain)  ${name}`);
+    continue;
+  }
+  if (!withinHeadcount(c.meta, bounds)) {
+    const r = c.meta.employeeCountRange as { start?: number; end?: number } | undefined;
+    console.log(`  (dropped: size ${r?.start ?? '?'}-${r?.end ?? '?'} is outside the ICP)  ${name}`);
+    continue;
+  }
+  console.log(`  ${c.companyDomain}  ${c.companyName}`);
 }
 console.log('\nOpen the run in the Apify Console and read the reported charge before pinning.');

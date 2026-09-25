@@ -64,6 +64,9 @@ export const config = {
     runApifyCapUsd: num('RUN_APIFY_CAP_USD', 0.30),
     dailyApifyCapUsd: num('DAILY_APIFY_CAP_USD', 1.50),
     apifyPricePerResultUsd: num('APIFY_ACTOR_PRICE_PER_RESULT_USD', 0.005),
+    /** Charged once per actor run, whatever it returns. A run that finds
+     *  nothing is not a free run, and the agent may search more than once. */
+    apifyActorStartUsd: num('APIFY_ACTOR_START_USD', 0.001),
     /** How long a scraped page stays good enough to judge a company on. The
      *  cache is what stops a rerun paying twice; this is what stops it
      *  answering with a page that has since changed. */

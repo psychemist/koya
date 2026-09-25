@@ -6,7 +6,10 @@ import { query } from '../../db.ts';
 import { loadRun } from '../../runs.ts';
 import { clampCandidates } from '../../budget.ts';
 import { ProviderError } from '../../errors.ts';
-import { discover, type Candidate } from '../../providers/apify.ts';
+import {
+  discover, headcountBuckets, parseHeadcount, type Candidate,
+} from '../../providers/apify.ts';
+import { industryIds } from '../../industries.ts';
 
 /**
  * Stores what discovery found, minus everything it should not cost us to look at.
@@ -62,7 +65,40 @@ export const discoverCompanies = tool(
               'and finish the run with a shortfall reason if you cannot reach the target.');
           }
 
-          const { candidates, itemsCharged } = await discover(args.run_id, args.query, limit);
+          /**
+           * The ICP's hard filters go to the actor as FILTERS, not as words in
+           * the query. LinkedIn reads `searchQuery` as free text, so a query
+           * naming a country and a headcount returns companies matching
+           * neither. These come from the stored row rather than from the
+           * agent's argument, so they are the criteria that were actually
+           * agreed and written down.
+           */
+          const icp = (run.icp ?? {}) as {
+            geography?: string[]; headcount_range?: string; industries?: string[];
+          };
+
+          /**
+           * Industry is the filter that separates a B2B SaaS company from the
+           * consultancy that sells to one. Both match the words "B2B SaaS" in
+           * a free-text query, and only the industry id tells them apart.
+           */
+          const industry = industryIds(icp.industries);
+
+          const filters = {
+            locations: Array.isArray(icp.geography) ? icp.geography : [],
+            companySize: headcountBuckets(icp.headcount_range),
+            industryIds: industry.ids,
+          };
+
+          /**
+           * The buckets requested above are wider than the range the ICP
+           * stated, because "10 to 100" spans three of LinkedIn's, so the
+           * stated size is re-checked on the rows that come back.
+           */
+          const headcount = parseHeadcount(icp.headcount_range);
+
+          const { candidates, itemsCharged, dropped } =
+            await discover(args.run_id, args.query, limit, { filters, headcount });
           const stored = await storeCandidates(args.run_id, candidates);
 
           await query(
@@ -76,9 +112,24 @@ export const discoverCompanies = tool(
               returned: candidates.length,
               skipped_already_delivered: candidates.length - stored.length,
               candidate_budget_remaining: Math.max(0, limit - itemsCharged),
+              /**
+               * Charged and then discarded. Given to the model so that a query
+               * returning mostly unusable rows can be narrowed on the next
+               * call rather than repeated until the budget is gone.
+               */
+              charged_but_dropped: dropped,
+              /**
+               * An ICP industry with no LinkedIn equivalent is NOT being
+               * filtered on, and saying so is the difference between the model
+               * trusting the result and the model checking it.
+               */
+              ...(industry.unmatched.length
+                ? { icp_industries_not_filtered: industry.unmatched }
+                : {}),
             }),
             resultSummary: {
               requested: limit, returned: candidates.length, stored: stored.length,
+              charged: itemsCharged,
             },
           };
         });

@@ -38,6 +38,22 @@ Do not widen "US" to "North America". Do not narrow "B2B SaaS" to "vertical SaaS
 ```
 `hard_filters` must be non-empty or the tool rejects it.
 
+## `industries` becomes a real filter, so write names that resolve
+`industries` is not a keyword. It is sent to LinkedIn as an industry id filter, and it
+is the only thing that separates a B2B SaaS company from the consultancy that sells to
+one: both match the words "B2B SaaS" in a search query.
+
+Prefer LinkedIn's own industry names, such as `Software Development`,
+`Financial Services`, `IT Services and IT Consulting`, `Hospitals and Health Care`.
+Common shorthands resolve too: `SaaS`, `B2B SaaS`, `fintech`, `healthtech`, `martech`,
+`edtech`, `cybersecurity`, `ecommerce`, `AI`.
+
+A name with no LinkedIn equivalent is **not** guessed at. `discover_companies` returns it
+under `icp_industries_not_filtered`, which means that part of the ICP is not being
+enforced and you are judging it yourself at qualification time. If you see that field,
+consider re-running with a name that resolves.
+
+
 ## If it is still too vague to search
 Do not guess and spend. Call `save_icp` with `needs_clarification` set to one specific
 question, and stop. A parked run costs nothing. A run against a guessed ICP costs the
