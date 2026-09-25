@@ -138,6 +138,34 @@ test('needs_review is storable without evidence, because it is the honest answer
     await dropRun(run.id);
   });
 
+/**
+ * The agent is now told to save several verdicts in one turn, so two calls for
+ * the same company can be genuinely in flight at once. Before the insert
+ * became an upsert this raced: both calls read no existing row, both inserted,
+ * and the loser surfaced a raw unique-violation instead of the refusal.
+ */
+test('two verdicts for one company in the same turn leave one lead and a clean refusal',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({});
+    const verdict = {
+      run_id: run.id, purpose: 't', company_name: 'Acme', company_domain: 'acme.co',
+      qualification_status: 'needs_review', confidence: 0.3,
+      fit_reasons: [], concerns: ['headcount not stated'], source_urls: [],
+      source_summary: 'Thin site.',
+    };
+    const [a, b] = await Promise.all([call(saveLead, verdict), call(saveLead, verdict)]);
+
+    const errors = [a, b].filter((r) => r.isError);
+    assert.equal(errors.length, 1, 'exactly one of the two calls should be refused');
+    assert.match(text(errors[0]), /appears once|already has a stored verdict/i);
+
+    const rows = await query(
+      'select id from public.leads where run_id = $1 and company_domain = $2',
+      [run.id, 'acme.co']);
+    assert.equal(rows.length, 1, 'the race stored the company twice');
+    await dropRun(run.id);
+  });
+
 test('scrape_company_site refuses a domain that is not a candidate of this run',
   { skip: skipWithoutDatabase }, async () => {
     const run = await seedRun({});

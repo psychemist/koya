@@ -72,28 +72,34 @@ export const saveLead = tool(
           }
         }
 
-        const existing = await one<{ id: string }>(
-          'select id from public.leads where run_id = $1 and company_domain = $2',
-          [args.run_id, domain],
-        );
-        if (existing) {
-          return {
-            value: refused(
-              `${domain} already has a stored verdict for this run. A company appears once.`),
-            resultSummary: { rejected: 'duplicate', domain },
-          };
-        }
-
         try {
+          /**
+           * The duplicate check IS the insert.
+           *
+           * Several verdicts now arrive in one turn, so a read followed by a
+           * write is a race: two calls for the same domain both saw no row and
+           * both inserted, and the loser came back as a raw unique-violation
+           * rather than the sentence below. `on conflict do nothing` decides it
+           * in one statement, and no rows returned means somebody else won.
+           */
           const row = await one<{ id: string }>(
             `insert into public.leads
                (run_id, company_name, company_domain, qualification_status, confidence,
                 fit_reasons, concerns, source_urls, source_summary)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+             on conflict (run_id, company_domain) do nothing
+             returning id`,
             [args.run_id, args.company_name, domain, args.qualification_status,
              args.confidence, args.fit_reasons, args.concerns, args.source_urls,
              args.source_summary],
           );
+          if (!row) {
+            return {
+              value: refused(
+                `${domain} already has a stored verdict for this run. A company appears once.`),
+              resultSummary: { rejected: 'duplicate', domain },
+            };
+          }
           await query(
             'update public.candidates set assessed = true where run_id = $1 and company_domain = $2',
             [args.run_id, domain],
