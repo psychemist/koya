@@ -4,7 +4,7 @@ import { baseArgs, ok, failed, refused } from './shared.ts';
 import { withToolCall } from '../../toolcalls.ts';
 import { query, one } from '../../db.ts';
 import { loadRun, advanceTo } from '../../runs.ts';
-import { clampScrapes, recordSpend } from '../../budget.ts';
+import { reserveScrape, releaseScrape, recordSpend } from '../../budget.ts';
 import { ProviderError } from '../../errors.ts';
 import { normaliseDomain } from '../../domain.ts';
 import { scrape } from '../../providers/firecrawl.ts';
@@ -50,14 +50,28 @@ export const scrapeCompanySite = tool(
             };
           }
 
-          if (clampScrapes(run) === 0) {
+          /**
+           * Reserved, not checked. Several scrapes may be in flight at once,
+           * and a check against a row loaded at the top of this call would let
+           * every one of them see the same remaining budget.
+           */
+          if (!(await reserveScrape(args.run_id))) {
             throw new ProviderError('BUDGET_RUN',
               'Scrape budget is exhausted. Qualify the companies you have already read.');
           }
 
           await advanceTo(args.run_id, 'researching');
 
-          const page = await scrape(args.url);
+          let page;
+          try {
+            page = await scrape(args.url);
+          } catch (e) {
+            // The page was never fetched, so it cost no credit and must cost
+            // no slot: a run against flaky sites would otherwise lose its
+            // research budget to failures rather than to pages.
+            await releaseScrape(args.run_id);
+            throw e;
+          }
 
           /**
            * Credits, not dollars. On the free plan $0.00 is the correct dollar
@@ -80,10 +94,6 @@ export const scrapeCompanySite = tool(
               to: operatorRecipients(),
             }).catch(() => undefined);
           }
-          await query(
-            'update public.runs set scrapes_used = scrapes_used + 1 where id = $1',
-            [args.run_id],
-          );
 
           if (!page.usable) {
             await query(
