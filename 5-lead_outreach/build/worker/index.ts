@@ -96,7 +96,7 @@ async function handle(run: RunRow): Promise<void> {
     await notify({
       kind,
       runId: run.id,
-      title: `Koya Lead Desk: ${kind.replace('run_', '').replace(/_/g, ' ')}`,
+      title: `Koya Talent Lead Desk: ${kind.replace('run_', '').replace(/_/g, ' ')}`,
       lines: after.needs_clarification
         ? [`Objective: ${after.objective}`, after.needs_clarification]
         : buildDigest(after, stats),

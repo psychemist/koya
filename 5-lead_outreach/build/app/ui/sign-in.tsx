@@ -32,7 +32,7 @@ export function SignIn({ next }: { next?: string }) {
 
   return (
     <main className="wrap narrow">
-      <h1>Koya Lead Desk</h1>
+      <h1>Koya Talent Lead Desk</h1>
       <p className="muted">
         Research and qualify companies, then review the drafts. Nothing is sent.
       </p>

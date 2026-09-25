@@ -61,7 +61,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   if (format === 'md') {
     const icp = run.icp as Record<string, unknown> | null;
     const md = [
-      '# Koya Lead Desk export',
+      '# Koya Talent Lead Desk export',
       '',
       `**Objective:** ${run.objective}`,
       `**Run status:** ${run.status}`,
