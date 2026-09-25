@@ -70,9 +70,17 @@ export const config = {
   limits: {
     candidateBudget: num('RUN_CANDIDATE_BUDGET', 40),
     scrapeBudget: num('RUN_SCRAPE_BUDGET', 30),
-    /** How many times one run may pay to start a search. Twenty-one searches
-     *  for forty rows is where an agent loop's cost actually compounds. */
-    discoveryCalls: num('RUN_DISCOVERY_CALLS', 8),
+    /**
+     * A ceiling that only catches a loop.
+     *
+     * The first value was 8, picked by eye. Measured yield is 1.6 charged rows
+     * per search, so 8 would have reached about 13 of a 40-candidate budget
+     * and starved discovery. The real control is the empty-streak below.
+     */
+    discoveryCalls: num('RUN_DISCOVERY_CALLS', 40),
+    /** Consecutive searches returning nothing before the run stops paying
+     *  start fees for a query strategy that is not working. */
+    discoveryZeroStreak: num('RUN_DISCOVERY_ZERO_STREAK', 4),
     targetLeads: 10,
     runApifyCapUsd: num('RUN_APIFY_CAP_USD', 0.30),
     dailyApifyCapUsd: num('DAILY_APIFY_CAP_USD', 1.50),

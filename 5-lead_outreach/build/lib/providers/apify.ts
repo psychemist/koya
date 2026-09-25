@@ -235,6 +235,59 @@ export function withinHeadcount(
 }
 
 /**
+ * Aliases for the countries this ICP guide suggests. LinkedIn returns an ISO
+ * code and a full name; an ICP is written by a person and says "US" or "the
+ * United States" or "USA".
+ */
+const COUNTRY_ALIASES: Record<string, string> = {
+  us: 'united states', usa: 'united states', 'u s a': 'united states',
+  'united states of america': 'united states', america: 'united states',
+  uk: 'united kingdom', gb: 'united kingdom', 'great britain': 'united kingdom',
+  britain: 'united kingdom', england: 'united kingdom',
+  ca: 'canada', au: 'australia', nz: 'new zealand', ie: 'ireland',
+  de: 'germany', fr: 'france', nl: 'netherlands', es: 'spain', pt: 'portugal',
+  sg: 'singapore', in: 'india', ae: 'united arab emirates', uae: 'united arab emirates',
+  ng: 'nigeria', za: 'south africa', ke: 'kenya', gh: 'ghana',
+  kr: 'south korea', jp: 'japan', br: 'brazil', mx: 'mexico',
+};
+
+const country = (value: unknown): string => {
+  const raw = String(value ?? '').toLowerCase().replace(/[^a-z ]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  return COUNTRY_ALIASES[raw] ?? raw;
+};
+
+/**
+ * Where the company actually IS, checked against where the ICP wants it.
+ *
+ * LinkedIn's own location filter matches a company with AN office in the
+ * target country, not one headquartered there. Asking for the United States
+ * returned channel.io (Seoul) and demodesk.ai (Munich), both of which list a
+ * US office, and both were then rejected by qualification at the cost of a
+ * model call using the very field discovery had already paid for.
+ *
+ * The headquarters entry wins when there is one. As with headcount, only
+ * positive evidence disqualifies: a row with no location is kept, because the
+ * row is paid for either way and qualification can still judge it.
+ */
+export function withinGeography(
+  meta: Record<string, unknown>, wanted: string[] | undefined,
+): boolean {
+  const targets = (wanted ?? []).map(country).filter(Boolean);
+  if (!targets.length) return true;
+
+  const locations = meta.locations as Array<Record<string, any>> | undefined;
+  if (!Array.isArray(locations) || !locations.length) return true;
+
+  const hq = locations.find((l) => l?.headquarter === true) ?? locations[0];
+  const named = [hq?.parsed?.country, hq?.parsed?.countryCode, hq?.country]
+    .map(country).filter(Boolean);
+  if (!named.length) return true;
+
+  return named.some((n) => targets.includes(n));
+}
+
+/**
  * LinkedIn's own headcount buckets. A range like "10 to 100" spans three of
  * them, and sending a bucket LinkedIn does not recognise returns nothing at
  * all rather than erroring, so anything unparseable yields no filter instead
@@ -321,7 +374,10 @@ export type Discovery = {
    * one is a fact the agent needs in order to widen its query, and a fact the
    * operator needs in order to explain where a budget went.
    */
-  dropped: { showcase: number; noDomain: number; headcount: number; duplicate: number };
+  dropped: {
+    showcase: number; noDomain: number; headcount: number;
+    geography: number; duplicate: number;
+  };
 };
 
 /**
@@ -349,6 +405,9 @@ export async function discover(
     /** Re-checked on the way back, because the LinkedIn buckets requested on
      *  the way out are wider than the range the ICP stated. */
     headcount?: HeadcountBounds | null;
+    /** Re-checked on the way back, because LinkedIn's location filter matches
+     *  a company with AN office in the country, not one headquartered there. */
+    geography?: string[];
   } = {},
 ): Promise<Discovery> {
   const api: ApifyLike = opts.client ?? (apify() as unknown as ApifyLike);
@@ -424,7 +483,7 @@ export async function discover(
 
   const seen = new Set<string>();
   const out: Candidate[] = [];
-  const dropped = { showcase: 0, noDomain: 0, headcount: 0, duplicate: 0 };
+  const dropped = { showcase: 0, noDomain: 0, headcount: 0, geography: 0, duplicate: 0 };
 
   for (const item of items as Record<string, unknown>[]) {
     // Order matters only for the counts: a row is reported under the first
@@ -435,6 +494,8 @@ export async function discover(
     if (!c) { dropped.noDomain++; continue; }
 
     if (!withinHeadcount(c.meta, opts.headcount ?? null)) { dropped.headcount++; continue; }
+
+    if (!withinGeography(c.meta, opts.geography)) { dropped.geography++; continue; }
 
     if (seen.has(c.companyDomain)) { dropped.duplicate++; continue; }
     seen.add(c.companyDomain);

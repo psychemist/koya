@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   buildActorCall, toCandidate, headcountBuckets, settlementUsd,
-  isShowcase, parseHeadcount, withinHeadcount,
+  isShowcase, parseHeadcount, withinHeadcount, withinGeography,
 } from '../../lib/providers/apify.ts';
 
 /**
@@ -280,4 +280,56 @@ test('the range is preferred over the profile count, which counts members not st
     { employeeCount: 0, employeeCountRange: { start: 11, end: 50 } }, icp), true);
   assert.equal(withinHeadcount({ employeeCount: 40 }, icp), true);
   assert.equal(withinHeadcount({ employeeCount: 4000 }, icp), false);
+});
+
+/**
+ * Geography leaks, and the metadata already says so.
+ *
+ * `locations: ["United States"]` was sent and LinkedIn returned channel.io
+ * (HQ Seoul) and demodesk.ai (HQ Munich), because it matches a company with AN
+ * office in the US rather than one headquartered there. Both were then
+ * rejected by qualification at the cost of a model call, using the very field
+ * discovery already paid for.
+ */
+const KR = { locations: [{ country: 'KR', headquarter: true,
+  parsed: { country: 'South Korea', countryCode: 'KR' } }] };
+const DE_WITH_US_OFFICE = { locations: [
+  { country: 'US', headquarter: false, parsed: { country: 'United States', countryCode: 'US' } },
+  { country: 'DE', headquarter: true, parsed: { country: 'Germany', countryCode: 'DE' } },
+] };
+const US = { locations: [{ country: 'US', headquarter: true,
+  parsed: { country: 'United States', countryCode: 'US' } }] };
+
+test('a company headquartered in the target country is kept', () => {
+  assert.equal(withinGeography(US, ['United States']), true);
+});
+
+test('a company headquartered elsewhere is dropped', () => {
+  assert.equal(withinGeography(KR, ['United States']), false);
+});
+
+test('an office in the target country is not a headquarters there', () => {
+  // This is exactly what LinkedIn's own location filter got wrong.
+  assert.equal(withinGeography(DE_WITH_US_OFFICE, ['United States']), false);
+});
+
+test('the country code and the country name mean the same thing', () => {
+  assert.equal(withinGeography(US, ['US']), true);
+  assert.equal(withinGeography(US, ['USA']), true);
+  assert.equal(withinGeography(
+    { locations: [{ country: 'GB', headquarter: true,
+      parsed: { country: 'United Kingdom', countryCode: 'GB' } }] },
+    ['United Kingdom']), true);
+});
+
+test('any one of several wanted countries is enough', () => {
+  assert.equal(withinGeography(KR, ['United States', 'South Korea']), true);
+});
+
+test('an unknown location is kept, because absent evidence is not evidence of a miss', () => {
+  // Same rule as headcount: only positive evidence disqualifies, and the row
+  // is already paid for either way.
+  assert.equal(withinGeography({}, ['United States']), true);
+  assert.equal(withinGeography({ locations: [] }, ['United States']), true);
+  assert.equal(withinGeography(US, []), true, 'no stated geography is no filter');
 });

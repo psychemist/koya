@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  clampCandidates, clampScrapes, clampTargetLeads, discoveryCallsLeft,
+  clampCandidates, clampScrapes, clampTargetLeads, discoveryRefusal,
   dailyClaudeRefusal, budgetConfigError,
 } from '../../lib/budget.ts';
 import { config } from '../../lib/config.ts';
@@ -74,30 +74,42 @@ test('no target at all falls back to the configured default', () => {
 });
 
 /**
- * How many searches a run may pay to start.
+ * When a run should stop searching.
  *
- * The run of 2026-09-25 made twenty-one discovery calls for forty charged
- * rows. Three of the first six returned nothing and still paid the
- * $0.001 start fee, and every call also lengthened the transcript that all
- * later turns pay to re-send. Turn count is where an agent loop's cost
- * compounds, and this is the largest avoidable contributor to it.
+ * The first cap was a flat eight, picked by eye. The run of 2026-09-25 then
+ * measured the real yield: twenty-five searches produced forty charged rows,
+ * 1.6 per search, and FIVE OF THE FIRST SIX RETURNED NOTHING. A cap of eight
+ * would have reached about thirteen of a forty-candidate budget and starved
+ * discovery outright.
+ *
+ * Counting searches punishes a run for an actor returning nothing, which is
+ * not the agent's fault. What is worth stopping is a query strategy that has
+ * stopped working, so the control is a run of consecutive empty searches, with
+ * a loose ceiling that only catches a loop.
  */
-test('a run may search several times, because the first query is rarely right', () => {
-  assert.ok(discoveryCallsLeft(0) > 1);
-  assert.equal(discoveryCallsLeft(0), config.limits.discoveryCalls);
+test('a run that is still finding companies keeps going', () => {
+  assert.equal(discoveryRefusal(12, [3, 0, 2, 0]), null);
+  assert.equal(discoveryRefusal(1, []), null);
 });
 
-test('the allowance runs out, and cannot go negative', () => {
-  const cap = config.limits.discoveryCalls;
-  assert.equal(discoveryCallsLeft(cap - 1), 1);
-  assert.equal(discoveryCallsLeft(cap), 0);
-  assert.equal(discoveryCallsLeft(cap + 9), 0);
+test('a scattering of empty searches is normal and does not stop the run', () => {
+  // Five of the first six returned nothing on a run that went on to fill its
+  // whole candidate budget.
+  assert.equal(discoveryRefusal(6, [0, 0, 2, 0, 0]), null);
 });
 
-test('a nonsense count is treated as none used rather than as unlimited', () => {
-  // A failed count must not hand out an unbounded allowance.
-  for (const v of [NaN, -1, undefined])
-    assert.equal(discoveryCallsLeft(v as number), config.limits.discoveryCalls);
+test('consecutive empty searches stop the run, because the query is not working', () => {
+  const streak = Array(config.limits.discoveryZeroStreak).fill(0);
+  const refusal = discoveryRefusal(10, streak);
+  assert.ok(refusal, 'a dead query strategy was allowed to keep paying start fees');
+  assert.match(refusal, /widen|nothing|empty/i);
+});
+
+test('the ceiling only catches a loop, not a working run', () => {
+  assert.ok(config.limits.discoveryCalls >= 40,
+    'the ceiling is tight enough to starve a full candidate budget again');
+  assert.ok(discoveryRefusal(config.limits.discoveryCalls, [5, 5, 5]));
+  assert.equal(discoveryRefusal(config.limits.discoveryCalls - 1, [5, 5, 5]), null);
 });
 
 /**

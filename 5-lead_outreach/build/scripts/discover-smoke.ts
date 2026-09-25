@@ -2,7 +2,7 @@ import { ApifyClient } from 'apify-client';
 import { config } from '../lib/config.ts';
 import {
   buildActorCall, toCandidate, assertApifyAccount, headcountBuckets, settlementUsd,
-  isShowcase, parseHeadcount, withinHeadcount,
+  isShowcase, parseHeadcount, withinHeadcount, withinGeography,
 } from '../lib/providers/apify.ts';
 import { industryIds } from '../lib/industries.ts';
 
@@ -26,7 +26,7 @@ import { industryIds } from '../lib/industries.ts';
 const USAGE = 'Usage: npm run discover:smoke -- "B2B SaaS" --location "United States" ' +
   '--headcount "10 to 100" --industry "B2B SaaS"';
 
-const FLAGS = ['location', 'headcount', 'industry'] as const;
+const FLAGS = ['location', 'headcount', 'industry', 'limit'] as const;
 const argv = process.argv.slice(2);
 
 const flag = (name: string): string | undefined => {
@@ -58,7 +58,9 @@ const bounds = parseHeadcount(headcount);
 
 const account = await assertApifyAccount();
 const actorId = config.pinnedActorId();
-const call = buildActorCall(queryText, 2, {
+// Two is enough to prove the wiring; a query EXPERIMENT needs a sample.
+const limit = Math.max(1, Math.min(25, Number(flag('limit') ?? 2) || 2));
+const call = buildActorCall(queryText, limit, {
   locations: location ? [location] : [],
   companySize: headcountBuckets(headcount),
   industryIds: industry.ids,
@@ -150,6 +152,12 @@ for (const item of items as Record<string, unknown>[]) {
   const c = toCandidate(item);
   if (!c) {
     console.log(`  (dropped: no usable company domain)  ${name}`);
+    continue;
+  }
+  if (!withinGeography(c.meta, location ? [location] : [])) {
+    const hq = (c.meta.locations as any[])?.find((l) => l?.headquarter)
+      ?? (c.meta.locations as any[])?.[0];
+    console.log(`  (dropped: headquarters in ${hq?.parsed?.country ?? hq?.country ?? '?'})  ${name}`);
     continue;
   }
   if (!withinHeadcount(c.meta, bounds)) {

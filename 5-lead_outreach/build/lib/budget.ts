@@ -83,22 +83,50 @@ export function dailyClaudeRefusal(daySpentUsd: number): string | null {
 }
 
 /**
- * How many more searches this run may pay to start.
+ * Whether this run should stop searching.
  *
- * Every search costs a start fee whatever it returns, and more importantly
- * every one adds a turn to a transcript that all later turns pay to re-send.
- * The run of 2026-09-25 made twenty-one, three of its first six returning
- * nothing at all.
+ * Counting searches punishes a run for an actor returning nothing, which is
+ * not the agent's fault: on 2026-09-25 five of the first six searches came
+ * back empty on a run that went on to fill its whole candidate budget. What is
+ * worth stopping is a query strategy that has STOPPED working, so the control
+ * is a run of consecutive empty searches, with a ceiling that only catches a
+ * loop.
  *
- * A count we could not read yields the full allowance rather than none: a
- * failed query must not silently hand out an unbounded one.
+ * `recentStored` is most recent first. Returns the refusal, or null to go on.
  */
-export function discoveryCallsLeft(used: number): number {
-  const n = Number(used);
-  if (!Number.isFinite(n) || n < 0) return config.limits.discoveryCalls;
-  return Math.max(0, config.limits.discoveryCalls - Math.floor(n));
+export function discoveryRefusal(
+  totalCalls: number, recentStored: number[],
+): string | null {
+  const ceiling = config.limits.discoveryCalls;
+  if (Number.isFinite(totalCalls) && totalCalls >= ceiling) {
+    return `This run has already started ${totalCalls} searches, which is the ceiling. ` +
+      'Work with the candidates you have and finish with a shortfall reason.';
+  }
+
+  const streak = config.limits.discoveryZeroStreak;
+  const lastFew = recentStored.slice(0, streak);
+  if (lastFew.length >= streak && lastFew.every((n) => Number(n) === 0)) {
+    return `The last ${streak} searches returned nothing usable, and each one still paid ` +
+      'a start fee. Narrowing further will return nothing again. Either widen the query, ' +
+      'or finish the run with a shortfall reason naming what the search could not find.';
+  }
+
+  return null;
 }
 
+/**
+ * Whether the day can still fund a whole agent run.
+ *
+ * Apify is capped per run and per day. Claude, which is roughly 89% of what a
+ * run costs, was capped only per run, so nothing bounded a day's spend at all.
+ *
+ * A whole run's ceiling is reserved rather than waiting for the day to cross
+ * the line, because a cap that a single run can overshoot by its full budget
+ * is not a cap. A figure that cannot be read fails closed: a glitched query
+ * must not read as an empty day.
+ *
+ * Returns the refusal to show a person, or null when the run may start.
+ */
 /**
  * How many qualified leads this run is being asked for.
  *
