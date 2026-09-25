@@ -25,10 +25,12 @@ import type { RunRow, RunStats } from '../runs.ts';
  */
 export type NotifyKind =
   | 'run_started' | 'run_needs_clarification' | 'run_complete'
-  | 'run_partial' | 'run_failed' | 'budget_exhausted_daily';
+  | 'run_partial' | 'run_failed' | 'budget_exhausted_daily'
+  | 'research_lane_degraded';
 
 const IS_FAILURE = new Set<NotifyKind>(
-  ['run_needs_clarification', 'run_partial', 'run_failed', 'budget_exhausted_daily']);
+  ['run_needs_clarification', 'run_partial', 'run_failed', 'budget_exhausted_daily',
+   'research_lane_degraded']);
 
 /** Only the points where the system actually stops and waits for a person. */
 const ACTION_REQUIRED = new Set<NotifyKind>(

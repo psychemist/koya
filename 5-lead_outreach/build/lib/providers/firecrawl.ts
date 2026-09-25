@@ -27,6 +27,33 @@ export type ScrapeResult = {
 };
 
 /**
+ * What the shared Firecrawl allowance has left.
+ *
+ * The account is on the free plan, so there are no dollars to cap: credits are
+ * the finite thing, they are shared, and they reset monthly. Running out does
+ * not overspend, it silently degrades every later page to the weaker direct
+ * lane, which is why this is read before a run rather than discovered halfway
+ * through one.
+ *
+ * Returns null when the answer is unknown. A monitoring call that is itself
+ * down must not stop work that would otherwise succeed.
+ */
+export async function creditsRemaining(): Promise<number | null> {
+  try {
+    const res = await fetch('https://api.firecrawl.dev/v2/team/credit-usage', {
+      headers: { authorization: `Bearer ${config.firecrawlKey()}` },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) return null;
+    const body = await res.json() as { data?: { remainingCredits?: number } };
+    const left = body.data?.remainingCredits;
+    return typeof left === 'number' ? left : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The cache key.
  *
  * Two spellings of one page must collapse to one key or the cache never hits

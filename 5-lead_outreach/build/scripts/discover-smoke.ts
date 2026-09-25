@@ -98,10 +98,22 @@ if (typeof reported !== 'number' || reported < settled) {
     'start. The ledger takes the higher of the two.');
 }
 
-const fullRun = settlementUsd(undefined, config.limits.candidateBudget);
-console.log(`projection: a full ${config.limits.candidateBudget}-candidate run prices at ` +
-  `$${fullRun.toFixed(4)} against a $${config.limits.runApifyCapUsd} run cap and a ` +
-  `$${config.limits.dailyApifyCapUsd} daily cap` +
+/**
+ * The worst case, not the best one.
+ *
+ * This previously priced a full run as `settlementUsd(candidateBudget)`, which
+ * bakes in exactly ONE actor start. The run of 2026-09-25 made twenty-one
+ * searches and cost $0.181 against a projection of $0.1610, so the number was
+ * a floor wearing an estimate's label. A run may now start as many searches as
+ * `RUN_DISCOVERY_CALLS` allows, and every one pays the start fee.
+ */
+const searches = config.limits.discoveryCalls;
+const fullRun = settlementUsd(undefined, config.limits.candidateBudget)
+  + (searches - 1) * config.limits.apifyActorStartUsd;
+console.log(`projection: ${config.limits.candidateBudget} candidates over as many as ` +
+  `${searches} searches prices at $${fullRun.toFixed(4)}, against a ` +
+  `$${config.limits.runApifyCapUsd} run cap and a $${config.limits.dailyApifyCapUsd} ` +
+  'daily cap' +
   (fullRun > config.limits.runApifyCapUsd ? '  <-- OVER THE RUN CAP' : ''));
 /**
  * The raw shape, printed before anything tries to interpret it.

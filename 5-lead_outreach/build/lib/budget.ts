@@ -222,10 +222,15 @@ export async function settleSpend(
 export async function recordSpend(
   runId: string | null, provider: 'apify' | 'claude' | 'firecrawl',
   amountUsd: number, note: string,
+  /** For a provider billed in credits rather than dollars. On the free
+   *  Firecrawl plan $0.00 is the correct dollar figure and the credits are
+   *  the only number that means anything. */
+  credits = 0,
 ): Promise<void> {
   await query(
-    'insert into public.spend_ledger (run_id, provider, amount_usd, note) values ($1,$2,$3,$4)',
-    [runId, provider, amountUsd, note],
+    `insert into public.spend_ledger (run_id, provider, amount_usd, note, credits)
+     values ($1,$2,$3,$4,$5)`,
+    [runId, provider, amountUsd, note, credits],
   );
   await syncRunSpend(runId);
 }

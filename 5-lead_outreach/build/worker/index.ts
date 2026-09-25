@@ -7,6 +7,7 @@ import { redact } from '../lib/sanitise.ts';
 import { notify, buildDigest, operatorRecipients, type NotifyKind } from '../lib/notify/index.ts';
 import { runAgent, agentOptions } from '../lib/agent/run-agent.ts';
 import { assertApifyAccount } from '../lib/providers/apify.ts';
+import { creditsRemaining } from '../lib/providers/firecrawl.ts';
 import { config } from '../lib/config.ts';
 import { claudeSpentToday, dailyClaudeRefusal } from '../lib/budget.ts';
 
@@ -103,6 +104,41 @@ async function handle(run: RunRow): Promise<void> {
         to: operatorRecipients(),
       });
       return;
+    }
+
+    /**
+     * The research allowance, checked before the run rather than discovered
+     * halfway through it. Running out of Firecrawl credits costs no money; it
+     * silently drops every later page to the weaker direct lane, and the only
+     * visible symptom is thinner evidence on every lead from that point on.
+     */
+    const credits = await creditsRemaining();
+    if (credits !== null && credits <= 0) {
+      const message = 'The shared Firecrawl allowance is exhausted, so no company site ' +
+        'could be read. Leads would be judged on discovery metadata alone.';
+      log('warn', 'firecrawl credits exhausted, run not started', { run: run.id });
+      await transition(run.id,
+        ['queued', 'refining_icp', 'discovering', 'researching', 'drafting'], 'failed',
+        undefined, { error_message: message, finished_at: new Date() });
+      await notify({
+        kind: 'research_lane_degraded', runId: run.id,
+        title: 'Koya Talent Lead Desk: Firecrawl allowance exhausted',
+        lines: [message, 'The allowance is shared and resets monthly.'],
+        to: operatorRecipients(),
+      });
+      return;
+    }
+    if (credits !== null && credits < config.limits.scrapeBudget) {
+      // Not a refusal. A short run is better than no run, but nobody should
+      // find out from the shape of the evidence.
+      await notify({
+        kind: 'research_lane_degraded', runId: run.id,
+        title: 'Koya Talent Lead Desk: Firecrawl allowance is nearly gone',
+        lines: [`${credits} credits remain and this run may want ` +
+                `${config.limits.scrapeBudget}. Pages beyond that are read by the ` +
+                'weaker direct lane, which fails on anything needing JavaScript.'],
+        to: operatorRecipients(),
+      });
     }
 
     // Feed only, deliberately no recipients. An email per state change teaches

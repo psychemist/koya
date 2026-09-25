@@ -9,6 +9,7 @@ import { ProviderError } from '../../errors.ts';
 import { normaliseDomain } from '../../domain.ts';
 import { scrape } from '../../providers/firecrawl.ts';
 import { screenAndSummarise } from '../../screen/injection.ts';
+import { readScreenCache, writeScreenCache } from '../../screen/cache.ts';
 import { fence } from '../../fence.ts';
 
 export const scrapeCompanySite = tool(
@@ -57,6 +58,28 @@ export const scrapeCompanySite = tool(
           await advanceTo(args.run_id, 'researching');
 
           const page = await scrape(args.url);
+
+          /**
+           * Credits, not dollars. On the free plan $0.00 is the correct dollar
+           * figure, and the credit is the only number that means anything. A
+           * cache hit and the direct lane both consume none.
+           */
+          if (!page.fromCache && page.provider === 'firecrawl') {
+            await recordSpend(args.run_id, 'firecrawl', 0, `page from ${domain}`, 1);
+          }
+          if (page.provider === 'direct') {
+            // Deduplicated by the notifications claim row, so this says it once
+            // per run rather than once per page.
+            const { notify, operatorRecipients } = await import('../../notify/index.ts');
+            await notify({
+              kind: 'research_lane_degraded', runId: args.run_id,
+              title: 'Koya Talent Lead Desk: reading sites with the weaker lane',
+              lines: ['Firecrawl could not serve a page, so this run fell back to a plain ' +
+                      'fetch. It gets less, and fails on anything needing JavaScript, so ' +
+                      'evidence from here on is thinner.'],
+              to: operatorRecipients(),
+            }).catch(() => undefined);
+          }
           await query(
             'update public.runs set scrapes_used = scrapes_used + 1 where id = $1',
             [args.run_id],
@@ -79,9 +102,20 @@ export const scrapeCompanySite = tool(
             };
           }
 
-          // The quarantined read. The screening model sees the raw page and
-          // holds no tools; the agent below sees only what this returns.
-          const screened = await screenAndSummarise(page.markdown, args.url);
+          /**
+           * The quarantined read. The screening model sees the raw page and
+           * holds no tools; the agent below sees only what this returns.
+           *
+           * Cached on the page's content hash, because the screen is a
+           * function of the bytes. Without this a cached page was free of
+           * Firecrawl cost and not free: it still paid for a model call to
+           * re-read text already on disk.
+           */
+          const cachedScreen = await readScreenCache(page.contentHash);
+          const screened = cachedScreen
+            ? { ...cachedScreen, costUsd: 0 }
+            : await screenAndSummarise(page.markdown, args.url);
+          if (!cachedScreen) await writeScreenCache(page.contentHash, screened);
           if (screened.costUsd > 0) {
             await recordSpend(args.run_id, 'claude', screened.costUsd,
               `injection screen for ${domain}`);
