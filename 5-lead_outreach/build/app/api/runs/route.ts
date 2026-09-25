@@ -5,6 +5,7 @@ import { config } from '../../../lib/config.ts';
 import { requireUser } from '../../../lib/auth.ts';
 import { clampTargetLeads } from '../../../lib/budget.ts';
 import { requeueIfNothingProduced } from '../../../lib/runs.ts';
+import { screenObjective } from '../../../lib/intake-screen.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +32,18 @@ export async function POST(request: Request) {
   }
 
   const objective = (body.objective ?? '').trim();
-  if (objective.length < 10) {
-    return NextResponse.json(
-      { error: 'Describe what you are looking for in a sentence or more.' }, { status: 422 });
+
+  /**
+   * The gate, before a row exists and before the worker can claim one.
+   *
+   * A brief that cannot be worked used to be discovered by a full agent loop,
+   * which is 86% of what this system spends. This costs about $0.0005 and
+   * fails open, so an unreachable screening model is a run that starts, not an
+   * intake that is down.
+   */
+  const screened = await screenObjective(objective);
+  if (!screened.workable) {
+    return NextResponse.json({ error: screened.reason }, { status: 422 });
   }
 
   const parts = [objective];
