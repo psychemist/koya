@@ -16,7 +16,8 @@
     "notify:smoke": "node --import tsx --env-file-if-exists=.env.local scripts/notify-smoke.ts",
     "sample": "node --import tsx --env-file-if-exists=.env.local scripts/sample-pack.ts",
     "test": "node --import tsx --test tests/unit/*.test.ts",
-    "test:integration": "node --import tsx --env-file-if-exists=.env.local --test tests/integration/*.test.ts"
+    "test:integration": "node --import tsx --env-file-if-exists=.env.local --test tests/integration/*.test.ts",
+    "overlap": "node --import tsx --env-file-if-exists=.env.local scripts/overlap.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.0",

@@ -4,6 +4,7 @@ import { baseArgs, ok, failed, refused } from './shared.ts';
 import { withToolCall } from '../../toolcalls.ts';
 import { query, one } from '../../db.ts';
 import { normaliseDomain } from '../../domain.ts';
+import { icpFingerprint } from '../../icp.ts';
 
 export const saveLead = tool(
   'save_lead',
@@ -97,6 +98,36 @@ export const saveLead = tool(
             'update public.candidates set assessed = true where run_id = $1 and company_domain = $2',
             [args.run_id, domain],
           );
+
+          /**
+           * The judgement, kept beyond this run. Instrumentation only: nothing
+           * reads this to decide anything, and it exists so the overlap
+           * between runs can be measured before a reuse cache is built on the
+           * assumption that overlap exists.
+           *
+           * A failure here must never lose the lead that was just stored, so
+           * it is deliberately not allowed to throw.
+           */
+          try {
+            const [runRow] = await query<{ icp: unknown }>(
+              'select icp from public.runs where id = $1', [args.run_id]);
+            await query(
+              `insert into public.judged_companies
+                 (company_domain, icp_fingerprint, verdict, run_id)
+               values ($1,$2,$3,$4)
+               on conflict (company_domain, icp_fingerprint) do update
+                 set verdict = excluded.verdict,
+                     run_id = excluded.run_id,
+                     judged_at = now(),
+                     -- The measurement: how many times this company has been
+                     -- judged under these same criteria. Summed as
+                     -- (times_judged - 1) it is the work a cache would skip.
+                     times_judged = public.judged_companies.times_judged + 1`,
+              [domain, icpFingerprint(runRow?.icp), args.qualification_status, args.run_id],
+            );
+          } catch {
+            // Instrumentation must never cost a lead that is already stored.
+          }
           return {
             value: ok({ lead_id: row!.id, domain, status: args.qualification_status }),
             resultSummary: { domain, status: args.qualification_status,
