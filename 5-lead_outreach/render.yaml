@@ -10,6 +10,16 @@
 # three separate debugging sessions were lost to a process enforcing numbers
 # that no longer matched the file anyone was reading. A value in git can be
 # diffed, reviewed and blamed. A value only in a dashboard cannot.
+#
+# THIS FILE IS NOT AT THE REPO ROOT, WHICH IS THE ONLY PLACE RENDER LOOKS BY
+# DEFAULT. The Blueprint must be pointed at it explicitly:
+#   Render > Blueprint > Settings > Blueprint Path = 5-lead_outreach/render.yaml
+#
+# `rootDir` below is REPO-ROOT-RELATIVE and does not change when this file
+# moves. Render resolves it against the repository, not against the directory
+# holding the blueprint, so `5-lead_outreach/build` is correct from here.
+# Shortening it to `build` points both services at a directory that is not
+# there.
 services:
   - type: web
     name: koya-lead-desk-web
