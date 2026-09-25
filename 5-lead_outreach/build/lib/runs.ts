@@ -19,6 +19,7 @@ export type RunRow = {
   scrape_budget: number;
   scrapes_used: number;
   target_leads: number;
+  parent_run_id: string | null;
   apify_cap_usd: string | number;
   apify_spend_usd: string | number;
   claude_cost_usd: string | number;

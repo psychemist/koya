@@ -3,6 +3,7 @@ import { query } from '../../../lib/db.ts';
 import { loadRun, runStats } from '../../../lib/runs.ts';
 import { notificationStatus } from '../../../lib/notify/index.ts';
 import { ConfirmDelete } from '../../ui/confirm';
+import { ContinueRun } from './continue-run';
 import { Nav } from '../../ui/nav';
 import { Progress } from './progress';
 import { DraftEditor } from './draft-editor';
@@ -273,6 +274,13 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         <a href={`/api/runs/${id}/export?format=md`}><button className="quiet">
           Download Markdown
         </button></a>
+        {/* A short run has already paid for its criteria and for every company
+            it discovered. Continuing keeps both; starting again buys them
+            twice. */}
+        {icp && ['complete', 'partial', 'failed'].includes(run.status)
+          && stats.qualified < run.target_leads && (
+          <ContinueRun runId={id} qualified={stats.qualified} target={run.target_leads} />
+        )}
         {canDeleteRun(user, run) &&
           <ConfirmDelete runId={id} objective={run.objective} leadCount={leads.length} />}
       </div>

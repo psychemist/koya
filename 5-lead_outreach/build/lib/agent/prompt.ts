@@ -27,8 +27,13 @@ export function buildSystemPrompt(run: RunRow): string {
     'an expected outcome, not a failure: finish with fewer leads and a clear reason.',
     '',
     'ORDER OF WORK',
-    '1. Invoke the icp-refinement skill and call save_icp. Do this BEFORE any discovery,',
-    '   because discovery costs money and a bad ICP spends it on the wrong companies.',
+    ...(run.parent_run_id
+      ? ['1. This run CONTINUES an earlier one. The criteria are already stored and the',
+         '   candidates the earlier run never reached are already loaded. Call',
+         '   get_run_state first and do NOT call save_icp: the ICP was agreed and paid',
+         '   for already, and re-deriving it spends turns to arrive back where you are.']
+      : ['1. Invoke the icp-refinement skill and call save_icp. Do this BEFORE any discovery,',
+         '   because discovery costs money and a bad ICP spends it on the wrong companies.']),
     '2. Call discover_companies with a query you composed. You do not choose how many.',
     '3. Read what discovery already told you before you pay to read a website. Every',
     '   unassessed candidate in get_run_state carries its discovery metadata. If that',
