@@ -87,11 +87,9 @@ export function DraftEditor({ draft }: { draft: Draft }) {
         {checksPassed > 0 ? (
           <span className="small" style={{ marginLeft: 10 }}>
             <span className="state-good">{checksPassed} checks passed.</span>{' '}
-            <span className="muted">Edits are checked the same way.</span>
           </span>
         ) : (
           <span className="small muted" style={{ marginLeft: 10 }}>
-            Edits pass the same checks the draft did.
           </span>
         )}
       </div>

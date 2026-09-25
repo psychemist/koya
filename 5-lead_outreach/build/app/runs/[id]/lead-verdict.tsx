@@ -20,12 +20,14 @@ export function LeadVerdict({ leadId, humanNote }: {
   const { status, setStatus } = useHumanMark();
   const [note, setNote] = useState(humanNote ?? '');
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // Which verdict is in flight, not merely that one is: every control goes
+  // dead while a decision saves, and the one that was clicked says so.
+  const [busy, setBusy] = useState<'accepted' | 'rejected' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   async function mark(next: 'accepted' | 'rejected', withNote?: string) {
-    setBusy(true);
+    setBusy(next);
     setError(null);
     try {
       const res = await fetch(`/api/leads/${leadId}`, {
@@ -46,7 +48,7 @@ export function LeadVerdict({ leadId, humanNote }: {
     } catch {
       setError('The server did not respond.');
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -62,7 +64,7 @@ export function LeadVerdict({ leadId, humanNote }: {
             You marked this <b>{status}</b>.
             {note && <> {note}</>}
           </p>
-          <button className="quiet" onClick={() => setStatus(null)} disabled={busy}>
+          <button className="quiet" onClick={() => setStatus(null)} disabled={busy !== null}>
             Change it
           </button>
         </>
@@ -76,20 +78,21 @@ export function LeadVerdict({ leadId, humanNote }: {
             style={{ minHeight: 60 }}
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button className="quiet" onClick={() => mark('rejected', note)} disabled={busy}>
-              Reject with this note
+            <button className="quiet" onClick={() => mark('rejected', note)}
+                    disabled={busy !== null}>
+              {busy === 'rejected' ? 'Saving the rejection' : 'Reject with this note'}
             </button>
-            <button className="quiet" onClick={() => setOpen(false)} disabled={busy}>
+            <button className="quiet" onClick={() => setOpen(false)} disabled={busy !== null}>
               Cancel
             </button>
           </div>
         </>
       ) : (
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="quiet" onClick={() => mark('accepted')} disabled={busy}>
-            Accept
+          <button className="quiet" onClick={() => mark('accepted')} disabled={busy !== null}>
+            {busy === 'accepted' ? 'Saving' : 'Accept'}
           </button>
-          <button className="quiet" onClick={() => setOpen(true)} disabled={busy}>
+          <button className="quiet" onClick={() => setOpen(true)} disabled={busy !== null}>
             Reject
           </button>
         </div>

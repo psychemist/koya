@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Koya Lead Desk">
+  <!--
+    The nav bar, shrunk to 16 pixels.
+
+    Black field, white marks, square corners, which is the whole surface. The
+    three bars are the one idea the product is built on: a lead list ranked by
+    verdict, carried by fill density rather than by colour. Solid is qualified,
+    half weight is needs review, a hairline is not qualified.
+
+    Density survives the size. Three bars that differed only in hue would be
+    one grey smudge in a tab strip.
+  -->
+  <rect width="32" height="32" fill="#000000"/>
+  <rect x="7" y="8"    width="18" height="5"   fill="#ffffff"/>
+  <rect x="7" y="16.5" width="18" height="3"   fill="#ffffff"/>
+  <rect x="7" y="23"   width="18" height="1.5" fill="#ffffff"/>
+</svg>

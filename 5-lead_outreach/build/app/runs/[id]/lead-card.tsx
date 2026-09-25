@@ -42,7 +42,7 @@ export function LeadShell({ verdict, humanStatus, children }: {
 export function HumanMark() {
   const { status } = useHumanMark();
   return (
-    <span className="small lead-mark">
+    <span className="small lead-mark" title={status ? `You marked this ${status}` : undefined}>
       {status && <b>You marked this {status}</b>}
     </span>
   );

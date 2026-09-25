@@ -75,6 +75,12 @@ a:hover { text-decoration-thickness: 2px; }
 .narrow { max-width: 640px; }
 
 .rule { border: 0; border-top: 1px solid var(--rule); margin: 26px 0; }
+
+/* The one page with no table, no form and no column to line up against, so
+   the text has nothing to be left aligned to. `p` carries a 72ch maximum
+   width, which needs the auto margins to sit in the middle of it. */
+.notfound { text-align: center; }
+.notfound p { margin-inline: auto; }
 .muted { color: var(--mute); }
 .small { font-size: 13px; }
 
@@ -187,7 +193,7 @@ a:hover { text-decoration-thickness: 2px; }
  */
 .lead-head {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.3fr) 152px 124px minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.4fr) 160px 124px minmax(0, 1.0fr);
   gap: 8px 16px; align-items: baseline;
   padding: 14px 18px; border-bottom: 1px solid var(--rule);
 }
@@ -196,9 +202,10 @@ a:hover { text-decoration-thickness: 2px; }
 }
 .lead-confidence { font-variant-numeric: tabular-nums; }
 /* One width for all three verdicts, so the eye can read the column by fill
-   alone without reading the word. The track is wider than the chip on purpose:
-   the slack sits to the right of it, holding the verdict away from the
-   confidence figure it would otherwise read as part of. */
+   alone without reading the word. The track is 52px wider than the chip on
+   purpose: the slack sits to the right of it, holding the verdict well clear
+   of the confidence figure it would otherwise read as part of. The mark
+   column gives up the width that moves both of them along. */
 .lead-head .chip { display: block; width: 118px; text-align: center; }
 /* Nothing to say about a lead nobody has marked, and an empty line of grid
    is still a line on a narrow screen. */
@@ -394,7 +401,14 @@ button.danger:hover:not(:disabled) { background: var(--ink); color: var(--paper)
    that failed is not. */
 .warning .state-bad, .flagged .state-bad { background: var(--bad); color: var(--paper); }
 
+/*
+ * The margin is load bearing. A modal dialog is centred by the browser giving
+ * it `inset: 0` and `margin: auto`, and Tailwind's preflight zeroes the margin
+ * on every element, which drops the dialog into the top left corner of the
+ * viewport. Putting it back is the whole of the centring.
+ */
 dialog {
+  margin: auto;
   border: 2px solid var(--ink); border-radius: 0; padding: 24px;
   max-width: 460px; color: var(--ink); background: var(--paper);
 }
