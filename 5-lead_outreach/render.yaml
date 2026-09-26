@@ -44,11 +44,11 @@ services:
       # Written into every new run row by the intake route, so the web service
       # decides what a run is allowed to spend before the worker ever sees it.
       - key: RUN_CANDIDATE_BUDGET
-        value: "40"
+        value: "50"
       - key: RUN_SCRAPE_BUDGET
-        value: "30"
+        value: "50"
       - key: RUN_APIFY_CAP_USD
-        value: "0.30"
+        value: "0.50"
 
       # ---------------------------------------------------------------------
       # A PROVIDER KEY ON THE WEB SERVICE, WHICH THIS FILE PREVIOUSLY PROMISED
@@ -130,11 +130,11 @@ services:
       - key: DAILY_CLAUDE_CAP_USD
         value: "10.00"
       - key: RUN_CANDIDATE_BUDGET
-        value: "40"
+        value: "50"
       - key: RUN_SCRAPE_BUDGET
-        value: "30"
+        value: "50"
       - key: RUN_APIFY_CAP_USD
-        value: "0.30"
+        value: "0.50"
       - key: DAILY_APIFY_CAP_USD
         value: "2.50"
 
@@ -142,7 +142,7 @@ services:
       # control, because counting searches punishes a run for an actor
       # returning nothing.
       - key: RUN_DISCOVERY_CALLS
-        value: "40"
+        value: "50"
       - key: RUN_DISCOVERY_ZERO_STREAK
         value: "4"
 
