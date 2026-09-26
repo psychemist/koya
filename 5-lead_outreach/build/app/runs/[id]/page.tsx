@@ -174,15 +174,25 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               <div className="flagged">
                 <b className="small">Copy needs writing by hand.</b>
                 <p className="small" style={{ margin: '4px 0 0' }}>{lead.drafts_blocked}</p>
-                {/* The block names a gate the copy failed, or says the agent
-                    never wrote any. Both are answerable by trying again. */}
-                {lead.qualification_status === 'qualified' && <Redraft leadId={lead.id} />}
               </div>
             )}
             {leadDrafts.length === 0 && !lead.drafts_blocked && (
               <p className="small muted">No drafts were written for this lead.</p>
             )}
             {leadDrafts.map((d) => <DraftEditor key={d.id} draft={d} />)}
+            {/* Offered on every qualified lead, not only on a blocked one. A
+                block is answerable by trying again, but so is copy that simply
+                reads badly, and the only route there was re-running the whole
+                agent for a company already qualified and researched. Asking
+                again REPLACES what is there, so the button confirms first when
+                there is something to lose. */}
+            {lead.qualification_status === 'qualified' && (
+              <Redraft
+                leadId={lead.id}
+                existingDrafts={leadDrafts.length}
+                editedByHuman={leadDrafts.filter((d) => d.edited_by_human).length}
+              />
+            )}
           </section>
         </div>
       </LeadShell>
