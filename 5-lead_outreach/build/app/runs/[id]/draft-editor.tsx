@@ -101,7 +101,9 @@ export function DraftEditor({ draft, leadId }: { draft: Draft; leadId: string })
       {reason && <div className="error small">{reason}</div>}
 
       {draft.step !== 0 && (
-        <input value={subject} onChange={(e) => setSubject(e.target.value)}
+        <input className="draft-subject" value={subject}
+               onChange={(e) => setSubject(e.target.value)}
+               placeholder="Subject"
                aria-label={`${title(draft.step)} subject`} style={{ marginBottom: 6 }} />
       )}
       <textarea value={body} onChange={(e) => setBody(e.target.value)}

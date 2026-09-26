@@ -422,6 +422,12 @@ input, textarea {
 input:hover, textarea:hover { border-color: var(--ink); }
 input:focus, textarea:focus { border-color: var(--ink); }
 textarea { min-height: 110px; resize: vertical; }
+
+.draft-subject {
+  background: var(--wash);
+  font-weight: 600;
+}
+.draft-subject:focus { background: var(--paper); }
 .field { margin-bottom: 18px; }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
