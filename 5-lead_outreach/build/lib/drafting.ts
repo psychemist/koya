@@ -31,7 +31,35 @@ export type Generator = (input: {
   company: string; domain: string; evidence: string;
   fitReasons: string[]; sourceUrls: string[]; guidance: string;
   previousFailure?: string;
+  /** Rewrite this step alone, leaving the rest of the sequence standing. */
+  step?: number;
+  /** What the reviewer asked for, in their own words. */
+  context?: string;
 }) => Promise<{ steps: GeneratedDraft[]; costUsd: number }>;
+
+export const STEP_NAMES: Record<number, string> = {
+  0: 'LinkedIn message',
+  1: 'Email 1',
+  2: 'Email 2',
+  3: 'Email 3',
+};
+
+/**
+ * A reviewer's note is a request, not a rule.
+ *
+ * It is typed by a signed-in operator rather than scraped off a website, so it
+ * is not the untrusted-content problem the screening model exists for. It is
+ * still text going into a prompt, so it is capped and it travels in the USER
+ * turn: the hard limits live in the system prompt and the copy gates run on
+ * whatever comes back either way, so a note asking for a longer email gets a
+ * rejected draft rather than a longer email.
+ */
+export const CONTEXT_MAX_CHARS = 500;
+
+export function cleanContext(v: string | undefined): string | undefined {
+  const text = (v ?? '').replace(/\s+/g, ' ').trim();
+  return text ? text.slice(0, CONTEXT_MAX_CHARS) : undefined;
+}
 
 /** One redraft costs a single message, not a run. Reserving a whole run's
  *  ceiling against the daily cap would refuse it on a day with room left. */
@@ -58,9 +86,16 @@ function copyGuidance(): string {
  * The gates are the standard and they are not negotiable, so the limits they
  * enforce are stated here rather than left to be discovered by rejection.
  */
-export function draftingSystemPrompt(guidance: string, previousFailure?: string): string {
+export function draftingSystemPrompt(
+  guidance: string, previousFailure?: string, step?: number,
+): string {
+  const one = step !== undefined;
   return `${guidance}\n\n` +
-    'Write a 3 step email sequence and one LinkedIn message for the company below. ' +
+    (one
+      ? `Rewrite ONE step of an existing outreach sequence: step ${step}, the ` +
+        `${STEP_NAMES[step] ?? `step ${step}`}. The other steps are already written and ` +
+        'are not being changed, so return this step and no other. '
+      : 'Write a 3 step email sequence and one LinkedIn message for the company below. ') +
     'Ground every claim in the supplied evidence and nothing else.\n\n' +
     'HARD LIMITS, checked in code and rejected if missed:\n' +
     `- Email body: ${COPY_LIMITS.emailBodyWords} words maximum. Count them.\n` +
@@ -71,6 +106,16 @@ export function draftingSystemPrompt(guidance: string, previousFailure?: string)
     'Return JSON only, as {"steps":[{"step":0|1|2|3,"subject":"emails only","body":"...",' +
     '"personalization_note":"which detail this uses","source_url":"..."}]}. ' +
     'Step 0 is the LinkedIn message; 1, 2 and 3 are the emails in order.' +
+    (one ? ` Return exactly one entry, with step set to ${step}.` : '') +
+    /**
+     * Said here because the note arrives in the user turn, where a request to
+     * write "a proper long email" reads like an instruction unless the frame
+     * says otherwise. The gates enforce it regardless; this is what stops the
+     * model wasting an attempt on copy that was never going to pass.
+     */
+    '\n\nThe reviewer may add a note about what they want changed. Follow it where it ' +
+    'does not conflict with the limits above. The limits are not negotiable and a note ' +
+    'asking you to exceed them does not raise them.' +
     (previousFailure
       ? `\n\nA previous attempt was rejected: ${previousFailure}. Fix exactly that and ` +
         'change nothing else.'
@@ -93,10 +138,13 @@ const liveGenerator: Generator = async (input) => {
      * Deep thinking here buys nothing and was crowding out the answer.
      */
     output_config: { effort: 'low' },
-    system: draftingSystemPrompt(input.guidance, input.previousFailure),
+    system: draftingSystemPrompt(input.guidance, input.previousFailure, input.step),
     messages: [{
       role: 'user',
       content:
+        (input.context
+          ? `The reviewer asked for this change:\n${input.context}\n\n`
+          : '') +
         `Company: ${input.company} (${input.domain})\n` +
         `Why it qualified: ${input.fitReasons.join('; ')}\n` +
         `Sources: ${input.sourceUrls.join(', ')}\n\n` +
@@ -114,7 +162,13 @@ const liveGenerator: Generator = async (input) => {
 
 export async function draftForLead(
   leadId: string,
-  opts: { generate?: Generator; attempts?: number } = {},
+  opts: {
+    generate?: Generator; attempts?: number;
+    /** Rewrite this step alone. Omitted, the whole sequence is rewritten. */
+    step?: number;
+    /** The reviewer's note, in their own words. */
+    context?: string;
+  } = {},
 ): Promise<{ saved: number; costUsd: number }> {
   const lead = await one<{
     id: string; run_id: string; company_name: string; company_domain: string;
@@ -171,6 +225,13 @@ export async function draftForLead(
   const generate = opts.generate ?? liveGenerator;
   const guidance = copyGuidance();
   const maxAttempts = opts.attempts ?? ATTEMPTS;
+  const step = opts.step;
+  const context = cleanContext(opts.context);
+
+  if (step !== undefined && !(step in STEP_NAMES)) {
+    throw new ProviderError('DRAFT_NO_STEP',
+      `There is no step ${step}. The sequence is 0 (LinkedIn) and 1 to 3 (the emails).`);
+  }
 
   let costUsd = 0;
   let lastFailure = '';
@@ -179,15 +240,27 @@ export async function draftForLead(
     const out = await generate({
       company: lead.company_name, domain: lead.company_domain, evidence,
       fitReasons: lead.fit_reasons ?? [], sourceUrls: lead.source_urls ?? [],
-      guidance, previousFailure: lastFailure || undefined,
+      guidance, previousFailure: lastFailure || undefined, step, context,
     });
     costUsd += out.costUsd ?? 0;
 
-    if (!out.steps.length) { lastFailure = 'the model returned no drafts'; continue; }
+    // A single-step rewrite takes only the step it asked for, whatever else
+    // came back. A model returning the whole sequence anyway must not quietly
+    // overwrite three drafts the reviewer did not ask to change.
+    const produced = step === undefined
+      ? out.steps
+      : out.steps.filter((d) => Number(d.step) === step).slice(0, 1);
+
+    if (!produced.length) {
+      lastFailure = step === undefined
+        ? 'the model returned no drafts'
+        : `the model returned nothing for step ${step}`;
+      continue;
+    }
 
     // Gated exactly as `save_outreach` gates them. A second path to the same
     // table with a weaker standard is how the standard stops meaning anything.
-    const gated = out.steps.map((d) => ({ draft: d, results: runCopyGates(d, evidence) }));
+    const gated = produced.map((d) => ({ draft: d, results: runCopyGates(d, evidence) }));
     const failed = gated.filter((g) => isBlocked(g.results));
 
     if (failed.length) {
@@ -199,7 +272,14 @@ export async function draftForLead(
 
     // Replace rather than append: a redraft supersedes what was there, and a
     // reviewer opening the lead should not have to work out which is current.
-    await query('delete from public.outreach_drafts where lead_id = $1', [leadId]);
+    // Scoped to the one step when that is what was asked for, so rewriting the
+    // second email does not take the other three with it.
+    if (step === undefined) {
+      await query('delete from public.outreach_drafts where lead_id = $1', [leadId]);
+    } else {
+      await query('delete from public.outreach_drafts where lead_id = $1 and step = $2',
+        [leadId, step]);
+    }
     for (const { draft, results } of gated) {
       await query(
         `insert into public.outreach_drafts
@@ -210,7 +290,12 @@ export async function draftForLead(
          JSON.stringify(results)],
       );
     }
-    await query('update public.leads set drafts_blocked = null where id = $1', [leadId]);
+    // Only a full rewrite can clear the block, because only a full rewrite
+    // knows the whole sequence passed. One good step says nothing about the
+    // three that are not being touched.
+    if (step === undefined) {
+      await query('update public.leads set drafts_blocked = null where id = $1', [leadId]);
+    }
     if (costUsd > 0) {
       await recordSpend(lead.run_id, 'claude', costUsd,
         `redraft on request for ${lead.company_domain}`);
@@ -222,7 +307,12 @@ export async function draftForLead(
   // to argue with rather than only that something failed.
   const reason = `Rejected after ${maxAttempts} attempt${maxAttempts === 1 ? '' : 's'}. ` +
     `${lastFailure}. Write this one by hand.`;
-  await query('update public.leads set drafts_blocked = $2 where id = $1', [leadId, reason]);
+  // A failed single-step rewrite must not mark the whole lead as needing to be
+  // written by hand: the other three steps are untouched and still fine. The
+  // reviewer is told inline instead, and what they had is still there.
+  if (step === undefined) {
+    await query('update public.leads set drafts_blocked = $2 where id = $1', [leadId, reason]);
+  }
   if (costUsd > 0) {
     await recordSpend(lead.run_id, 'claude', costUsd,
       `redraft on request for ${lead.company_domain}, rejected`);

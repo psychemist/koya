@@ -179,7 +179,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
             {leadDrafts.length === 0 && !lead.drafts_blocked && (
               <p className="small muted">No drafts were written for this lead.</p>
             )}
-            {leadDrafts.map((d) => <DraftEditor key={d.id} draft={d} />)}
+            {leadDrafts.map((d) => <DraftEditor key={d.id} draft={d} leadId={lead.id} />)}
             {/* Offered on every qualified lead, not only on a blocked one. A
                 block is answerable by trying again, but so is copy that simply
                 reads badly, and the only route there was re-running the whole

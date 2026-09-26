@@ -17,11 +17,12 @@ const STATUS: Record<string, number> = {
   DRAFT_NO_LEAD: 404,
   DRAFT_NOT_QUALIFIED: 409,
   DRAFT_NO_EVIDENCE: 409,
+  DRAFT_NO_STEP: 400,
   DRAFT_GATES_FAILED: 422,
   BUDGET_DAY: 429,
 };
 
-export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: 'Sign in first.' }, { status: 401 });
 
@@ -34,8 +35,21 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ error: 'No such lead.' }, { status: 404 });
   }
 
+  // A body is optional: no body still means "rewrite the whole sequence",
+  // which is what the button did before it could do anything narrower.
+  const body = await request.json().catch(() => ({})) as
+    { step?: unknown; context?: unknown };
+  const step = body.step === undefined || body.step === null
+    ? undefined : Number(body.step);
+  if (step !== undefined && !Number.isInteger(step)) {
+    return NextResponse.json({ error: 'step must be a whole number.' }, { status: 400 });
+  }
+
   try {
-    const out = await draftForLead(id);
+    const out = await draftForLead(id, {
+      step,
+      context: typeof body.context === 'string' ? body.context : undefined,
+    });
     return NextResponse.json({ saved: out.saved, costUsd: out.costUsd });
   } catch (e) {
     if (e instanceof ProviderError && STATUS[e.code]) {

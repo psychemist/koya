@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 type GateResult = { gate: string; severity: string; passed: boolean; detail?: string };
 
@@ -12,13 +13,55 @@ type Draft = {
 
 const title = (step: number) => (step === 0 ? 'LinkedIn Message' : `Email ${step}`);
 
-export function DraftEditor({ draft }: { draft: Draft }) {
+/** Matches CONTEXT_MAX_CHARS in lib/drafting.ts, where it is enforced. This
+ *  is the courtesy of saying so before the trim happens, not the rule. */
+const NOTE_MAX = 500;
+
+export function DraftEditor({ draft, leadId }: { draft: Draft; leadId: string }) {
   const [subject, setSubject] = useState(draft.subject ?? '');
   const [body, setBody] = useState(draft.body);
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [reason, setReason] = useState<string | null>(null);
   const [edited, setEdited] = useState(draft.edited_by_human);
   const [gates, setGates] = useState<GateResult[]>(draft.gate_results ?? []);
+
+  const router = useRouter();
+  const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState('');
+  const [rewriting, setRewriting] = useState(false);
+
+  /**
+   * Rewrite THIS step, with the reviewer's own words as context.
+   *
+   * Scoped to one step because the whole-sequence redraft replaced everything,
+   * so disliking the second email cost you the other three, including your own
+   * edits. The note is optional: asking again with no guidance is still the
+   * quickest answer to copy that simply reads badly.
+   */
+  async function rewrite() {
+    setRewriting(true);
+    setReason(null);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/drafts`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ step: draft.step, context: note.trim() || undefined }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // What was there is still there: a rejected rewrite writes nothing.
+        setReason(payload.error ?? 'That rewrite was not accepted.');
+        return;
+      }
+      setAsking(false);
+      setNote('');
+      router.refresh();
+    } catch {
+      setReason('The server did not respond. Nothing was changed, so try again.');
+    } finally {
+      setRewriting(false);
+    }
+  }
 
   // Advisory findings are defined as "shown to the reviewer, not blocking".
   // They were computed, stored, returned to the agent and then dropped, so the
@@ -80,10 +123,47 @@ export function DraftEditor({ draft }: { draft: Draft }) {
         </ul>
       )}
 
+      {asking && (
+        <div style={{ marginTop: 10 }}>
+          <label htmlFor={`note-${draft.id}`} className="small">
+            What should change? Optional.
+          </label>
+          <textarea
+            id={`note-${draft.id}`}
+            value={note}
+            maxLength={NOTE_MAX}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Shorter. Lead with their hiring, not the product."
+            style={{ minHeight: 64, marginTop: 4 }}
+          />
+          <p className="small muted" style={{ margin: '4px 0 8px' }}>
+            This rewrites {title(draft.step).toLowerCase()} only, and leaves the rest of the
+            sequence alone. {edited && 'Your edits to this one will be replaced. '}
+            It costs a few cents and is checked against the same gates.
+          </p>
+          <button onClick={rewrite} disabled={rewriting}>
+            {rewriting ? 'Writing' : 'Rewrite this step'}
+          </button>{' '}
+          <button className="quiet" onClick={() => setAsking(false)} disabled={rewriting}>
+            Cancel
+          </button>
+        </div>
+      )}
+
       <div style={{ marginTop: 8 }}>
         <button className="quiet" onClick={save} disabled={!dirty || state === 'saving'}>
           {state === 'saving' ? 'Checking the edit' : state === 'saved' ? 'Saved' : 'Save changes'}
         </button>
+        {!asking && (
+          <button
+            className="quiet"
+            onClick={() => setAsking(true)}
+            disabled={rewriting}
+            style={{ marginLeft: 8 }}
+          >
+            Rewrite this step
+          </button>
+        )}
         {checksPassed > 0 ? (
           <span className="small" style={{ marginLeft: 10 }}>
             <span className="state-good">{checksPassed} checks passed.</span>{' '}
