@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { runStateClass } from '../../ui/status';
+import { runStateClass, toolCallStateClass } from '../../ui/status';
 
 /**
  * Deliberately no cost.
@@ -136,7 +136,7 @@ export function Progress({ runId, initialStatus }: { runId: string; initialStatu
                 </span>
                 {a.status !== 'ok' && (
                   <span
-                    className={a.status === 'denied' ? 'state-degraded' : 'state-failed'}
+                    className={toolCallStateClass(a.status)}
                     style={{ flexShrink: 0, marginLeft: 4 }}
                   >
                     {a.status === 'started' ? 'running' : a.status}

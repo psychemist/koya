@@ -19,3 +19,25 @@ const RUN_STATE: Record<string, string> = {
 export function runStateClass(status: string): string {
   return RUN_STATE[status] ?? 'state-working';
 }
+
+/**
+ * The same rule one level down, for a single tool call.
+ *
+ * `started` is the call in flight, which is the newest row in the activity
+ * feed and therefore the one most often on screen. Painting it red said the
+ * run was failing whenever it was merely working, which is the exact mistake
+ * the note above warns about.
+ *
+ * `denied` is amber rather than red on purpose: a budget refusal is the cage
+ * doing its job, not something that went wrong.
+ */
+const TOOL_CALL_STATE: Record<string, string> = {
+  ok: 'state-good',
+  started: 'state-working',
+  denied: 'state-degraded',
+  error: 'state-bad',
+};
+
+export function toolCallStateClass(status: string): string {
+  return TOOL_CALL_STATE[status] ?? 'state-working';
+}
