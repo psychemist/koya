@@ -125,14 +125,6 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               ? <ul className="tight">{lead.concerns.map((c, i) => <li key={i}>{c}</li>)}</ul>
               : <p className="small muted">The agent recorded none.</p>}
 
-            {/* needs_review only. A not_qualified lead has been decided, and
-                re-judging it on request until it says yes is how a filter
-                stops meaning anything. A reviewer who disagrees with that one
-                has Accept, which puts their name on it. */}
-            {lead.qualification_status === 'needs_review' && (
-              <Reassess leadId={lead.id} confidence={String(lead.confidence)} />
-            )}
-
             <LeadVerdict leadId={lead.id} humanNote={lead.human_note} />
           </section>
 
@@ -145,6 +137,21 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               <div style={{ marginBottom: 14 }}>
                 <div className="col-label">Operator&apos;s notes</div>
                 <p className="small operator-note">{lead.human_note}</p>
+              </div>
+            )}
+
+            {/* Beside the evidence rather than beside the verdict, because
+                both actions are about the evidence: one re-reads what is in
+                this column, the other adds to it.
+
+                needs_review only. A not_qualified lead has been decided, and
+                re-judging it on request until it says yes is how a filter
+                stops meaning anything. A reviewer who disagrees with that one
+                has Accept, which puts their name on it. */}
+            {lead.qualification_status === 'needs_review' && (
+              <div style={{ marginBottom: 14 }}>
+                <div className="col-label">Judge it again</div>
+                <Reassess leadId={lead.id} confidence={String(lead.confidence)} />
               </div>
             )}
 

@@ -77,9 +77,18 @@ export function LeadVerdict({ leadId, humanNote }: {
           <p className="small" style={{ margin: '0 0 6px' }}>
             You marked this <b>{status}</b>.
           </p>
-          <button className="quiet" onClick={() => setStatus(null)} disabled={busy !== null}>
-            Change it
-          </button>
+          {/* A note is not part of the verdict, so it stays available after
+              one is cast. A reviewer who accepted a lead last week and has
+              since learned something about it should not have to undo the
+              decision to write that down. */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="quiet" onClick={() => setStatus(null)} disabled={busy !== null}>
+              Change it
+            </button>
+            <button className="quiet" onClick={() => setOpen('note')} disabled={busy !== null}>
+              {humanNote ? 'Edit the note' : 'Leave a note'}
+            </button>
+          </div>
         </>
       ) : open ? (
         <>
