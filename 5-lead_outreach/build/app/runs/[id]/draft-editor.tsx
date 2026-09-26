@@ -131,20 +131,20 @@ export function DraftEditor({ draft, leadId }: { draft: Draft; leadId: string })
         <ul className="draft-checks">
           {blocking.map((g) => (
             <li key={g.gate}>
-              <span className="state-failed"style={{ marginLeft: 2 }}>must fix</span>
-              <span style={{ marginLeft: 15.5 }}>{g.detail ?? g.gate}</span>
+              <span className="state-failed"style={{ marginLeft: 3 }}>must fix</span>
+              <span style={{ marginLeft: 25 }}>{g.detail ?? g.gate}</span>
             </li>
           ))}
           {advisories.map((a) => (
             <li key={a.gate}>
-              <span className="state-degraded"style={{ marginLeft: 2 }}>worth a look</span>
-              <span style={{ marginLeft: 15.5 }}>{a.detail ?? a.gate}</span>
+              <span className="state-degraded"style={{ marginLeft: 3 }}>worth a look</span>
+              <span style={{ marginLeft: 25 }}>{a.detail ?? a.gate}</span>
             </li>
           ))}
           {checksPassed > 0 && (
             <li>
-              <span className="state-good"style={{ marginLeft: 2 }}>passed</span>
-              <span className="muted" style={{ marginLeft: 15.5 }}>
+              <span className="state-good"style={{ marginLeft: 3 }}>passed</span>
+              <span className="muted" style={{ marginLeft: 25 }}>
                 {checksPassed} check{checksPassed === 1 ? '' : 's'}
                 {blocking.length > 0 || advisories.length > 0 ? ', and the rest are above' : ''}
               </span>
@@ -189,7 +189,7 @@ export function DraftEditor({ draft, leadId }: { draft: Draft; leadId: string })
             className="quiet"
             onClick={() => setAsking(true)}
             disabled={rewriting}
-            style={{ marginLeft: 8 }}
+            style={{ marginLeft: 18 }}
           >
             Rewrite this step
           </button>
