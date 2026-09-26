@@ -79,8 +79,37 @@ a:hover { text-decoration-thickness: 2px; }
 /* The one page with no table, no form and no column to line up against, so
    the text has nothing to be left aligned to. `p` carries a 72ch maximum
    width, which needs the auto margins to sit in the middle of it. */
-.notfound { text-align: center; }
-.notfound p { margin-inline: auto; }
+/*
+ * The 404 is the one page with no nav above it, so it owns the whole viewport
+ * and centres in it. `.wrap` carries a 96px bottom padding meant to keep a
+ * long page clear of the fold, which here would push the block visibly above
+ * centre, so it is cancelled rather than inherited.
+ */
+.notfound {
+  text-align: center;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-block: 28px;
+}
+/*
+ * Sized against the viewport rather than the type scale: this is the one
+ * numeral on the desk that is an image rather than a reading. It sits in rule
+ * grey so it reads as a backdrop to the sentence below, which is the part that
+ * actually says what happened.
+ */
+.notfound-code {
+  font-size: clamp(88px, 20vw, 176px);
+  line-height: 0.85;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  color: var(--rule);
+  margin-bottom: 22px;
+}
+.notfound h1 { margin-bottom: 16px; }
+.notfound p { margin-inline: auto; margin-bottom: 30px; max-width: 46ch; }
 .muted { color: var(--mute); }
 .small { font-size: 13px; }
 

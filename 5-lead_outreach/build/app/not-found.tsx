@@ -14,6 +14,9 @@ export const metadata: Metadata = { title: 'Not found' };
 export default function NotFound() {
   return (
     <main className="wrap narrow notfound">
+      {/* Decorative. The heading below is what a screen reader should read,
+          because "404" on its own says less than the sentence does. */}
+      <div className="notfound-code" aria-hidden="true">404</div>
       <h1>That page is not here.</h1>
       <p>
         The link may be stale, or the run it pointed at may have been deleted along with
