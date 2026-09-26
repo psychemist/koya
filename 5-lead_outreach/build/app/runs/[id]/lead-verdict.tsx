@@ -72,25 +72,14 @@ export function LeadVerdict({ leadId, humanNote }: {
           rejection or a standalone note, it belongs in one place on the card,
           under Operator's notes, rather than in two depending on which button
           wrote it. */}
-      {status ? (
-        <>
-          <p className="small" style={{ margin: '0 0 6px' }}>
-            You marked this <b>{status}</b>.
-          </p>
-          {/* A note is not part of the verdict, so it stays available after
-              one is cast. A reviewer who accepted a lead last week and has
-              since learned something about it should not have to undo the
-              decision to write that down. */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="quiet" onClick={() => setStatus(null)} disabled={busy !== null}>
-              Change it
-            </button>
-            <button className="quiet" onClick={() => setOpen('note')} disabled={busy !== null}>
-              {humanNote ? 'Edit the note' : 'Leave a note'}
-            </button>
-          </div>
-        </>
-      ) : open ? (
+      {/*
+        `open` is tested FIRST, before `status`.
+        Ordered the other way, a lead that already carried a verdict never
+        left the first branch: Edit the note set `open`, the `status` test
+        still matched, and the textarea it had just asked for never rendered.
+        The button worked and nothing happened.
+      */}
+      {open ? (
         <>
           <textarea
             value={note}
@@ -113,6 +102,24 @@ export function LeadVerdict({ leadId, humanNote }: {
             </button>
             <button className="quiet" onClick={() => setOpen(null)} disabled={busy !== null}>
               Cancel
+            </button>
+          </div>
+        </>
+      ) : status ? (
+        <>
+          <p className="small" style={{ margin: '0 0 6px' }}>
+            You marked this <b>{status}</b>.
+          </p>
+          {/* A note is not part of the verdict, so it stays available after
+              one is cast. A reviewer who accepted a lead last week and has
+              since learned something about it should not have to undo the
+              decision to write that down. */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="quiet" onClick={() => setStatus(null)} disabled={busy !== null}>
+              Change it
+            </button>
+            <button className="quiet" onClick={() => setOpen('note')} disabled={busy !== null}>
+              {humanNote ? 'Edit the note' : 'Leave a note'}
             </button>
           </div>
         </>
