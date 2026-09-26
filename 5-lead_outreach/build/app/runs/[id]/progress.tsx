@@ -90,7 +90,13 @@ export function Progress({ runId, initialStatus }: { runId: string; initialStatu
       {/* Only while something is happening. On a finished run the leads below
           are the answer, and a frozen activity list reads like a stalled one. */}
       {snap && !TERMINAL.includes(status) && snap.activity?.length > 0 && (
-        <div style={{ marginTop: 14, borderTop: '1px solid var(--rule, #e5e5e5)', paddingTop: 10 }}>
+        // `.card` carries no padding of its own: `.strip` above supplies its
+        // own 13px 18px. Matching that 18px here is what keeps the timestamps
+        // off the left border and the status badges off the right one. The
+        // rule stays on this outer element so it spans the full card, the way
+        // the strip's own edge does.
+        <div style={{ borderTop: '1px solid var(--rule, #e5e5e5)' }}>
+          <div style={{ padding: '12px 18px 14px' }}>
           <div className="small muted" style={{ marginBottom: 4 }}>Latest activity</div>
           <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {snap.activity.map((a, i) => (
@@ -139,6 +145,7 @@ export function Progress({ runId, initialStatus }: { runId: string; initialStatu
               </li>
             ))}
           </ol>
+          </div>
         </div>
       )}
     </div>
