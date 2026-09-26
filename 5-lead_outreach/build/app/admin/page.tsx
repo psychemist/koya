@@ -84,12 +84,12 @@ export default async function AdminPage() {
     <>
       <Nav user={admin} current="admin" />
       <main className="wrap">
-      <h1>Team and spend</h1>
+      <h1>Team and Spend</h1>
 
       <hr className="rule" />
 
-      <h2>Where the budget went</h2>
-      <p className="small muted">
+      <h2>Where The Budget Went</h2>
+      <p className="small muted" style={{ marginTop: 2, marginBottom: 12 }}>
         The discovery account is shared across the cohort, so overspending takes somebody
         else&apos;s share. The cap below is enforced in code, not watched.
       </p>
@@ -124,7 +124,11 @@ export default async function AdminPage() {
         </table>
       </div>
 
-      <h2>The team</h2>
+      <h2>The Team</h2>
+      <p className="small muted" style={{ marginTop: 2, marginBottom: 12 }}>
+        Accounts are created by seeding, not from this screen. Adding a person is a
+        deliberate act with a shared budget behind it.
+      </p>
       <div className="card" style={{ marginBottom: 24 }}>
         <table>
           <thead>
@@ -148,12 +152,12 @@ export default async function AdminPage() {
           </tbody>
         </table>
       </div>
-      <p className="small muted">
-        Accounts are created by seeding, not from this screen. Adding a person is a
-        deliberate act with a shared budget behind it.
-      </p>
 
-      <h2>Every run</h2>
+      <h2>Every Run</h2>
+      <p className="small muted" style={{ marginTop: 2, marginBottom: 12 }}>
+        Model cost is a client-side estimate from the SDK, not billing data. The discovery
+        figure is what the provider reported for the run.
+      </p>
       <div className="card">
         <table>
           <thead>
@@ -194,10 +198,6 @@ export default async function AdminPage() {
           </tbody>
         </table>
       </div>
-      <p className="small muted">
-        Model cost is a client-side estimate from the SDK, not billing data. The discovery
-        figure is what the provider reported for the run.
-      </p>
       </main>
     </>
   );

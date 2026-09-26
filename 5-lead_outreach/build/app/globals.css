@@ -277,6 +277,22 @@ a:hover { text-decoration-thickness: 2px; }
    page it is only meant to introduce. */
 .run-title { font-size: 22px; letter-spacing: -0.014em; max-width: 62ch; }
 
+/*
+ * The qualifiers the intake form appended, under the brief rather than running
+ * on after it. A definition list because that is what they are: a label and
+ * the value somebody gave for it.
+ *
+ * Wraps rather than scrolls, so a long geography list drops to its own row
+ * instead of pushing the headcount off the side on a narrow screen.
+ */
+.run-qualifiers {
+  display: flex; flex-wrap: wrap; gap: 6px 22px;
+  margin: 8px 0 0; font-size: 13px;
+}
+.run-qualifiers > div { display: flex; gap: 7px; }
+.run-qualifiers dt { font-weight: 600; }
+.run-qualifiers dd { margin: 0; color: var(--mute); }
+
 /* Set a step down from body copy: a reviewer is scanning thirty of these, and
    the evidence columns are for comparison rather than for reading through. */
 .lead-cols { display: grid; grid-template-columns: 1fr 1fr 1.2fr; font-size: 13.5px; }
@@ -323,7 +339,10 @@ ul.tight li { margin-bottom: 5px; }
 
 .strip { display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 13px 18px; }
 .strip div { font-size: 13px; }
-.strip b { font-weight: 600; }
+/* The gap between a label and its value. In markup this was a single space,
+   which is not adjustable: HTML collapses consecutive whitespace, so adding
+   more in JSX changes nothing. Set here so all six items stay consistent. */
+.strip b { font-weight: 600; margin-right: 5px; }
 
 /*
  * Severity twice over: weight, underline and inversion say it without colour,

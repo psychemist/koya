@@ -24,7 +24,7 @@ export function Nav({ user, current }: {
         </a>
         {user.role === 'admin' && (
           <a href="/admin" aria-current={current === 'admin' ? 'page' : undefined}>
-            Team and spend
+            Team and Spend
           </a>
         )}
       </div>

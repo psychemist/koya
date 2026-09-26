@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { query } from '../../../lib/db.ts';
 import { loadRun, runStats } from '../../../lib/runs.ts';
 import { notificationStatus } from '../../../lib/notify/index.ts';
+import { splitObjective } from '../../../lib/objective.ts';
 import { ConfirmDelete } from '../../ui/confirm';
 import { ContinueRun } from './continue-run';
 import { Redraft } from './redraft';
@@ -213,7 +214,27 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
     <>
       <Nav user={user} />
       <main className="wrap">
-      <h1 className="run-title">{run.objective}</h1>
+      {/* The brief is the heading. The qualifiers the form appended are
+          criteria, not part of the sentence somebody wrote, so they sit under
+          it rather than running on after a full stop. */}
+      {(() => {
+        const { brief, qualifiers } = splitObjective(run.objective);
+        return (
+          <>
+            <h1 className="run-title">{brief}</h1>
+            {qualifiers.length > 0 && (
+              <dl className="run-qualifiers">
+                {qualifiers.map((q) => (
+                  <div key={q.label}>
+                    <dt>{q.label}</dt>
+                    <dd>{q.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </>
+        );
+      })()}
 
       <Progress runId={id} initialStatus={run.status} />
 
@@ -255,7 +276,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
       )}
 
       <h2>{stats.assessed} companies judged</h2>
-      <p className="small muted">
+      <p className="small muted" style={{ marginTop: 4 }}>
         Leads marked for review are shown but are not counted toward the target.
       </p>
 
@@ -289,9 +310,8 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           <ConfirmDelete runId={id} objective={run.objective} leadCount={leads.length} />}
       </div>
       <p className="small muted" style={{ marginTop: 12 }}>
-        Both exports carry the criteria, the reasoning and the sources. A lead list without its
-        evidence is the thing this system exists to replace.
-      </p>
+        Both exports carry the criteria, the reasoning and the sources.
+        </p>
       </main>
     </>
   );

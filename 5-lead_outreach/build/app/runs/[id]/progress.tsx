@@ -70,10 +70,10 @@ export function Progress({ runId, initialStatus }: { runId: string; initialStatu
   }, [runId, status]);
 
   return (
-    <div className="card" style={{ marginBottom: 18 }}>
+    <div className="card" style={{ marginTop: 10, marginBottom: 18 }}>
       <div className="strip">
         <div>
-          <b>Status</b>{' '}
+          <b>Status</b>
           <span className={runStateClass(status)}>{status.replace(/_/g, ' ')}</span>
         </div>
         {snap && (

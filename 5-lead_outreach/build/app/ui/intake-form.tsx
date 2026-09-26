@@ -88,10 +88,6 @@ export function IntakeForm() {
       <button type="submit" disabled={submitting || form.objective.trim().length < 10}>
         {submitting ? 'Queueing the Run' : 'Start the Run'}
       </button>
-      <p className="small muted" style={{ marginTop: 14 }}>
-        Germany is left out of suggested geography by default: its rules effectively require
-        consent for commercial email. Ask for it explicitly if you want it.
-      </p>
     </form>
   );
 }

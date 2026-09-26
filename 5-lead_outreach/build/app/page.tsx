@@ -43,7 +43,9 @@ export default async function Home({ searchParams }: {
       <Nav user={user} current="runs" />
       <main className="wrap">
       <h1>Start a Run</h1>
-      <p className="small muted">Describe what you are looking for. Nothing is sent to anyone.</p>
+      <p className="small muted" style={{ marginTop: 2, marginBottom: 12 }}>
+        Describe what you are looking for. Nothing is sent to anyone.
+      </p>
 
       <hr className="rule" />
 
@@ -51,11 +53,11 @@ export default async function Home({ searchParams }: {
 
       <hr className="rule" />
 
-      <h2>Runs you have started</h2>
+      <h2>Runs You Started</h2>
       {runs.length === 0 ? (
         <p className="muted">Nothing yet. The first run you start appears here.</p>
       ) : (
-        <div className="card">
+        <div className="card" style={{ marginTop: 8 }}>
           <table>
             <thead>
               <tr>

@@ -6,6 +6,7 @@ import { requireUser } from '../../../lib/auth.ts';
 import { clampTargetLeads } from '../../../lib/budget.ts';
 import { requeueIfNothingProduced } from '../../../lib/runs.ts';
 import { screenObjective } from '../../../lib/intake-screen.ts';
+import { composeObjective } from '../../../lib/objective.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,10 +47,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: screened.reason }, { status: 422 });
   }
 
-  const parts = [objective];
-  if (body.geography?.trim()) parts.push(`Geography: ${body.geography.trim()}`);
-  if (body.headcount?.trim()) parts.push(`Headcount: ${body.headcount.trim()}`);
-  const full = parts.join('. ');
+  // Composed where it is also taken apart again, so the run page can show the
+  // qualifiers on their own lines without inferring a format from this file.
+  const full = composeObjective(objective, body.geography, body.headcount);
 
   // Clamped rather than refused, but never silently: a person who asked for a
   // hundred leads and got ten should learn that from the answer, not from the
