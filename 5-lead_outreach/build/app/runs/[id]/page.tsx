@@ -169,7 +169,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           </section>
 
           <section>
-            <div className="col-label">Drafts for review</div>
+            <div className="col-label">Drafts for Review</div>
             {lead.drafts_blocked && (
               <div className="flagged">
                 <b className="small">Copy needs writing by hand.</b>

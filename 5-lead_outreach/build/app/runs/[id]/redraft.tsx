@@ -115,7 +115,7 @@ export function Redraft(
   }
 
   return (
-    <div style={{ marginTop: 10 }}>
+    <div style={{ marginTop: 30 }}>
       <button className="quiet" onClick={() => setAsking(true)} disabled={busy}>
         {busy ? 'Writing the copy' : 'Write the copy again'}
       </button>

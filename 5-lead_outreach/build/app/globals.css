@@ -197,11 +197,6 @@ a:hover { text-decoration-thickness: 2px; }
  * Verdict by fill density. The left edge is the only thing that differs, and
  * it differs in weight rather than hue.
  */
-/* A shade heavier than `.card`, so one lead reads as one object in a list of
-   thirty. Only the outside: the head's underline and the column dividers stay
-   hairlines, because thickening those would turn one card into three boxes.
-   `border-width` first, then the `border-left` shorthand, so the verdict edge
-   keeps its 6px rather than being flattened to the outer width. */
 .lead {
   border-width: 2px;
   border-left: 6px solid var(--rule);
