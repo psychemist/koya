@@ -497,3 +497,14 @@ details > summary:hover { text-decoration: underline; text-underline-offset: 3px
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* A person's words on a card otherwise full of the machine's. Set apart by an
+   edge rather than a fill, because the card already spends its greys on
+   evidence and a second wash would read as another quoted page. */
+.operator-note {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--edge);
+  background: var(--wash);
+  white-space: pre-wrap;
+}

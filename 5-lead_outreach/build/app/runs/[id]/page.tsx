@@ -11,6 +11,7 @@ import { Progress } from './progress';
 import { DraftEditor } from './draft-editor';
 import { ClarifyForm } from './clarify-form';
 import { LeadVerdict } from './lead-verdict';
+import { Reassess } from './reassess';
 import { LeadTabs } from './lead-tabs';
 import { LeadShell, HumanMark } from './lead-card';
 import { requireUserPage, canSeeRun, canDeleteRun } from '../../../lib/auth.ts';
@@ -124,10 +125,29 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               ? <ul className="tight">{lead.concerns.map((c, i) => <li key={i}>{c}</li>)}</ul>
               : <p className="small muted">The agent recorded none.</p>}
 
+            {/* needs_review only. A not_qualified lead has been decided, and
+                re-judging it on request until it says yes is how a filter
+                stops meaning anything. A reviewer who disagrees with that one
+                has Accept, which puts their name on it. */}
+            {lead.qualification_status === 'needs_review' && (
+              <Reassess leadId={lead.id} confidence={String(lead.confidence)} />
+            )}
+
             <LeadVerdict leadId={lead.id} humanNote={lead.human_note} />
           </section>
 
           <section>
+            {/* One home for the reviewer's own words, whether they arrived
+                with a rejection or on their own. Above what the agent read,
+                because a person's note outranks the machine's evidence and is
+                the thing the next reader needs first. */}
+            {lead.human_note && (
+              <div style={{ marginBottom: 14 }}>
+                <div className="col-label">Operator&apos;s notes</div>
+                <p className="small operator-note">{lead.human_note}</p>
+              </div>
+            )}
+
             <div className="col-label">What it read</div>
             {lead.source_urls.map((u) => (
               <p key={u} className="small" style={{ margin: '0 0 4px' }}>
