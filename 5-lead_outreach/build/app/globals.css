@@ -197,7 +197,16 @@ a:hover { text-decoration-thickness: 2px; }
  * Verdict by fill density. The left edge is the only thing that differs, and
  * it differs in weight rather than hue.
  */
-.lead { border-left: 6px solid var(--rule); margin-bottom: 18px; }
+/* A shade heavier than `.card`, so one lead reads as one object in a list of
+   thirty. Only the outside: the head's underline and the column dividers stay
+   hairlines, because thickening those would turn one card into three boxes.
+   `border-width` first, then the `border-left` shorthand, so the verdict edge
+   keeps its 6px rather than being flattened to the outer width. */
+.lead {
+  border-width: 2px;
+  border-left: 6px solid var(--rule);
+  margin-bottom: 18px;
+}
 .lead[data-verdict="qualified"]     { border-left-color: var(--ink); }
 .lead[data-verdict="needs_review"]  { border-left-color: var(--edge); }
 .lead[data-verdict="not_qualified"] { border-left-color: var(--rule); }
@@ -276,6 +285,25 @@ a:hover { text-decoration-thickness: 2px; }
 /* A sentence, not a label. At display size a long objective takes over the
    page it is only meant to introduce. */
 .run-title { font-size: 22px; letter-spacing: -0.014em; max-width: 62ch; }
+
+/*
+ * What the gates said about one draft, in one place.
+ *
+ * Built for more rows than it has today. The tag sits in a fixed column so a
+ * dozen findings read as a column of verdicts rather than a ragged left edge,
+ * and the finding itself wraps under itself instead of under the tag, which is
+ * what keeps a long sentence from looking like two separate items.
+ */
+.draft-checks { list-style: none; margin: 10px 0 0; padding: 0; font-size: 13px; }
+.draft-checks li {
+  display: grid; grid-template-columns: 8.5em 1fr; gap: 10px;
+  padding: 4px 0; line-height: 1.5;
+  align-items: baseline;
+}
+.draft-checks li + li { border-top: 1px solid var(--rule); }
+/* The tag already carries weight, underline or inversion from its state class.
+   This only sizes and aligns it. */
+.draft-checks li > span:first-child { font-size: 12px; justify-self: start; }
 
 /*
  * The qualifiers the intake form appended, under the brief rather than running

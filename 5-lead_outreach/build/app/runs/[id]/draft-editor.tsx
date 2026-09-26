@@ -66,6 +66,7 @@ export function DraftEditor({ draft, leadId }: { draft: Draft; leadId: string })
   // Advisory findings are defined as "shown to the reviewer, not blocking".
   // They were computed, stored, returned to the agent and then dropped, so the
   // one person they were written for never saw them.
+  const blocking = gates.filter((g) => g.severity === 'blocking' && !g.passed);
   const advisories = gates.filter((g) => g.severity === 'advisory' && !g.passed);
   const checksPassed = gates.filter((g) => g.severity === 'blocking' && g.passed).length;
 
@@ -115,11 +116,40 @@ export function DraftEditor({ draft, leadId }: { draft: Draft; leadId: string })
         </p>
       )}
 
-      {advisories.length > 0 && (
-        <ul className="tight small" style={{ margin: '8px 0 0' }}>
-          {advisories.map((a) => (
-            <li key={a.gate} className="state-degraded">{a.detail ?? a.gate}</li>
+      {/*
+        One verdict block, ordered by what the reviewer has to act on.
+        Blocking failures first because they stop the draft, advisories next
+        because they are judgement calls, and the passed count last because it
+        is reassurance rather than a task. It previously sat on the button row
+        instead, so the count and the findings it summarised were in two
+        different places.
+
+        A list rather than a sentence: four gates today and there will be more,
+        and findings that wrap read as prose the moment they run together.
+      */}
+      {(blocking.length > 0 || advisories.length > 0 || checksPassed > 0) && (
+        <ul className="draft-checks">
+          {blocking.map((g) => (
+            <li key={g.gate}>
+              <span className="state-failed"style={{ marginLeft: 2 }}>must fix</span>
+              <span style={{ marginLeft: 15.5 }}>{g.detail ?? g.gate}</span>
+            </li>
           ))}
+          {advisories.map((a) => (
+            <li key={a.gate}>
+              <span className="state-degraded"style={{ marginLeft: 2 }}>worth a look</span>
+              <span style={{ marginLeft: 15.5 }}>{a.detail ?? a.gate}</span>
+            </li>
+          ))}
+          {checksPassed > 0 && (
+            <li>
+              <span className="state-good"style={{ marginLeft: 2 }}>passed</span>
+              <span className="muted" style={{ marginLeft: 15.5 }}>
+                {checksPassed} check{checksPassed === 1 ? '' : 's'}
+                {blocking.length > 0 || advisories.length > 0 ? ', and the rest are above' : ''}
+              </span>
+            </li>
+          )}
         </ul>
       )}
 
@@ -163,14 +193,6 @@ export function DraftEditor({ draft, leadId }: { draft: Draft; leadId: string })
           >
             Rewrite this step
           </button>
-        )}
-        {checksPassed > 0 ? (
-          <span className="small" style={{ marginLeft: 10 }}>
-            <span className="state-good">{checksPassed} checks passed.</span>{' '}
-          </span>
-        ) : (
-          <span className="small muted" style={{ marginLeft: 10 }}>
-          </span>
         )}
       </div>
     </div>
