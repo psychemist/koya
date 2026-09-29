@@ -11,6 +11,10 @@
  * threshold is never the only thing telling a reviewer whether it cleared it.
  */
 export function percent(value: string | number | null | undefined): string {
+  // Guarded before Number(), which reads null and '' as 0. A lead with no
+  // stored confidence would have rendered "0%", which says the agent was sure
+  // the fit was hopeless rather than that nobody recorded a number.
+  if (value === null || value === undefined || value === '') return 'unknown';
   const n = Number(value);
   return Number.isFinite(n) ? `${Math.round(n * 100)}%` : 'unknown';
 }

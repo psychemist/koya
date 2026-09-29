@@ -8,6 +8,7 @@ import { ContinueRun } from './continue-run';
 import { DraftRequests } from './draft-requests';
 import { Redraft } from './redraft';
 import { percent } from '../../ui/format';
+import { oneRowPerUrl } from '../../ui/lead-pages';
 import { IcpCriteria } from './icp-criteria';
 import { Nav } from '../../ui/nav';
 import { Progress } from './progress';
@@ -94,7 +95,8 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   const icp = run.icp as Record<string, unknown> | null;
 
   const leadCard = (lead: Lead) => {
-    const leadPages = pages.filter((p) => p.company_domain === lead.company_domain);
+    const leadPages = oneRowPerUrl(
+      pages.filter((p) => p.company_domain === lead.company_domain));
     const leadDrafts = drafts.filter((d) => d.lead_id === lead.id);
     return (
       <LeadShell key={lead.id} verdict={lead.qualification_status}
