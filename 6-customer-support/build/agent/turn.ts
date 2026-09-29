@@ -37,14 +37,15 @@ export function frameCallerText(text: string, now: Date, prior?: string, channel
 const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 async function recordTurn(r: { conversationId: string; text: string; spoken: string; answerType: AnswerType; confidence: string | null;
-  citations: string[]; status: string; attempts: number; violations: Violation[]; latencyMs: number; costUsd: number; model: string | null }): Promise<string> {
+  citations: string[]; status: string; attempts: number; violations: Violation[]; retriedFor?: Violation[]; latencyMs: number; costUsd: number; model: string | null }): Promise<string> {
   const row = await one<{ id: string }>(
     `insert into public.conversation_turns (conversation_id, seq, user_transcript, assistant_response, answer_type, confidence_note,
        citations, status, gate_result, latency_ms, cost_usd, model)
      select $1, coalesce(max(seq), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11 from public.conversation_turns where conversation_id = $1
      returning id`,
     [r.conversationId, r.text, r.spoken, r.answerType, r.confidence, r.citations, r.status,
-     JSON.stringify({ attempts: r.attempts, violations: r.violations }), r.latencyMs, r.costUsd, r.model]);
+     // violations: the final attempt's (what the grader reads). retried_for: what the first attempt failed, for the reviewer.
+     JSON.stringify({ attempts: r.attempts, violations: r.violations, ...(r.retriedFor?.length ? { retried_for: r.retriedFor } : {}) }), r.latencyMs, r.costUsd, r.model]);
   await recordSpend('anthropic', r.costUsd, r.conversationId, 'turn');
   await query(`update public.conversations set turn_count = turn_count + 1, cost_usd = cost_usd + $2, model = coalesce(model, $3) where id = $1`,
     [r.conversationId, r.costUsd, r.model]);
@@ -96,7 +97,7 @@ export function runTurn(deps: { sessions: SessionManager; now?: () => Date },
     const since = (await one<{ now: Date }>('select now() as now'))!.now;
     const now = deps.now?.() ?? new Date();
     const session = await sessions.getOrOpen(id);
-    let cost = 0, attempts = 0, fillerSaid = false, violations: Violation[] = [], intended: AnswerType | undefined;
+    let cost = 0, attempts = 0, fillerSaid = false, violations: Violation[] = [], retriedFor: Violation[] = [], intended: AnswerType | undefined;
     let facts = null as Awaited<ReturnType<typeof loadTurnFacts>> | null;
     let approved = null as ReturnType<typeof checkReply>['reply'];
 
@@ -126,6 +127,7 @@ export function runTurn(deps: { sessions: SessionManager; now?: () => Date },
       if (gate.reply) intended = gate.reply.answer_type;
       if (gate.ok) { approved = gate.reply; violations = []; break; }
       violations = gate.violations;
+      if (attempts === 1) retriedFor = gate.violations;
     }
     attempts = Math.min(attempts, 2);
 
@@ -139,7 +141,7 @@ export function runTurn(deps: { sessions: SessionManager; now?: () => Date },
     }
     sink.say(spoken);
     const turnId = await recordTurn({ ...base, spoken, answerType, confidence: approved?.confidence_note ?? null, citations: approved?.citations ?? [],
-      status, attempts, violations, latencyMs: Date.now() - t0, costUsd: cost, model: session.model });
+      status, attempts, violations, retriedFor, latencyMs: Date.now() - t0, costUsd: cost, model: session.model });
     return { status, answerType, spoken, turnId };
   });
 }

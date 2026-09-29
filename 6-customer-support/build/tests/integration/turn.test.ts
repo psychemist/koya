@@ -45,6 +45,9 @@ test('a retry that fixes the violation is spoken, not the fallback', { skip: ski
   const s = sink();
   assert.equal((await runTurn({ sessions: new SessionManager(rt) }, { conversationId: c.id, text: 'refund window?' }, s)).status, 'ok');
   assert.equal(s.said.at(-1), decline.spoken_response);
+  // The console shows why a retry happened; the grader reads only the final attempt's violations.
+  const [t] = await query('select gate_result from public.conversation_turns where conversation_id=$1', [c.id]);
+  assert.deepEqual([t.gate_result.attempts, t.gate_result.violations, t.gate_result.retried_for.map((v: any) => v.gate)], [2, [], ['G2']]);
   await dropConversation(c.id);
 });
 

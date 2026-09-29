@@ -84,3 +84,55 @@ button, textarea, input { font: inherit; color: inherit; }
   .rp-transcript time { grid-row: 1; grid-column: 2; }   /* the time stays beside the speaker, not under the text */
   .rp-transcript p { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* Console: same tokens, wider page, tables drawn with 1px rules. */
+.rp-console-bar { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; padding: 14px 24px; background: var(--rp-surface); border-bottom: 1px solid var(--rp-rule); }
+.rp-console-bar nav { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.rp-console-bar nav a { color: var(--rp-blue); font-weight: 600; text-decoration: none; }
+.rp-console-bar nav a:hover { text-decoration: underline; }
+.rp-who-am-i { margin-left: auto; color: var(--rp-mute); font-size: 0.875rem; }
+.rp-console-main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+.rp-console-main h1 { font-size: 1.375rem; font-weight: 600; color: var(--rp-blue); margin: 0 0 16px; }
+.rp-console-main h2 { font-size: 1.0625rem; font-weight: 600; color: var(--rp-blue); margin: 28px 0 10px; }
+.rp-console-main a { color: var(--rp-blue); }
+.rp-btn-small { min-height: 34px; padding: 0 12px; font-size: 0.875rem; }
+.rp-table-wrap { overflow-x: auto; background: var(--rp-surface); border: 1px solid var(--rp-rule); border-radius: var(--rp-radius); }
+.rp-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+.rp-table th { text-align: left; font-weight: 600; color: var(--rp-mute); font-size: 0.8125rem; padding: 10px 12px; border-bottom: 1px solid var(--rp-rule); white-space: nowrap; }
+.rp-table td { padding: 10px 12px; border-bottom: 1px solid var(--rp-rule); vertical-align: top; }
+.rp-table tr:last-child td { border-bottom: 0; }
+.rp-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.rp-table tr[data-attention='true'] td { font-weight: 600; }          /* weight, not colour alone */
+.rp-clip { max-width: 36ch; }
+.rp-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 0 0 16px; }
+.rp-filters label { display: grid; gap: 4px; font-size: 0.8125rem; font-weight: 600; color: var(--rp-mute); }
+.rp-filters select, .rp-form input, .rp-form select, .rp-form textarea {
+  min-height: 36px; padding: 6px 10px; border: 1px solid var(--rp-rule); border-radius: var(--rp-radius); background: var(--rp-surface); }
+.rp-form { display: grid; gap: 6px; max-width: 420px; }
+.rp-form-wide { max-width: 640px; }
+.rp-form label { font-weight: 600; font-size: 0.875rem; margin-top: 8px; }
+.rp-form .rp-btn { margin-top: 12px; justify-self: start; }
+.rp-facts { display: grid; gap: 0; margin: 0 0 8px; background: var(--rp-surface); border: 1px solid var(--rp-rule); border-radius: var(--rp-radius); }
+.rp-facts > div { display: grid; grid-template-columns: 160px 1fr; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--rp-rule); }
+.rp-facts > div:last-child { border-bottom: 0; }
+.rp-facts dt { font-weight: 600; color: var(--rp-mute); font-size: 0.875rem; }
+.rp-facts dd { margin: 0; }
+.rp-timeline, .rp-events { list-style: none; margin: 0; padding: 0; background: var(--rp-surface); border: 1px solid var(--rp-rule); border-radius: var(--rp-radius); }
+.rp-timeline > li, .rp-events > li { padding: 12px 14px; border-bottom: 1px solid var(--rp-rule); }
+.rp-timeline > li:last-child, .rp-events > li:last-child { border-bottom: 0; }
+.rp-timeline p { margin: 4px 0 0; }
+.rp-tl-tool { background: var(--rp-page); font-size: 0.9375rem; }
+.rp-tl-tool[data-status='error'] p:first-of-type, .rp-tl-turn[data-status='failed'] p:first-of-type { font-weight: 600; }
+.rp-tl-when { font-size: 0.8125rem; color: var(--rp-mute); font-variant-numeric: tabular-nums; }
+.rp-timeline .rp-who { display: inline-block; min-width: 76px; }
+.rp-cites { margin: 6px 0 0; padding-left: 18px; font-size: 0.9375rem; }
+.rp-record { background: var(--rp-surface); border: 1px solid var(--rp-rule); border-radius: var(--rp-radius); padding: 12px 14px; margin-bottom: 10px; }
+.rp-record p { margin: 0 0 6px; }
+.rp-mute { color: var(--rp-mute); }
+.rp-bad, .rp-alert { color: var(--rp-bad); font-weight: 600; }
+.rp-tag { color: var(--rp-mute); font-size: 0.875rem; }
+.rp-actions { gap: 8px; }
+.rp-crumb { margin: 0 0 8px; font-size: 0.875rem; }
+.rp-run { margin-bottom: 24px; }
+.rp-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 640px) { .rp-facts > div { grid-template-columns: 1fr; gap: 2px; } .rp-who-am-i { margin-left: 0; } }
