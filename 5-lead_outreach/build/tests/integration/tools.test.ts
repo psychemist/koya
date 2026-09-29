@@ -226,3 +226,92 @@ test('get_run_state returns usable text rather than failing on an unknown run',
     assert.match(text(r), /unavailable/i);
   });
 
+/**
+ * The size filter has to hold at the verdict, not only at discovery.
+ *
+ * Discovery keeps anything overlapping the ICP range, which is right: the
+ * buckets are coarse and a company of exactly 10 sits in the 1-10 one. The
+ * consequence reached the lead list, where a company stating 2-10 employees
+ * against a "10 to 100" ICP was stored as qualified with its size filed as a
+ * concern. Nobody had resolved that size, and unresolved is needs_review.
+ */
+test('a company whose stated size only overlaps the ICP is held for review',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ icp: { headcount_range: '10 to 100' } as any });
+    await query(
+      `insert into public.candidates (run_id, company_name, company_domain, discovery_meta)
+       values ($1,'Tiny','tiny-hc.test',$2)`,
+      [run.id, JSON.stringify({ employeeCountRange: { start: 2, end: 10 } })]);
+    await query(
+      `insert into public.scraped_pages
+         (run_id, company_domain, url, content_hash, screened_summary)
+       values ($1,'tiny-hc.test','https://tiny-hc.test/about','h',$2)`, [run.id, SOURCE]);
+
+    const r = await call(saveLead, {
+      run_id: run.id, purpose: 't', company_name: 'Tiny', company_domain: 'tiny-hc.test',
+      qualification_status: 'qualified', confidence: 0.8,
+      fit_reasons: ['B2B SaaS selling to payroll teams'], concerns: [],
+      source_urls: ['https://tiny-hc.test/about'], source_summary: SOURCE,
+    });
+
+    assert.notEqual(r.isError, true, text(r));
+    const [lead] = await query<{ qualification_status: string; concerns: string[] }>(
+      'select qualification_status, concerns from public.leads where run_id = $1', [run.id]);
+    assert.equal(lead.qualification_status, 'needs_review');
+    assert.match(lead.concerns.join(' '), /2 to 10 employee band/);
+    // Said back to the agent, so it stops re-sending the same company.
+    assert.match(text(r), /downgraded_from/);
+    await dropRun(run.id);
+  });
+
+test('a company whose stated size sits inside the ICP still qualifies',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ icp: { headcount_range: '10 to 100' } as any });
+    await query(
+      `insert into public.candidates (run_id, company_name, company_domain, discovery_meta)
+       values ($1,'Right','right-hc.test',$2)`,
+      [run.id, JSON.stringify({ employeeCountRange: { start: 11, end: 50 } })]);
+    await query(
+      `insert into public.scraped_pages
+         (run_id, company_domain, url, content_hash, screened_summary)
+       values ($1,'right-hc.test','https://right-hc.test/about','h',$2)`, [run.id, SOURCE]);
+
+    await call(saveLead, {
+      run_id: run.id, purpose: 't', company_name: 'Right', company_domain: 'right-hc.test',
+      qualification_status: 'qualified', confidence: 0.8,
+      fit_reasons: ['B2B SaaS selling to payroll teams'], concerns: [],
+      source_urls: ['https://right-hc.test/about'], source_summary: SOURCE,
+    });
+
+    const [lead] = await query<{ qualification_status: string; concerns: string[] }>(
+      'select qualification_status, concerns from public.leads where run_id = $1', [run.id]);
+    assert.equal(lead.qualification_status, 'qualified');
+    assert.deepEqual(lead.concerns, [], 'a company inside the range gained a size concern');
+    await dropRun(run.id);
+  });
+
+test('a company that states no size is judged on its evidence, not dropped',
+  { skip: skipWithoutDatabase }, async () => {
+    // Only positive evidence disqualifies. Missing data is not evidence, and
+    // treating it as such would hold every company LinkedIn is quiet about.
+    const run = await seedRun({ icp: { headcount_range: '10 to 100' } as any });
+    await query(
+      `insert into public.candidates (run_id, company_name, company_domain, discovery_meta)
+       values ($1,'Quiet','quiet-hc.test','{}')`, [run.id]);
+    await query(
+      `insert into public.scraped_pages
+         (run_id, company_domain, url, content_hash, screened_summary)
+       values ($1,'quiet-hc.test','https://quiet-hc.test/about','h',$2)`, [run.id, SOURCE]);
+
+    await call(saveLead, {
+      run_id: run.id, purpose: 't', company_name: 'Quiet', company_domain: 'quiet-hc.test',
+      qualification_status: 'qualified', confidence: 0.8,
+      fit_reasons: ['B2B SaaS selling to payroll teams'], concerns: [],
+      source_urls: ['https://quiet-hc.test/about'], source_summary: SOURCE,
+    });
+
+    const [lead] = await query<{ qualification_status: string }>(
+      'select qualification_status from public.leads where run_id = $1', [run.id]);
+    assert.equal(lead.qualification_status, 'qualified');
+    await dropRun(run.id);
+  });

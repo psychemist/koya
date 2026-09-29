@@ -5,6 +5,40 @@ import { withToolCall } from '../../toolcalls.ts';
 import { query, one } from '../../db.ts';
 import { normaliseDomain } from '../../domain.ts';
 import { icpFingerprint } from '../../icp.ts';
+import { parseHeadcount, statedBand, bandInsideBounds } from '../../providers/apify.ts';
+
+/**
+ * A size that only overlaps the ICP is not a size that qualifies.
+ *
+ * Discovery keeps anything overlapping the range, because LinkedIn's buckets
+ * are coarse and requiring containment there would drop real companies before
+ * anybody looked. The bill for that arrived on the lead list: against "10 to
+ * 100", a company stating 2-10 employees came back qualified with its size
+ * written up as a concern. A concern is what you file about something you have
+ * judged. This is something nobody has resolved, and the verdict for that is
+ * needs_review.
+ *
+ * Applied to the ceiling as well as the floor, for the same reason in the
+ * other direction: a 51-200 band against 10 to 100 could be eighty people or
+ * a hundred and eighty, and which one it is decides whether the lead belongs
+ * on the list at all.
+ *
+ * It downgrades rather than refusing. The agent's reasoning is not wrong, it
+ * is incomplete, and the fit reasons it wrote are exactly what the person
+ * checking the size wants to read.
+ */
+function headcountDowngrade(
+  meta: Record<string, unknown> | null, icp: Record<string, unknown> | null,
+): string | null {
+  const bounds = parseHeadcount(
+    typeof icp?.headcount_range === 'string' ? icp.headcount_range : undefined);
+  const band = statedBand(meta);
+  if (bandInsideBounds(band, bounds) !== false) return null;
+  return `LinkedIn puts this company in the ${band!.start} to ${band!.end} employee band, ` +
+    `which is not inside the ${bounds!.min} to ${bounds!.max} this ICP asks for. The two ` +
+    'ranges overlap, which is why it was discovered, but overlapping is not meeting the ' +
+    'filter. Confirm the real headcount before treating this as qualified.';
+}
 
 export const saveLead = tool(
   'save_lead',
@@ -72,6 +106,30 @@ export const saveLead = tool(
           }
         }
 
+        /**
+         * Read once, used twice: the size check below and the fingerprint
+         * further down both want the ICP, and a second query for the same row
+         * in the same call is a second chance for them to disagree.
+         */
+        const [runRow] = await query<{ icp: Record<string, unknown> | null }>(
+          'select icp from public.runs where id = $1', [args.run_id]);
+
+        let status = args.qualification_status;
+        const concerns = [...args.concerns];
+        let downgraded: string | null = null;
+
+        if (status === 'qualified') {
+          const [candidate] = await query<{ discovery_meta: Record<string, unknown> | null }>(
+            `select discovery_meta from public.candidates
+              where run_id = $1 and company_domain = $2`,
+            [args.run_id, domain]);
+          downgraded = headcountDowngrade(candidate?.discovery_meta ?? null, runRow?.icp ?? null);
+          if (downgraded) {
+            status = 'needs_review';
+            concerns.push(downgraded);
+          }
+        }
+
         try {
           /**
            * The duplicate check IS the insert.
@@ -89,8 +147,8 @@ export const saveLead = tool(
              values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
              on conflict (run_id, company_domain) do nothing
              returning id`,
-            [args.run_id, args.company_name, domain, args.qualification_status,
-             args.confidence, args.fit_reasons, args.concerns, args.source_urls,
+            [args.run_id, args.company_name, domain, status,
+             args.confidence, args.fit_reasons, concerns, args.source_urls,
              args.source_summary],
           );
           if (!row) {
@@ -115,8 +173,6 @@ export const saveLead = tool(
            * it is deliberately not allowed to throw.
            */
           try {
-            const [runRow] = await query<{ icp: unknown }>(
-              'select icp from public.runs where id = $1', [args.run_id]);
             await query(
               `insert into public.judged_companies
                  (company_domain, icp_fingerprint, verdict, run_id)
@@ -129,15 +185,21 @@ export const saveLead = tool(
                      -- judged under these same criteria. Summed as
                      -- (times_judged - 1) it is the work a cache would skip.
                      times_judged = public.judged_companies.times_judged + 1`,
-              [domain, icpFingerprint(runRow?.icp), args.qualification_status, args.run_id],
+              [domain, icpFingerprint(runRow?.icp), status, args.run_id],
             );
           } catch {
             // Instrumentation must never cost a lead that is already stored.
           }
           return {
-            value: ok({ lead_id: row!.id, domain, status: args.qualification_status }),
-            resultSummary: { domain, status: args.qualification_status,
-                             confidence: args.confidence },
+            // The downgrade is reported, not applied silently. An agent told
+            // its verdict was stored as something else stops arguing with the
+            // rule and stops re-sending the same company.
+            value: ok({
+              lead_id: row!.id, domain, status,
+              ...(downgraded ? { downgraded_from: 'qualified', reason: downgraded } : {}),
+            }),
+            resultSummary: { domain, status, confidence: args.confidence,
+                             ...(downgraded ? { downgraded: 'headcount' } : {}) },
           };
         } catch (e: any) {
           // The CHECK is the last line and it does not negotiate.

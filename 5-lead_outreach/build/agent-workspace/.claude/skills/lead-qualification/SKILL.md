@@ -29,6 +29,13 @@ the target. Prefer fewer strong leads to a larger weak list.
 - **Do not invent company facts.** If the site does not say the headcount, you do not
   know the headcount.
 - If a company is missing core evidence, mark it `needs_review`.
+- **An overlapping size band is not a size that qualifies.** Discovery keeps any company
+  whose stated band overlaps the ICP range, because LinkedIn's buckets are coarse: against
+  "10 to 100" that lets through a company stating 2-10 and one stating 51-200. Neither is
+  known to be inside the range. Unless the scraped site tells you the real headcount, the
+  verdict is `needs_review`, not `qualified` with a note about the size. `save_lead`
+  enforces this and will store the lead as `needs_review` if you send `qualified`, so
+  sending it anyway costs a turn and changes nothing.
 - Explain the decision in plain language a salesperson can check in a minute.
 - Write `concerns` explicitly. An empty array is a claim that you looked and found none.
 

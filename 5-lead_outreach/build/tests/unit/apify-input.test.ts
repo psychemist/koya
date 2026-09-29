@@ -363,3 +363,34 @@ test('a bucket comfortably inside the range is unaffected', () => {
   assert.equal(withinHeadcount(
     { employeeCountRange: { start: 11, end: 50 }, employeeCount: 40 }, icp), true);
 });
+
+/**
+ * A company is qualified on evidence, and an overlapping bucket is not it.
+ *
+ * Discovery keeps anything overlapping the ICP range, because LinkedIn's
+ * buckets are coarse and a company of exactly 10 lives in the 1-10 bucket.
+ * The cost of that looseness was landing on the lead list: a company stating
+ * 2-10 employees and one stating 51-200 both survive a "10 to 100" ICP, and
+ * the 2-10 one was being marked qualified with its size filed as a concern.
+ * Its size is not a concern, it is unresolved, and unresolved is needs_review.
+ */
+test('a stated band is inside the ICP range only when all of it is', async () => {
+  const { statedBand, bandInsideBounds, parseHeadcount } =
+    await import('../../lib/providers/apify.ts');
+  const icp = parseHeadcount('10 to 100');
+
+  const band = (start: number, end: number) => ({ employeeCountRange: { start, end } });
+
+  assert.equal(bandInsideBounds(statedBand(band(11, 50)), icp), true);
+  assert.equal(bandInsideBounds(statedBand(band(10, 100)), icp), true);
+
+  // The bug, stated as a test: 2-10 straddles the floor and 51-200 the ceiling.
+  assert.equal(bandInsideBounds(statedBand(band(2, 10)), icp), false);
+  assert.equal(bandInsideBounds(statedBand(band(1, 10)), icp), false);
+  assert.equal(bandInsideBounds(statedBand(band(51, 200)), icp), false);
+
+  // Nothing to compare is not evidence of anything, either way.
+  assert.equal(bandInsideBounds(statedBand({}), icp), null);
+  assert.equal(bandInsideBounds(statedBand({ employeeCountRange: { start: 'x' } }), icp), null);
+  assert.equal(bandInsideBounds(statedBand(band(11, 50)), null), null);
+});

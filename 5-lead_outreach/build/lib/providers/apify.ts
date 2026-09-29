@@ -251,6 +251,53 @@ export function withinHeadcount(
 }
 
 /**
+ * The size band a company states about itself, if it states one.
+ *
+ * `employeeCountRange` is what the company puts in its About tab and what
+ * LinkedIn's own size filter matches on. `employeeCount` is not a second
+ * opinion on it: it counts members who list the company and reads 0 for most
+ * small ones, so it is deliberately not consulted here.
+ */
+export function statedBand(
+  meta: Record<string, unknown> | null | undefined,
+): { start: number; end: number } | null {
+  const range = (meta ?? {}).employeeCountRange as
+    { start?: unknown; end?: unknown } | undefined;
+  if (!range || typeof range !== 'object') return null;
+  const start = Number(range.start);
+  const end = Number(range.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return { start, end };
+}
+
+/**
+ * Whether a stated band sits INSIDE the range the ICP asked for.
+ *
+ * Discovery deliberately asks a looser question, `withinHeadcount`, which
+ * keeps anything that OVERLAPS the range. It has to: LinkedIn's buckets are
+ * coarse, and a company of exactly 10 lives in the 1-10 bucket, so requiring
+ * containment at discovery would throw away real companies before anybody
+ * looked at them.
+ *
+ * Qualifying is the other end of that trade. A 2-10 company and a 51-200 one
+ * both overlap "10 to 100" and neither is known to be inside it, so a verdict
+ * of qualified on the strength of an overlap is a verdict resting on the
+ * lower edge of a bucket. That is the shape of the bug this answers: a 2-10
+ * company was qualified with a concern about its size, when the honest
+ * verdict was that its size is unresolved and a person should look.
+ *
+ * Null when there is nothing to compare, and null never disqualifies: only
+ * positive evidence does.
+ */
+export function bandInsideBounds(
+  band: { start: number; end: number } | null,
+  bounds: HeadcountBounds | null,
+): boolean | null {
+  if (!band || !bounds) return null;
+  return band.start >= bounds.min && band.end <= bounds.max;
+}
+
+/**
  * Aliases for the countries this ICP guide suggests. LinkedIn returns an ISO
  * code and a full name; an ICP is written by a person and says "US" or "the
  * United States" or "USA".
