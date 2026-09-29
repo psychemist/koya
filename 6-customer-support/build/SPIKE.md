@@ -101,4 +101,4 @@ Until these are answered, the plan's fallbacks stand: `parseChatRequest` reads t
 
 ## Supabase project
 
-Not created yet (Task 2, Step 0). The project ref goes here when it is, never the password.
+`relaypay-customer-agent`, ref `wsciucaizzlvoufugfyb`, org "psychemist's Org", region `us-east-1`, Postgres 17.6. Created 2026-09-29 through the Supabase MCP plugin; the owner set the database password and put the pooled URI (port 6543) in `.env.local`. `npm run migrate` proved the connection on the first run.
