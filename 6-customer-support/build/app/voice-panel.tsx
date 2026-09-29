@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Transcript, type Entry } from './transcript.tsx';
 
 type CallState = 'checking' | 'idle' | 'unavailable' | 'connecting' | 'listening' | 'speaking' | 'ended' | 'error';
 type Vapi = { start(assistantId: string): Promise<unknown>; stop(): void; on(event: string, fn: (...a: any[]) => void): void; removeAllListeners?(): void };
@@ -32,7 +33,7 @@ function describeError(e: unknown): string {
 export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: () => void; onCallActive?: (active: boolean) => void }) {
   const [state, setState] = useState<CallState>('checking');
   const [error, setError] = useState('');
-  const [latest, setLatest] = useState<{ you: string; relaypay: string }>({ you: '', relaypay: '' });
+  const [entries, setEntries] = useState<Entry[]>([]);
   const vapi = useRef<Vapi | null>(null);
   const configured = Boolean(PUBLIC_KEY && ASSISTANT_ID);
 
@@ -50,7 +51,7 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
   useEffect(() => () => { vapi.current?.stop(); }, []);
 
   async function start() {
-    setError(''); setLatest({ you: '', relaypay: '' }); setState('connecting');
+    setError(''); setEntries([]); setState('connecting');
     try {
       if (!vapi.current) {
         const { default: VapiClient } = await import('@vapi-ai/web');
@@ -61,7 +62,7 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
         v.on('speech-end', () => setState('listening'));
         v.on('message', (m: any) => {
           if (m?.type !== 'transcript' || m.transcriptType !== 'final') return;
-          setLatest((l) => (m.role === 'user' ? { ...l, you: m.transcript } : { ...l, relaypay: m.transcript }));
+          setEntries((prev) => [...prev, { who: m.role === 'user' ? 'you' : 'relaypay', text: m.transcript, at: new Date().toISOString() }]);
         });
         v.on('error', (e: unknown) => { setError(describeError(e)); setState('error'); });
         vapi.current = v;
@@ -87,12 +88,8 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
           <button type="button" className="rp-btn rp-btn-quiet" onClick={onSwitchToChat}>Use chat</button>}
       </div>
       <p className="rp-status" role="status" aria-live="polite" data-tone={state === 'error' ? 'bad' : active ? 'live' : undefined}>{status}</p>
-      {(latest.you || latest.relaypay) && (
-        <dl className="rp-captions" aria-label="Latest exchange">
-          {latest.you && <div><dt>You</dt><dd>{latest.you}</dd></div>}
-          {latest.relaypay && <div><dt>RelayPay</dt><dd>{latest.relaypay}</dd></div>}
-        </dl>
-      )}
+      <Transcript entries={entries} label="Call transcript" />
+
     </div>
   );
 }

@@ -1,0 +1,77 @@
+import { config } from '../../../lib/config.ts';
+import { chatCookie, clearChatCookie, CHAT_COOKIE, issueChatToken, readChatToken } from '../../../lib/chat-session.ts';
+import { chatTranscript } from '../../../lib/chat-transcript.ts';
+import { createLimiter } from '../../../lib/rate-limit.ts';
+
+export const dynamic = 'force-dynamic';
+
+const limiter = createLimiter({ perWindow: 20, windowMs: 10 * 60_000 });
+const UNAVAILABLE = 'Chat is unavailable right now. Please try again in a few minutes, or contact support through your RelayPay dashboard.';
+const secure = () => config.web.baseUrl.startsWith('https://');
+const json = (status: number, body: unknown, cookie?: string) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...(cookie ? { 'set-cookie': cookie } : {}) } });
+
+function cookieToken(req: Request): string | null {
+  for (const part of (req.headers.get('cookie') ?? '').split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === CHAT_COOKIE) return v.join('=');
+  }
+  return null;
+}
+const ipOf = (req: Request) => (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'unknown';
+/** A browser on another site may not drive this chat. Same-origin requests carry our origin or none. */
+const foreign = (req: Request) => { const o = req.headers.get('origin'); return !!o && o !== config.web.baseUrl; };
+
+async function askAgent(body: object): Promise<{ status: number; json: any } | null> {
+  try {
+    const res = await fetch(`${config.web.agentUrl}/chat`, { method: 'POST', signal: AbortSignal.timeout(75_000),   // a turn with lookups can outlast 30 s; the page recovers late replies too
+      headers: { authorization: `Bearer ${config.agent.internalToken}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  } catch { return null; }
+}
+
+/**
+ * One chat message. The browser never sends or receives a conversation id:
+ * the conversation lives in a signed, httpOnly cookie, so a pasted id cannot
+ * continue somebody else's verified conversation.
+ */
+export async function POST(req: Request): Promise<Response> {
+  if (foreign(req)) return json(403, { error: 'This chat only accepts messages from the RelayPay support page.' });
+  if (!(req.headers.get('content-type') ?? '').startsWith('application/json')) return json(415, { error: 'Send the message as JSON.' });
+  let message: unknown;
+  try { message = ((await req.json()) as { message?: unknown }).message; } catch { return json(400, { error: 'Please type a message.' }); }
+  if (typeof message !== 'string' || !message.trim()) return json(400, { error: 'Please type a message.' });
+  if (message.length > 1000) return json(400, { error: 'Please keep your message under 1,000 characters.' });
+  if (!limiter.take(ipOf(req))) return json(429, { error: "You're sending messages quickly. Please wait a minute and try again." });
+
+  const current = readChatToken(cookieToken(req));
+  let r = await askAgent({ conversation_id: current ?? undefined, message, channel: 'web_text' });
+  let newChat = false;
+  if (current && r && (r.status === 404 || r.status === 409)) {
+    // The old chat ended or is not a chat: start a fresh one rather than failing the customer.
+    r = await askAgent({ message, channel: 'web_text' });
+    newChat = true;
+  }
+  if (!r || r.status !== 200 || !r.json?.conversation_id) return json(503, { error: UNAVAILABLE });
+  const { reply, answer_type, ended, records } = r.json;
+  return json(200, { reply, answer_type, ended: !!ended, records, new_chat: newChat }, chatCookie(issueChatToken(r.json.conversation_id), secure()));
+}
+
+/** The transcript for this browser's chat, so a refresh or a return visit shows what was said. */
+export async function GET(req: Request): Promise<Response> {
+  const id = readChatToken(cookieToken(req));
+  if (!id) return json(200, { turns: [], ended: false, records: null });
+  try { return json(200, await chatTranscript(id)); } catch { return json(503, { error: UNAVAILABLE }); }
+}
+
+/** End chat. Always clears the cookie; if the agent cannot be told, the idle sweep ends the conversation anyway. */
+export async function DELETE(req: Request): Promise<Response> {
+  if (foreign(req)) return json(403, { error: 'This chat only accepts messages from the RelayPay support page.' });
+  const id = readChatToken(cookieToken(req));
+  if (id) {
+    await fetch(`${config.web.agentUrl}/chat/end`, { method: 'POST', signal: AbortSignal.timeout(15_000),
+      headers: { authorization: `Bearer ${config.agent.internalToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ conversation_id: id, reason: 'customer-ended-chat' }) }).catch(() => undefined);
+  }
+  return new Response(null, { status: 204, headers: { 'set-cookie': clearChatCookie(secure()), 'cache-control': 'no-store' } });
+}

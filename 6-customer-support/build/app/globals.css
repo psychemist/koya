@@ -43,14 +43,44 @@ button, textarea, input { font: inherit; color: inherit; }
 .rp-status[data-tone='live'] { color: var(--rp-teal); }
 .rp-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 
-/* Captions for the latest exchange: two labelled lines, never bubbles. */
-.rp-captions { margin: 20px 0 0; padding: 0; }
-.rp-captions div { display: grid; grid-template-columns: 84px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--rp-rule); }
-.rp-captions dt { font-weight: 600; color: var(--rp-mute); font-size: 0.875rem; padding-top: 1px; }
-.rp-captions dd { margin: 0; }
 
 @media (max-width: 420px) {
   .rp-card { padding: 18px; }
-  .rp-captions div { grid-template-columns: 1fr; gap: 2px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* Call | Chat. Two equal options; the chosen one is filled deep blue. */
+.rp-modes { display: inline-flex; border: 1px solid var(--rp-blue); border-radius: var(--rp-radius); margin: 0 0 20px; overflow: hidden; }
+.rp-modes button { min-height: 40px; min-width: 88px; padding: 0 16px; border: 0; background: transparent; color: var(--rp-blue); font-weight: 600; cursor: pointer; }
+.rp-modes button + button { border-left: 1px solid var(--rp-blue); }
+.rp-modes button[aria-pressed='true'] { background: var(--rp-blue); color: #fff; }
+.rp-modes button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* The transcript, read like a statement: speaker column, the line, the time. */
+.rp-transcript { list-style: none; margin: 0 0 16px; padding: 0; max-height: 55vh; overflow-y: auto; border-top: 1px solid var(--rp-rule); }
+.rp-transcript li { display: grid; grid-template-columns: 84px 1fr auto; gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid var(--rp-rule); }
+.rp-transcript p { margin: 0; overflow-wrap: anywhere; }
+.rp-who { font-weight: 600; font-size: 0.875rem; color: var(--rp-mute); padding-top: 1px; }
+.rp-transcript li[data-who='relaypay'] .rp-who { color: var(--rp-blue); }
+.rp-transcript li[data-who='note'] p { color: var(--rp-mute); }
+.rp-transcript time { font-size: 0.8125rem; color: var(--rp-mute); font-variant-numeric: tabular-nums; padding-top: 2px; }
+
+.rp-composer label { display: block; font-weight: 600; font-size: 0.875rem; margin: 0 0 6px; }
+.rp-composer textarea {
+  display: block; width: 100%; min-height: 64px; resize: vertical; padding: 10px 12px;
+  border: 1px solid var(--rp-rule); border-radius: var(--rp-radius); background: var(--rp-surface); line-height: 1.5;
+}
+.rp-composer textarea:focus-visible { border-color: var(--rp-teal); }
+.rp-composer-actions { margin-top: 10px; }
+.rp-count { margin-left: auto; font-size: 0.8125rem; color: var(--rp-mute); font-variant-numeric: tabular-nums; }
+
+.rp-dialog { max-width: min(460px, calc(100vw - 32px)); border: 1px solid var(--rp-rule); border-radius: var(--rp-radius); padding: 24px; color: var(--rp-ink); }
+.rp-dialog::backdrop { background: rgba(11, 42, 91, 0.35); }
+.rp-dialog h2 { margin: 0 0 8px; font-size: 1.125rem; font-weight: 600; color: var(--rp-blue); }
+.rp-dialog p { margin: 0 0 16px; }
+
+@media (max-width: 420px) {
+  .rp-transcript li { grid-template-columns: 1fr auto; }
+  .rp-transcript time { grid-row: 1; grid-column: 2; }   /* the time stays beside the speaker, not under the text */
+  .rp-transcript p { grid-column: 1 / -1; grid-row: 2; }
+}

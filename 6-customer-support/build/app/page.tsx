@@ -1,4 +1,4 @@
-import { VoicePanel } from './voice-panel.tsx';
+import { ModeSwitch } from './mode-switch.tsx';
 
 export default function SupportPage() {
   return (
@@ -9,7 +9,7 @@ export default function SupportPage() {
       <section className="rp-card" aria-labelledby="support-title">
         <h1 id="support-title">RelayPay Support</h1>
         <p className="rp-lede">Ask about fees, payment timelines, a transaction or payout, or get connected to a specialist.</p>
-        <VoicePanel />
+        <ModeSwitch />
       </section>
     </main>
   );

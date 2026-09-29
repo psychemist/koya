@@ -122,3 +122,14 @@ Until these are answered, the plan's fallbacks stand: `parseChatRequest` reads t
 | Q8 to Q11 | Run `scripts/spike/vapi-log-server.ts` behind a tunnel against a throwaway assistant | Confirms the custom-llm path and call-id location |
 | Task 15, Step 4 | In the Vapi dashboard: a Custom LLM credential (value `VAPI_CUSTOM_LLM_KEY`) and a Bearer credential with header `X-Vapi-Secret` (value `VAPI_WEBHOOK_SECRET`); copy both ids into `.env.local`; restrict the public key's origins; set `VAPI_PRIVATE_KEY` and `AGENT_PUBLIC_URL`; `npm run vapi:sync`; create the free US number and assign the assistant | Voice calls, the phone number |
 | Task 10, Step 4 | Import `n8n/relaypay-escalation.json`, attach the Google Calendar, Discord and Gmail credentials, set the Variables `RELAYPAY_ESCALATION_SECRET` and `RELAYPAY_SUPPORT_INBOX`, set the calendar id, activate, and put the production webhook URL in `N8N_ESCALATION_URL` | Booked callbacks; until then every escalation takes the Resend fallback, which is tested |
+
+## Latency observed in the Task 16b browser check (2026-09-29)
+
+A two-message chat through the real stack, run locally with every database hop crossing to us-east-1:
+
+| Turn | Latency | Tools called |
+|---|---|---|
+| "My payment is stuck." | 15.6 s | `log_conversation_event` |
+| "It's an outgoing payout, TXN-9004. Please log a ticket…" | 46.6 s | `lookup_payout` (0.6 s), `create_support_ticket` (1.0 s), `search_knowledge_base` (6.3 s, Voyage rate-limited) |
+
+The tools are fast; the time is sequential model round trips (about 5 to 10 s each through the SDK here), one per tool plus the StructuredOutput call. Haiku also called `log_conversation_event` on a plain clarify, which the prompt reserves for frustration and declines: a wasted round trip on the voice path. **For Task 18:** measure on Render next to the database; tighten the prompt on when to log an event; run the Sonnet comparison with these numbers as the baseline. The web route now waits 75 s and the chat page recovers a reply that landed after it gave up, so a slow turn is never shown as a failure.
