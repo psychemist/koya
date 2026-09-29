@@ -2042,11 +2042,11 @@ export function register(server: McpServer, spec: ToolSpec<any>) {
       conversationId = resolved.id;
       const result = await withToolCall(conversationId, spec.name, purpose, { ...rest, conversation_mismatch: resolved.mismatch || undefined },
         () => spec.run(rest, resolved.id));
-      return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }], structuredContent: result };
     } catch (e) {
       const te = toToolError(e);
       if (!conversationId) await withToolCall(null, spec.name, purpose, rest, async () => { throw te; }).catch(() => {});
-      return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: { code: te.code, message: te.message, ...te.details } }) }] };
+      return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ error: { code: te.code, message: te.message, ...te.details } }) }] };
     }
   });
 }
