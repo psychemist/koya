@@ -1,14 +1,26 @@
 {
   "name": "relaypay-support",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "RelayPay support line: Vapi voice and web chat in front of a Claude Agent SDK agent, a custom MCP server and Supabase.",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "agent": "node --import tsx --env-file-if-exists=.env.local agent/main.ts",
+    "mcp": "node --import tsx --env-file-if-exists=.env.local mcp/main.ts",
+    "mcp:stdio": "node --import tsx --env-file-if-exists=.env.local mcp/stdio.ts",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --import tsx --env-file-if-exists=.env.local scripts/migrate.ts",
+    "seed": "node --import tsx --env-file-if-exists=.env.local scripts/seed.ts",
+    "seed:users": "node --import tsx --env-file-if-exists=.env.local scripts/seed-users.ts",
+    "kb:ingest": "node --import tsx --env-file-if-exists=.env.local scripts/kb-ingest.ts",
+    "vapi:sync": "node --import tsx --env-file-if-exists=.env.local scripts/vapi-sync.ts",
+    "eval": "node --import tsx --env-file-if-exists=.env.local scripts/eval.ts",
+    "evidence": "node --import tsx --env-file-if-exists=.env.local scripts/evidence.ts",
+    "smoke": "node --import tsx --env-file-if-exists=.env.local scripts/smoke.ts",
+    "test": "node --import tsx --test tests/unit/*.test.ts",
+    "test:integration": "node --import tsx --env-file-if-exists=.env.local --test --test-concurrency=1 tests/integration/*.test.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "type": "module",
   "private": "true",
   "dependencies": {
@@ -25,5 +37,8 @@
     "@types/pg": "^8.23.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
