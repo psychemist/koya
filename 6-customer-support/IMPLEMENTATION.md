@@ -3142,7 +3142,9 @@ test('a call over budget gets every tool denied', async () => {
 // A fake query() that replays scripted SDK messages, so the session parser is tested without the network.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claudeRuntime } from '../../agent/claude-runtime.ts';
+// buildQueryOptions reads these; test values, never real ones.
+Object.assign(process.env, { MCP_URL: 'http://mcp.test/mcp', MCP_TOKEN: 't', ANTHROPIC_API_KEY: 'sk-ant-test' });
+const { claudeRuntime } = await import('../../agent/claude-runtime.ts');
 
 function fakeQuery(turns: any[][]) {
   return ({ prompt }: any) => {
