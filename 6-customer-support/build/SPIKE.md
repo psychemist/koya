@@ -102,3 +102,14 @@ Until these are answered, the plan's fallbacks stand: `parseChatRequest` reads t
 ## Supabase project
 
 `relaypay-customer-agent`, ref `wsciucaizzlvoufugfyb`, org "psychemist's Org", region `us-east-1`, Postgres 17.6. Created 2026-09-29 through the Supabase MCP plugin; the owner set the database password and put the pooled URI (port 6543) in `.env.local`. `npm run migrate` proved the connection on the first run.
+
+## Found in Task 5 (2026-09-29)
+
+**Voyage rate limit without a payment method.** The key answers `429` with "You have not yet added your payment method in the billing page and will have reduced rate limits of 3 RPM and 10K TPM". At 3 requests a minute, most live searches degrade to full text only (`retrieval_logs.degraded = true`). **Owner action before Task 18 or any real call:** add a payment method on the Voyage billing page. The free token allowance still applies. The query-embedding cache and the one-request ingest keep usage far inside it.
+
+**Retrieval changes to `search_kb` (0003, before its first commit):**
+- Full-text terms are prefix matches (`term:*`): callers say "crypto", the KB says "Cryptocurrency".
+- The chunk heading is weighted A, so an FAQ whose question matches outranks a body-only match.
+- Ties in fused rank are broken by text rank, then similarity, then id, so retrieval logs are reproducible.
+- `ingestKb` re-embeds a chunk whose `embedding_model` differs from the embedder's, so the integration suite's fixture vectors never survive a real ingest. **After running the integration suite against this project, run `npm run kb:ingest` to restore Voyage vectors** (one request, 37 chunks).
+- `KB_FTS_STRONG` raised from 0.10 to 1.0: a body-only single-word match scored 0.1 and grounded "Should I invoice in euros for tax reasons?" in degraded mode. 1.0 means a query term on the FAQ heading. Task 18 tunes both thresholds on real vectors.

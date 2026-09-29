@@ -62,7 +62,9 @@ export function loadConfig(env: Record<string, string | undefined>) {
       get voyageModel() { return env.VOYAGE_MODEL || 'voyage-3.5-lite'; },
       dims: 1024,
       get groundingThreshold() { return num('KB_GROUNDING_THRESHOLD', 0.5); },
-      get ftsStrong() { return num('KB_FTS_STRONG', 0.1); },
+      // 1.0 is a query term on the FAQ heading (weight A). A body-only single-word hit scores 0.1
+      // and must not ground an answer, least of all in degraded mode (2026-09-29, kb-ground.test.ts).
+      get ftsStrong() { return num('KB_FTS_STRONG', 1.0); },
     },
     get hours() {
       return {

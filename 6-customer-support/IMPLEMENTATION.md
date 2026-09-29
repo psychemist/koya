@@ -78,7 +78,7 @@ Every task's requirements implicitly include this section.
 | **Agent tool surface** | `tools: []`, `settingSources: []`, `strictMcpConfig: true`, `allowedTools: ['mcp__relaypay__*']`, `canUseTool` denies everything else, `env` whitelisted (no `DATABASE_URL`) |
 | **MCP transport** | Stateless Streamable HTTP at `POST /mcp`, Bearer `MCP_TOKEN`, conversation id from `X-Conversation-Id` header. Also stdio |
 | **Embeddings** | Voyage `voyage-3.5-lite`, 1024 dims, `input_type` document or query |
-| **Grounding** | `KB_GROUNDING_THRESHOLD=0.50`, `KB_FTS_STRONG=0.10`, retune only with an eval run and a dated commit |
+| **Grounding** | `KB_GROUNDING_THRESHOLD=0.50`, `KB_FTS_STRONG=1.0` (a heading match; raised from 0.10 on 2026-09-29, see Task 5), retune only with an eval run and a dated commit |
 | **Support hours** | Mon to Fri, 08:00 to 18:00 **UTC**, 30-minute slots, at least 15 minutes ahead. Confirmed in UTC and in the caller's timezone when known |
 | **Identity** | Two provided identifiers, all provided identifiers must agree, one record. Three failed attempts per call, then `too_many_attempts` |
 | **Secrets** | Read through `lib/config.ts` only. `.env.local` gitignored, `.env.example` committed. The only `NEXT_PUBLIC_*` values are the Vapi public key, assistant id and support phone number |
@@ -207,7 +207,7 @@ MCP_ALLOWED_ORIGINS=                  # empty: reject any request carrying an Or
 VOYAGE_API_KEY=pa-YOUR-KEY
 VOYAGE_MODEL=voyage-3.5-lite
 KB_GROUNDING_THRESHOLD=0.50           # tuned YYYY-MM-DD against eval run <id>
-KB_FTS_STRONG=0.10
+KB_FTS_STRONG=1.0                     # a heading match; a body-only word (0.1) never grounds
 SUPPORT_HOURS_DAYS=1,2,3,4,5
 SUPPORT_HOURS_START_UTC=8
 SUPPORT_HOURS_END_UTC=18
@@ -477,7 +477,9 @@ create table if not exists public.kb_chunks (
   content_hash    text not null,
   embedding       extensions.vector(1024),
   embedding_model text,
-  fts             tsvector generated always as (to_tsvector('english', heading || ' ' || content)) stored,
+  -- The heading is weighted A: an FAQ whose question matches the caller's question should outrank a chunk
+  -- that only shares words in its body. Content keeps the default weight, so KB_FTS_STRONG keeps its scale.
+  fts             tsvector generated always as (setweight(to_tsvector('english', heading), 'A') || to_tsvector('english', content)) stored,
   retired_at      timestamptz,
   updated_at      timestamptz not null default now()
 );
@@ -492,8 +494,10 @@ create table if not exists public.query_embeddings (
 );
 
 -- Hybrid search. Full text is ORed across terms, because a spoken question
--- rarely contains every word of the chunk that answers it. Reciprocal rank
--- fusion (k = 60) merges the two rankings without comparing their scales.
+-- rarely contains every word of the chunk that answers it, and each term is a
+-- PREFIX match, because callers say "crypto" and the KB says "Cryptocurrency".
+-- Reciprocal rank fusion (k = 60) merges the two rankings without comparing
+-- their scales.
 create or replace function public.search_kb(query_text text, query_embedding extensions.vector(1024), match_count int default 4)
 returns table (id text, source_title text, heading text, content text, source_summary text,
                similarity real, fts_rank real, rrf real)
@@ -501,7 +505,8 @@ language sql stable
 set search_path = public, extensions
 as $$
   with q as (
-    select nullif(replace(plainto_tsquery('english', query_text)::text, '&', '|'), '')::tsquery as tsq
+    select case when t.s is null then null else to_tsquery('simple', t.s) end as tsq
+    from (select string_agg(quote_literal(lexeme) || ':*', ' | ') as s from unnest(to_tsvector('english', query_text))) t
   ),
   v as (
     select c.id, (1 - (c.embedding <=> query_embedding))::real as similarity,
@@ -526,7 +531,9 @@ as $$
   left join v on v.id = c.id
   left join f on f.id = c.id
   where v.id is not null or f.id is not null
-  order by rrf desc
+  -- Ties are real (first by vector and second by text vs the reverse fuse to the same score), and an
+  -- unordered tie makes retrieval logs unreproducible. Lexical rank breaks them, then similarity, then id.
+  order by rrf desc, fts_rank desc, similarity desc, id
   limit match_count;
 $$;
 ```
@@ -1647,8 +1654,9 @@ test('when embeddings fail, search degrades to full text and says so', { skip: s
 test('a repeated query is served from the cache with no embedding call', { skip: skipWithoutDatabase }, async () => {
   let calls = 0;
   const counting = { model: e.model, embed: async (t: string[], k: any) => { calls++; return e.embed(t, k); } };
-  await searchKb('how long do payouts take', counting as any);
-  await searchKb('How long do payouts take?', counting as any);
+  const nonce = Math.random().toString(36).slice(2, 10);   // query_embeddings persists across runs
+  await searchKb(`how long do payouts take ${nonce}`, counting as any);
+  await searchKb(`How long do payouts take ${nonce}?`, counting as any);
   assert.equal(calls, 1);
 });
 ```
@@ -1904,7 +1912,7 @@ import { startMcpHttp } from '../../mcp/http.ts';
 import { connectTestClient } from '../fakes/mcp-client.ts';
 import { skipWithoutDatabase, newConversation, dropConversation } from '../helpers.ts';
 
-process.env.MCP_TOKEN ??= 'test-token';
+process.env.MCP_TOKEN = 'test-token';   // assigned, not defaulted: .env.local carries the real token
 const echo = { name: 'echo_conversation', description: 'test', input: z.object({}), readOnly: true,
   run: async (_a: object, conversationId: string) => ({ result: { conversationId }, summary: {} }) };
 let server: any, url = '';
@@ -4812,7 +4820,7 @@ services:
       - { key: APP_BASE_URL, sync: false }
       - { key: VOYAGE_MODEL, value: voyage-3.5-lite }
       - { key: KB_GROUNDING_THRESHOLD, value: "0.50" }   # replace with the tuned value from Task 18, with its date
-      - { key: KB_FTS_STRONG, value: "0.10" }
+      - { key: KB_FTS_STRONG, value: "1.0" }
       - { key: SUPPORT_HOURS_DAYS, value: "1,2,3,4,5" }
       - { key: SUPPORT_HOURS_START_UTC, value: "8" }
       - { key: SUPPORT_HOURS_END_UTC, value: "18" }
