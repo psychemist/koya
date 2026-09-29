@@ -114,15 +114,16 @@ test('a paused run is never claimed, even once its lease has gone stale',
               paused_at = now()
         where id = $1`, [run.id]);
 
+    /**
+     * Asserted against the predicate rather than by draining the queue.
+     *
+     * Claiming in a loop until this run comes back would prove the same thing
+     * and take every other claimable run with it, which is what the note at
+     * the top of this file is about: the files run concurrently against one
+     * database, so a test that consumes the queue is a test that fails its
+     * neighbours. It did, once.
+     */
     assert.equal(await isClaimable(run.id), false, 'a paused run matched the claim predicate');
-
-    const handed: string[] = [];
-    for (let i = 0; i < 12; i++) {
-      const got = await claimOne(`pause-w-${i}`);
-      if (!got) break;
-      handed.push(got.id);
-    }
-    assert.ok(!handed.includes(run.id), 'a paused run was handed to a worker');
     await dropRun(run.id);
   });
 
