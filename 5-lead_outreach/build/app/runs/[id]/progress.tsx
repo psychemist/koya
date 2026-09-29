@@ -17,7 +17,7 @@ type Activity = {
 };
 
 type Snapshot = {
-  status: string;
+  status: string; paused: boolean;
   turns: number; candidatesRemaining: number; scrapesRemaining: number;
   stats: { qualified: number; assessed: number; flaggedPages: number; blockedDrafts: number };
   activity: Activity[];
@@ -47,9 +47,12 @@ const clock = (iso: string) => {
 
 const TERMINAL = ['complete', 'partial', 'failed'];
 
-export function Progress({ runId, initialStatus }: { runId: string; initialStatus: string }) {
+export function Progress({ runId, initialStatus, initialPaused = false }: {
+  runId: string; initialStatus: string; initialPaused?: boolean;
+}) {
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [status, setStatus] = useState(initialStatus);
+  const paused = snap?.paused ?? initialPaused;
 
   useEffect(() => {
     if (TERMINAL.includes(status)) return;
@@ -78,7 +81,11 @@ export function Progress({ runId, initialStatus }: { runId: string; initialStatu
       <div className="strip">
         <div>
           <b>Status</b>
-          <span className={runStateClass(status)}>{status.replace(/_/g, ' ')}</span>
+          {/* A paused run keeps the stage it stopped in, and reporting that
+              stage on its own would describe work nobody is doing. */}
+          <span className={paused ? 'state-warn' : runStateClass(status)}>
+            {paused ? `paused while ${status.replace(/_/g, ' ')}` : status.replace(/_/g, ' ')}
+          </span>
         </div>
         {snap && (
           <>

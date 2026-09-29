@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { query } from '../../../lib/db.ts';
-import { loadRun, runStats } from '../../../lib/runs.ts';
+import { loadRun, runStats, TERMINAL_STATUSES } from '../../../lib/runs.ts';
 import { notificationStatus } from '../../../lib/notify/index.ts';
 import { splitObjective } from '../../../lib/objective.ts';
 import { ConfirmDelete } from '../../ui/confirm';
@@ -11,6 +11,7 @@ import { percent } from '../../ui/format';
 import { IcpCriteria } from './icp-criteria';
 import { Nav } from '../../ui/nav';
 import { Progress } from './progress';
+import { PauseRun } from './pause';
 import { DraftEditor } from './draft-editor';
 import { ClarifyForm } from './clarify-form';
 import { LeadVerdict } from './lead-verdict';
@@ -293,7 +294,13 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         );
       })()}
 
-      <Progress runId={id} initialStatus={run.status} />
+      <Progress runId={id} initialStatus={run.status} initialPaused={run.paused_at !== null} />
+
+      {/* Offered while there is something to stop. A finished run is continued
+          rather than resumed, which is a different button and a new run. */}
+      {!TERMINAL_STATUSES.includes(run.status) && (
+        <PauseRun runId={id} paused={run.paused_at !== null} />
+      )}
 
       {run.needs_clarification && (
         <ClarifyForm runId={id} question={run.needs_clarification} />

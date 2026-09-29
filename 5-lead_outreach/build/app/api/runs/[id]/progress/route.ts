@@ -19,6 +19,9 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
     }
     return NextResponse.json({
       status: run.status,
+      // A paused run holds whatever stage it stopped in, so the status alone
+      // would have the strip reporting work that is not happening.
+      paused: run.paused_at !== null,
       turns: run.agent_turns,
       needsClarification: run.needs_clarification,
       shortfallReason: run.shortfall_reason,

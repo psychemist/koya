@@ -205,3 +205,36 @@ test('row 21: the agent holds no tool that can reach a person', async () => {
   assert.equal(LEADGEN_TOOL_NAMES.length, 6);
 });
 
+/**
+ * The claim query cannot stop the session that is already running.
+ *
+ * Pausing keeps new workers off the run, but the worker holding it is inside
+ * a turn, and that turn can still call a tool that costs money. The hook is
+ * what makes the pause bite within seconds of the click rather than whenever
+ * the agent happens to finish.
+ */
+test('a paused run cannot spend, whatever the agent decides next',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ status: 'researching', icp: { hard_filters: ['x'] } as any });
+    await query('update public.runs set paused_at = now() where id = $1', [run.id]);
+
+    for (const tool of ['mcp__leadgen__discover_companies',
+                        'mcp__leadgen__scrape_company_site']) {
+      const d = await budgetHook({
+        hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { run_id: run.id },
+      } as any);
+      assert.equal(d.hookSpecificOutput?.permissionDecision, 'deny', `${tool} was allowed`);
+      assert.match(d.hookSpecificOutput?.permissionDecisionReason ?? '', /paused/i);
+    }
+
+    // Bookkeeping is deliberately still allowed: a verdict the agent has
+    // already reached costs nothing to write down, and refusing it would make
+    // pausing throw away work the run had already paid for.
+    const reading = await budgetHook({
+      hook_event_name: 'PreToolUse', tool_name: 'mcp__leadgen__get_run_state',
+      tool_input: { run_id: run.id },
+    } as any);
+    assert.notEqual(reading.hookSpecificOutput?.permissionDecision, 'deny');
+
+    await dropRun(run.id);
+  });

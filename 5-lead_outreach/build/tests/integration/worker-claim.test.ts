@@ -15,6 +15,7 @@ async function isClaimable(runId: string): Promise<boolean> {
     `select id from public.runs
       where id = $1
         and needs_clarification is null
+        and paused_at is null
         and ((status = 'queued' and claimed_at is null)
              or (status not in ('complete','partial','failed')
                  and claimed_at < now() - interval '15 minutes'))`,
@@ -92,4 +93,60 @@ test('a run parked on a question is never reclaimed, so it cannot loop forever',
     } as any);
     assert.equal(await isClaimable(r.id), false);
     await dropRun(r.id);
+  });
+
+/**
+ * A paused run is parked, and parked means nothing picks it up.
+ *
+ * The status of a paused run is whatever stage it stopped in, which is not
+ * terminal, so nothing else in the claim predicate excludes it. Without its
+ * own clause the lease would go stale fifteen minutes later, a worker would
+ * take it straight back, and the pause would last exactly one lease window.
+ * This is the same reasoning that keeps a run waiting on a clarification out
+ * of the queue.
+ */
+test('a paused run is never claimed, even once its lease has gone stale',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ status: 'researching' });
+    await query(
+      `update public.runs
+          set claimed_at = now() - interval '20 minutes', claimed_by = 'gone',
+              paused_at = now()
+        where id = $1`, [run.id]);
+
+    assert.equal(await isClaimable(run.id), false, 'a paused run matched the claim predicate');
+
+    const handed: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const got = await claimOne(`pause-w-${i}`);
+      if (!got) break;
+      handed.push(got.id);
+    }
+    assert.ok(!handed.includes(run.id), 'a paused run was handed to a worker');
+    await dropRun(run.id);
+  });
+
+test('resuming a paused run puts it back in the queue',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ status: 'researching' });
+    await query(
+      `update public.runs set claimed_at = now(), claimed_by = 'w', paused_at = now()
+        where id = $1`, [run.id]);
+    assert.equal(await isClaimable(run.id), false);
+
+    /**
+     * Exactly what the resume route writes. The status has to go back to
+     * `queued` with the lease cleared: the predicate takes a queued run with
+     * no claim, or a non-terminal run whose claim has expired, and a run left
+     * at `researching` with a null `claimed_at` is neither of those. It would
+     * sit unclaimed forever, which is the bug this asserts against.
+     */
+    await query(
+      `update public.runs
+          set paused_at = null, paused_by = null,
+              status = 'queued', claimed_by = null, claimed_at = null
+        where id = $1`, [run.id]);
+
+    assert.equal(await isClaimable(run.id), true, 'a resumed run never became claimable');
+    await dropRun(run.id);
   });

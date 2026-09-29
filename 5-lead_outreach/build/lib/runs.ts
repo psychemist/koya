@@ -30,6 +30,10 @@ export type RunRow = {
   created_by: string | null;
   claimed_by: string | null;
   claimed_at: Date | null;
+  /** Set while a person has parked the run. No worker claims it and nothing
+   *  paid runs on it until it is cleared. */
+  paused_at: Date | null;
+  paused_by: string | null;
   created_at: Date;
   finished_at: Date | null;
 };

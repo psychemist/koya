@@ -68,6 +68,22 @@ export async function budgetHook(input: HookInput): Promise<Decision> {
   }
 
   /**
+   * A paused run is parked by a person, and this is what makes the pause
+   * mean something while a turn is already in flight.
+   *
+   * The claim query stops a paused run being picked up, but that says nothing
+   * about the session already running when the button was pressed. Denying
+   * here is what stops the money within seconds of the click. Bookkeeping is
+   * left alone on purpose: a verdict the agent has already reached costs
+   * nothing to write down, and throwing it away would make pausing lose work.
+   */
+  if (run.paused_at && SPENDS.has(input.tool_name)) {
+    return logDenial(runId, input.tool_name,
+      'This run has been paused by the operator. Nothing may be spent until they ' +
+      'resume it. Record what you already know and stop here.');
+  }
+
+  /**
    * The ICP is written before any paid call. That ordering is the first thing
    * the brief asks to see, and until now it lived only in the system prompt.
    */

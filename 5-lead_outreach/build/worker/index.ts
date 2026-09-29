@@ -40,7 +40,11 @@ export async function claimOne(workerId: string): Promise<RunRow | null> {
          -- A run waiting on a person is not work. Without this clause a parked
          -- run stays non-terminal forever, is reclaimed every lease window,
          -- and burns a full agent loop each time for as long as it exists.
+         -- A run somebody paused is parked for the same reason and skipped by
+         -- the same rule: it is not terminal, so nothing else would stop the
+         -- lease expiring and a worker picking it straight back up.
          where needs_clarification is null
+           and paused_at is null
            and ((status = 'queued' and claimed_at is null)
                 or (status not in ('complete','partial','failed')
                     and claimed_at < now() - interval '15 minutes'))
