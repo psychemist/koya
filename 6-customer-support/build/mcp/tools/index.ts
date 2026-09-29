@@ -5,6 +5,7 @@ import { transactionTool } from './lookup-transaction.ts';
 import { payoutTool } from './lookup-payout.ts';
 import { ticketTool } from './create-support-ticket.ts';
 import { eventTool } from './log-conversation-event.ts';
+import { escalationTool } from './create-escalation.ts';
 
 /** Every tool the server exposes. Tasks 7 to 10 each add one file and one line here. */
-export const TOOLS: ToolSpec<any>[] = [searchTool, customerTool, transactionTool, payoutTool, ticketTool, eventTool];
+export const TOOLS: ToolSpec<any>[] = [searchTool, customerTool, transactionTool, payoutTool, ticketTool, escalationTool, eventTool];

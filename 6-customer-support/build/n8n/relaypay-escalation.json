@@ -1,0 +1,550 @@
+{
+  "name": "RelayPay escalation",
+  "nodes": [
+    {
+      "id": "node-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        0
+      ],
+      "webhookId": "relaypay-escalation",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "relaypay-escalation",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "node-2",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -380,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "jsCode": "/**\n * Verify the request came from the RelayPay MCP server, before anything books,\n * posts or emails. The webhook URL is not a secret, so the URL alone must not\n * be enough to put an event on the support calendar.\n *\n * Returns a verdict rather than throwing: a throw kills the workflow before a\n * respond node runs, and the MCP server could not tell a bad signature from\n * n8n being down (it treats both as a reason for the Resend fallback).\n */\nconst crypto = require('crypto');\nconst SECRET_NAME = 'RELAYPAY_ESCALATION_SECRET';\nfunction readSecret(name) {\n  try { if (typeof $env !== 'undefined' && $env && $env[name]) return String($env[name]); } catch (err) { /* env access blocked */ }\n  try { if (typeof $vars !== 'undefined' && $vars && $vars[name]) return String($vars[name]); } catch (err) { /* no variables */ }\n  return null;\n}\nconst secret = readSecret(SECRET_NAME);\nif (!secret) return [{ json: { ok: false, status: 401, reason: SECRET_NAME + ' is not readable on this instance. Set it as a Variable; it must match N8N_ESCALATION_SECRET.' } }];\nconst TOLERANCE_SECONDS = 300;\nconst item = $input.first();\nconst headers = item.json.headers || {};\nconst signature = headers['x-relaypay-signature'];\nconst timestamp = headers['x-relaypay-timestamp'];\nif (!signature || !timestamp) return [{ json: { ok: false, status: 401, reason: 'missing signature headers' } }];\nconst age = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp));\nif (!Number.isFinite(age) || age > TOLERANCE_SECONDS) return [{ json: { ok: false, status: 401, reason: 'timestamp outside the window' } }];\nconst raw = item.binary && item.binary.data ? Buffer.from(item.binary.data.data, 'base64').toString('utf8')\n  : (typeof item.json.body === 'string' ? item.json.body : JSON.stringify(item.json.body));\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw, 'utf8').digest('hex');\nconst a = Buffer.from(String(signature), 'utf8'), b = Buffer.from(expected, 'utf8');\nif (!(a.length === b.length && crypto.timingSafeEqual(a, b))) return [{ json: { ok: false, status: 401, reason: 'signature mismatch' } }];\nlet p; try { p = JSON.parse(raw); } catch (err) { return [{ json: { ok: false, status: 400, reason: 'unparseable JSON' } }]; }\nconst missing = ['escalation_ref', 'idempotency_key', 'category', 'reason', 'user_name', 'user_email', 'console_url'].filter((k) => !p[k]);\nif (missing.length) return [{ json: { ok: false, status: 400, reason: 'payload missing: ' + missing.join(', ') } }];\nconst start = p.requested_slot_utc || null;\nconst end = start ? new Date(new Date(start).getTime() + (Number(p.slot_minutes) || 30) * 60000).toISOString() : null;\nreturn [{ json: { ok: true, status: 200, ref: p.escalation_ref, key: p.idempotency_key, category: p.category, reason: p.reason,\n  name: p.user_name, email: p.user_email, start, end, consoleUrl: p.console_url } }];"
+      }
+    },
+    {
+      "id": "node-3",
+      "name": "Verified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -160,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-4",
+      "name": "Respond rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        60,
+        220
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { error: $json.reason } }}",
+        "options": {
+          "responseCode": "={{ $json.status }}"
+        }
+      }
+    },
+    {
+      "id": "node-5",
+      "name": "Slot requested?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        60,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.start }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-6",
+      "name": "Find existing event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        280,
+        -120
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE",
+          "name": "RelayPay support calendar"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "REPLACE_WITH_SUPPORT_CALENDAR_ID"
+        },
+        "returnAll": false,
+        "limit": 1,
+        "options": {
+          "query": "={{ $('Verify signature').item.json.key }}"
+        }
+      }
+    },
+    {
+      "id": "node-7",
+      "name": "Already booked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        -120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-8",
+      "name": "Check free/busy",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        -40
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE",
+          "name": "RelayPay support calendar"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "resource": "calendar",
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "REPLACE_WITH_SUPPORT_CALENDAR_ID"
+        },
+        "timeMin": "={{ $('Verify signature').item.json.start }}",
+        "timeMax": "={{ $('Verify signature').item.json.end }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-9",
+      "name": "Slot free?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        940,
+        -40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.available }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-10",
+      "name": "Create event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1160,
+        -120
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE",
+          "name": "RelayPay support calendar"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "REPLACE_WITH_SUPPORT_CALENDAR_ID"
+        },
+        "start": "={{ $('Verify signature').item.json.start }}",
+        "end": "={{ $('Verify signature').item.json.end }}",
+        "additionalFields": {
+          "summary": "={{ $('Verify signature').item.json.ref + ' ' + $('Verify signature').item.json.category + ' callback' }}",
+          "description": "={{ 'Call ' + $('Verify signature').item.json.name + ' (' + $('Verify signature').item.json.email + '). Reason: ' + $('Verify signature').item.json.reason + '\\nConsole: ' + $('Verify signature').item.json.consoleUrl + '\\nIdempotency key: ' + $('Verify signature').item.json.key }}"
+        }
+      }
+    },
+    {
+      "id": "node-11",
+      "name": "Booking result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1380,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// One shape for every path, so Respond says the same thing whichever branch ran.\nconst v = $('Verify signature').first().json;\nconst item = $input.first().json || {};\nif (!v.start) return [{ json: { booked: false, event_id: null, appointment_at: null, reason: 'no_slot_requested' } }];\nif (item.available === false) return [{ json: { booked: false, event_id: null, appointment_at: null, reason: 'slot_taken' } }];\nreturn [{ json: { booked: !!item.id, event_id: item.id || null, appointment_at: item.id ? v.start : null, reason: item.id ? null : 'not_booked' } }];"
+      }
+    },
+    {
+      "id": "node-12",
+      "name": "Post to Discord",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "REPLACE",
+          "name": "RelayPay support channel"
+        }
+      },
+      "parameters": {
+        "authentication": "webhook",
+        "options": {},
+        "content": "={{ '**Escalation ' + $('Verify signature').item.json.ref + '** (' + $('Verify signature').item.json.category + ')\\n' + $('Verify signature').item.json.reason + '\\n' + ($json.booked ? 'Callback booked: ' + $('Verify signature').item.json.start : 'No callback booked: ' + $json.reason) + '\\n' + $('Verify signature').item.json.consoleUrl }}"
+      }
+    },
+    {
+      "id": "node-13",
+      "name": "Email support",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1820,
+        0
+      ],
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE",
+          "name": "RelayPay support Gmail"
+        }
+      },
+      "parameters": {
+        "sendTo": "={{ $vars.RELAYPAY_SUPPORT_INBOX }}",
+        "subject": "={{ '[RelayPay escalation] ' + $('Verify signature').item.json.ref + ' ' + $('Verify signature').item.json.category }}",
+        "message": "={{ 'Reason: ' + $('Verify signature').item.json.reason + '<br>Name: ' + $('Verify signature').item.json.name + '<br>Email: ' + $('Verify signature').item.json.email + '<br>Callback: ' + ($('Booking result').item.json.booked ? $('Verify signature').item.json.start + ' UTC' : 'not booked') + '<br><a href=\"' + $('Verify signature').item.json.consoleUrl + '\">Open in the console</a>' }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-14",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2040,
+        -60
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $('Booking result').item.json }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "node-15",
+      "name": "Respond failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2040,
+        160
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { error: \"calendar or email step failed\" } }}",
+        "options": {
+          "responseCode": 502
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verified?": {
+      "main": [
+        [
+          {
+            "node": "Slot requested?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot requested?": {
+      "main": [
+        [
+          {
+            "node": "Find existing event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Booking result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find existing event": {
+      "main": [
+        [
+          {
+            "node": "Already booked?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already booked?": {
+      "main": [
+        [
+          {
+            "node": "Booking result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check free/busy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check free/busy": {
+      "main": [
+        [
+          {
+            "node": "Slot free?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot free?": {
+      "main": [
+        [
+          {
+            "node": "Create event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Booking result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create event": {
+      "main": [
+        [
+          {
+            "node": "Booking result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking result": {
+      "main": [
+        [
+          {
+            "node": "Post to Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Discord": {
+      "main": [
+        [
+          {
+            "node": "Email support",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email support": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

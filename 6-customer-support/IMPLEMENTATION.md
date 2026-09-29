@@ -2548,7 +2548,7 @@ Spec §9. Brief scenario 7. Rows 21 and 23. Review Focus items 1 and 2.
 6. If the slot is valid, insert `notifications (escalation_id, slot_key = slot.start.toISOString())` with `on conflict do nothing`, then `await dispatchNotification(id, { dryRun: channel === 'eval', fault })`.
 7. Without any time, queue `slot_key 'none'` and dispatch it.
 8. Build `follow_up_summary` in code:
-   - booked: `A specialist will call ${user_name} on ${describeSlot(appointment, tz)}. A confirmation goes to the email you gave.`
+   - booked: `A specialist will call ${user_name} on ${describeSlot(appointment, tz)}. The reference is ${ref}.` (Changed 2026-09-29: the first draft promised "a confirmation goes to the email you gave", but n8n invites no attendee and emails only the support inbox, so nothing would arrive. Pinned by a test.)
    - slot taken: `That time has just been taken. The next free times are ${…}.`
    - fallback or failed: `A specialist will follow up by email to confirm a time.`
 
