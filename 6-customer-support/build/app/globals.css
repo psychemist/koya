@@ -1,0 +1,56 @@
+/* RelayPay brand (assets/brand-direction.md): professional, calm, minimal, trustworthy.
+   No gradients, no shadows beyond a 1px rule, two weights (400 and 600), teal used sparingly. */
+:root {
+  --rp-blue: #0b2a5b;      /* primary, deep blue */
+  --rp-teal: #0e7c86;      /* accent: the live call state and focus rings only */
+  --rp-page: #f5f6f8;      /* off-white background */
+  --rp-surface: #ffffff;
+  --rp-ink: #1b2430;
+  --rp-mute: #5b6472;
+  --rp-rule: #dde1e7;
+  --rp-bad: #a4262c;       /* errors only */
+  --rp-radius: 6px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--rp-page); color: var(--rp-ink);
+  font: 400 16px/1.55 var(--rp-font), Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+button, textarea, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--rp-teal); outline-offset: 2px; }
+
+.rp-shell { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+.rp-header { padding: 8px 0 32px; }
+.rp-header img { display: block; height: 28px; width: auto; }
+
+.rp-card { background: var(--rp-surface); border: 1px solid var(--rp-rule); border-radius: var(--rp-radius); padding: 24px; }
+.rp-card h1 { margin: 0 0 4px; font-size: 1.375rem; line-height: 1.3; font-weight: 600; color: var(--rp-blue); }
+.rp-lede { margin: 0 0 20px; color: var(--rp-mute); max-width: 52ch; }
+
+.rp-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px;
+  border-radius: var(--rp-radius); border: 1px solid var(--rp-blue); background: var(--rp-blue); color: #fff;
+  font-weight: 600; cursor: pointer;
+}
+.rp-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.rp-btn-quiet { background: transparent; color: var(--rp-blue); }
+.rp-btn[data-live='true'] { background: var(--rp-teal); border-color: var(--rp-teal); }
+
+.rp-status { margin: 12px 0 0; min-height: 1.55em; color: var(--rp-mute); }
+.rp-status[data-tone='bad'] { color: var(--rp-bad); }
+.rp-status[data-tone='live'] { color: var(--rp-teal); }
+.rp-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+/* Captions for the latest exchange: two labelled lines, never bubbles. */
+.rp-captions { margin: 20px 0 0; padding: 0; }
+.rp-captions div { display: grid; grid-template-columns: 84px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--rp-rule); }
+.rp-captions dt { font-weight: 600; color: var(--rp-mute); font-size: 0.875rem; padding-top: 1px; }
+.rp-captions dd { margin: 0; }
+
+@media (max-width: 420px) {
+  .rp-card { padding: 18px; }
+  .rp-captions div { grid-template-columns: 1fr; gap: 2px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
