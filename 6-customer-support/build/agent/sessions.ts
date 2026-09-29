@@ -1,8 +1,9 @@
 import { config } from '../lib/config.ts';
 import type { AgentRuntime, AgentSession } from './runtime.ts';
 
-type OpenOpts = { model?: string; mcpFault?: 'mcp_down' | 'n8n_down' | null };
-type Entry = { session: AgentSession; lastUsed: number };
+export type SessionKind = 'voice' | 'chat';
+type OpenOpts = { model?: string; mcpFault?: 'mcp_down' | 'n8n_down' | null; kind?: SessionKind };
+type Entry = { session: AgentSession; lastUsed: number; kind: SessionKind };
 
 /**
  * One warm Agent SDK session per live conversation, and one lock per
@@ -31,7 +32,8 @@ export class SessionManager {
     if (e) { e.lastUsed = Date.now(); return e.session; }
     let p = this.opening.get(id);
     if (!p) {
-      p = this.runtime.open(id, opts).then((session) => { this.sessions.set(id, { session, lastUsed: Date.now() }); return session; })
+      const { kind = 'voice', ...open } = opts;
+      p = this.runtime.open(id, open).then((session) => { this.sessions.set(id, { session, lastUsed: Date.now(), kind }); return session; })
         .finally(() => this.opening.delete(id));
       this.opening.set(id, p);
     }
@@ -81,12 +83,30 @@ export class SessionManager {
     await e?.session.close().catch(() => undefined);
   }
 
-  async closeIdle(maxIdleMs: number): Promise<number> {
+  /** Chat sessions idle faster than calls (Task 14b): a slow typist must not hold a subprocess a caller needs. */
+  async closeIdle(maxIdleMs: number, kind?: SessionKind): Promise<number> {
     const now = Date.now(); let n = 0;
     for (const [id, e] of [...this.sessions]) {
-      if (now - e.lastUsed >= maxIdleMs && !this.inFlight.has(id)) { await this.close(id); n++; }
+      if ((!kind || e.kind === kind) && now - e.lastUsed >= maxIdleMs && !this.inFlight.has(id)) { await this.close(id); n++; }
     }
     return n;
+  }
+
+  /**
+   * When the pool is full, the least recently used idle session of this kind
+   * gives its slot up. Its conversation is rebuilt from stored turns on its
+   * next message, so nothing is lost but the warm start. A voice session is
+   * never evicted this way: a caller is mid-sentence.
+   */
+  async evictOneIdle(kind: SessionKind): Promise<boolean> {
+    let pick: [string, Entry] | null = null;
+    for (const [id, e] of this.sessions) {
+      if (e.kind !== kind || this.inFlight.has(id)) continue;
+      if (!pick || e.lastUsed < pick[1].lastUsed) pick = [id, e];
+    }
+    if (!pick) return false;
+    await this.close(pick[0]);
+    return true;
   }
 
   async closeAll(): Promise<void> { for (const id of [...this.sessions.keys()]) await this.close(id); }

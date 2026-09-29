@@ -7,7 +7,14 @@ import { loadTurnFacts } from './facts.ts';
 import type { SessionManager } from './sessions.ts';
 import type { RuntimeEvent } from './runtime.ts';
 
-export interface SpeechSink { say(text: string): void }
+/** Voice speaks both kinds; chat shows only replies, because a filler line is a pause, not a message. */
+export interface SpeechSink { say(text: string, kind?: 'filler' | 'reply'): void }
+export type TurnChannel = 'voice' | 'chat';
+
+export function collectSink(): SpeechSink & { reply(): string } {
+  const lines: string[] = [];
+  return { say(text, kind = 'reply') { if (kind === 'reply') lines.push(text); }, reply: () => lines.join(' ') };
+}
 export type TurnStatus = 'ok' | 'fallback' | 'failed' | 'capacity' | 'noise' | 'replayed' | 'interrupted';
 export type TurnOutcome = { status: TurnStatus; answerType: AnswerType | null; spoken: string; turnId: string | null };
 
@@ -20,8 +27,8 @@ export function isNoise(text: string): boolean {
 }
 
 /** The per-turn facts the cached system prompt cannot hold: the time, and on recovery, what was said before. */
-export function frameCallerText(text: string, now: Date, prior?: string): string {
-  const lines = [`[Current time: ${now.toISOString()} UTC]`];
+export function frameCallerText(text: string, now: Date, prior?: string, channel: TurnChannel = 'voice'): string {
+  const lines = [`[Current time: ${now.toISOString()} UTC]`, `[Channel: ${channel === 'chat' ? 'web chat' : 'voice call'}]`];
   if (prior) lines.push('[Prior transcript, for context only]', prior, '[End of prior transcript]');
   lines.push(`Caller said: ${text}`);
   return lines.join('\n');
@@ -50,9 +57,10 @@ async function recordTurn(r: { conversationId: string; text: string; spoken: str
  * lines, which are reviewed copy. Turns for one conversation run in order.
  */
 export function runTurn(deps: { sessions: SessionManager; now?: () => Date },
-  input: { conversationId: string; text: string; prior?: string }, sink: SpeechSink): Promise<TurnOutcome> {
+  input: { conversationId: string; text: string; prior?: string; channel?: TurnChannel }, sink: SpeechSink): Promise<TurnOutcome> {
   const { sessions } = deps;
   const text = input.text.trim();
+  const channel = input.channel ?? 'voice';
   if (isNoise(text)) { sink.say(LINES.didntCatch); return Promise.resolve({ status: 'noise', answerType: null, spoken: LINES.didntCatch, turnId: null }); }
 
   return sessions.withLock(input.conversationId, async (): Promise<TurnOutcome> => {
@@ -70,10 +78,19 @@ export function runTurn(deps: { sessions: SessionManager; now?: () => Date },
 
     const base = { conversationId: id, text, confidence: null, citations: [] as string[], attempts: 0, violations: [] as Violation[], model: null as string | null };
     if ((await spentToday('anthropic')) >= config.agent.dailyCapUsd) {
-      const spoken = `${LINES.capacity} ${LINES.goodbye}`;
+      const spoken = `${LINES.capacity} ${channel === 'chat' ? LINES.chatGoodbye : LINES.goodbye}`;
       sink.say(spoken);
       const turnId = await recordTurn({ ...base, spoken, answerType: 'decline', status: 'capacity', latencyMs: Date.now() - t0, costUsd: 0 });
       return { status: 'capacity', answerType: 'decline', spoken, turnId };
+    }
+
+    // The per-call budget belongs to the conversation, not the session: a session rebuilt from history
+    // would otherwise start a fresh maxBudgetUsd (spec §4.5).
+    const spent = await one<{ cost: number }>('select cost_usd::float8 as cost from public.conversations where id = $1', [id]);
+    if ((spent?.cost ?? 0) >= config.agent.maxBudgetUsd) {
+      sink.say(LINES.limitReached);
+      const turnId = await recordTurn({ ...base, spoken: LINES.limitReached, answerType: 'decline', status: 'capacity', latencyMs: Date.now() - t0, costUsd: 0 });
+      return { status: 'capacity', answerType: 'decline', spoken: LINES.limitReached, turnId };
     }
 
     const since = (await one<{ now: Date }>('select now() as now'))!.now;
@@ -84,11 +101,11 @@ export function runTurn(deps: { sessions: SessionManager; now?: () => Date },
     let approved = null as ReturnType<typeof checkReply>['reply'];
 
     for (attempts = 1; attempts <= 2; attempts++) {
-      const prompt = attempts === 1 ? frameCallerText(text, now, input.prior) : retryMessage(violations);
+      const prompt = attempts === 1 ? frameCallerText(text, now, input.prior, channel) : retryMessage(violations);
       let result: Extract<RuntimeEvent, { kind: 'result' }> | null = null;
       try {
         for await (const e of session.turn(prompt)) {
-          if (e.kind === 'tool_start' && !fillerSaid) { fillerSaid = true; sink.say(LINES.filler); }
+          if (e.kind === 'tool_start' && !fillerSaid) { fillerSaid = true; sink.say(LINES.filler, 'filler'); }
           if (e.kind === 'result') result = e;
         }
       } catch { result = null; }

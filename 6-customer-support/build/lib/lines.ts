@@ -7,6 +7,8 @@ export const LINES = {
   filler: 'One moment while I check that.',
   didntCatch: "Sorry, I didn't catch that. Could you say it again?",
   goodbye: 'Thanks for calling RelayPay support, goodbye.',
+  chatGoodbye: 'Thanks for contacting RelayPay support, goodbye.',
+  limitReached: 'This conversation has reached its length limit. Please start a new one, or contact support through your RelayPay dashboard.',
 } as const;
 export type AnswerType = 'answer' | 'clarify' | 'escalate' | 'decline';
 export const fallbackFor = (intended?: AnswerType) => (intended === 'escalate' ? LINES.escalate : LINES.decline);

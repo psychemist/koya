@@ -15,7 +15,7 @@ export function openSse(res: ServerResponse): SpeechSink & { finish(): void } {
     created, model: 'relaypay-support-agent', choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
   try { res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' }); } catch { /* already sent */ }
   return {
-    say(text: string) { write(frame({ content: `${text} ` }, null)); },
+    say(text: string, _kind?: 'filler' | 'reply') { write(frame({ content: `${text} ` }, null)); },   // a caller hears both kinds
     finish() {
       write(frame({}, 'stop'));
       write('data: [DONE]\n\n');

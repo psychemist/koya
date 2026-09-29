@@ -74,3 +74,22 @@ export async function finalizeConversation(id: string, o: { endedReason?: string
      where id = $1 and ended_at is null returning *`, [id, o.endedReason ?? null, finalStatus, summary]);
   return row ?? (await one<ConversationRow>('select * from public.conversations where id = $1', [id]))!;
 }
+
+/**
+ * Conversations nothing will ever end: a chat whose customer walked away, and
+ * a call whose end-of-call-report never arrived (Vapi caps calls at 10
+ * minutes, so one still open after 20 lost its report). Eval and mcp_direct
+ * conversations are never touched.
+ */
+export async function finalizeStale(now: Date, o: { textIdleMs: number; voiceMaxMs: number }) {
+  const stale = await query<{ id: string; channel: string }>(
+    `select c.id, c.channel from public.conversations c
+     left join lateral (select max(t.created_at) as last_turn from public.conversation_turns t where t.conversation_id = c.id) t on true
+     where c.ended_at is null and (
+       (c.channel = 'web_text' and coalesce(t.last_turn, c.started_at) < $1::timestamptz - make_interval(secs => $2::float8 / 1000))
+       or (c.channel in ('voice_web', 'voice_phone') and c.started_at < $1::timestamptz - make_interval(secs => $3::float8 / 1000)))`,
+    [now.toISOString(), o.textIdleMs, o.voiceMaxMs]);
+  for (const s of stale)
+    await finalizeConversation(s.id, { endedReason: s.channel === 'web_text' ? 'idle_timeout' : 'no_end_of_call_report' });
+  return stale;
+}

@@ -6,7 +6,9 @@ import { LINES } from '../lib/lines.ts';
 import { finalizeConversation, upsertConversation, type Channel } from '../lib/conversations.ts';
 import { openSse } from './sse.ts';
 import { channelFor, maskNumber, parseChatRequest, parseServerMessage } from './vapi.ts';
-import { runTurn, type SpeechSink } from './turn.ts';
+import { collectSink, runTurn } from './turn.ts';
+import { endsChat, priorFromTurns } from './chat.ts';
+import { chatRecords } from '../lib/chat-records.ts';
 import type { SessionManager } from './sessions.ts';
 
 const MAX_MESSAGE = 1000;
@@ -43,6 +45,8 @@ export function createAgentServer(deps: { sessions: SessionManager }): Server & 
   const later = (p: Promise<unknown>) => { const q = p.catch((e) => console.error(JSON.stringify({ level: 'error', at: 'agent_bg', message: e.message })));
     background.add(q); q.finally(() => background.delete(q)); };
   const full = (id: string) => sessions.size >= sessions.max && !sessions.has(id);
+  /** A full pool first asks an idle chat to give its slot up (Task 14b); only then is anyone refused. */
+  const hasRoom = async (id: string) => !full(id) || (await sessions.evictOneIdle('chat')) || !full(id);
 
   async function vapiCompletion(req: IncomingMessage, res: ServerResponse, url: URL) {
     if (!secretMatches(bearer(req), config.vapi.customLlmKey)) return json(res, 401, { error: 'unauthorized' });
@@ -52,7 +56,7 @@ export function createAgentServer(deps: { sessions: SessionManager }): Server & 
     const conv = await upsertConversation({ vapiCallId: p.callId, channel: channelFor(p.callType),
       callerIdentifier: p.customerNumber ? maskNumber(p.customerNumber) : 'web' });
     const sse = openSse(res);
-    if (full(conv.id)) {
+    if (!(await hasRoom(conv.id))) {
       sse.say(`${LINES.capacity} ${LINES.goodbye}`); sse.finish();
       await systemEvent(conv.id, 'capacity_refused', `refused at ${sessions.size} of ${sessions.max} sessions`);
       return;
@@ -74,8 +78,8 @@ export function createAgentServer(deps: { sessions: SessionManager }): Server & 
       later((async () => {
         const conv = await upsertConversation({ vapiCallId: m.callId, channel: channelFor(m.callType),
           callerIdentifier: m.customerNumber ? maskNumber(m.customerNumber) : 'web' });
-        if (full(conv.id) || sessions.has(conv.id)) return;
-        await sessions.getOrOpen(conv.id);             // opened while Vapi speaks the first message
+        if (sessions.has(conv.id) || !(await hasRoom(conv.id))) return;
+        await sessions.getOrOpen(conv.id, { kind: 'voice' });             // opened while Vapi speaks the first message
         await systemEvent(conv.id, 'session_opened', 'session opened on call start');
       })());
     } else if (m.type === 'end-of-call-report') {
@@ -106,23 +110,40 @@ export function createAgentServer(deps: { sessions: SessionManager }): Server & 
     const channel = b.channel as Extract<Channel, 'web_text' | 'eval'>;
     const model = channel === 'eval' && (config.models.allowed as readonly string[]).includes(b.model) ? b.model as string : undefined;
     const mcpFault = config.agent.allowFaults && (b.fault === 'mcp_down' || b.fault === 'n8n_down') ? b.fault as 'mcp_down' | 'n8n_down' : null;
+    // 1 and 2. A chat continues only its own kind of conversation, and never one that has ended.
     let id: string;
     if (b.conversation_id) {
-      const c = await one<{ id: string }>('select id from public.conversations where id::text = $1', [String(b.conversation_id)]);
-      if (!c) return json(res, 404, { error: 'conversation_unknown' });
+      const c = await one<{ id: string; channel: string; ended: boolean }>(
+        'select id, channel, ended_at is not null as ended from public.conversations where id::text = $1', [String(b.conversation_id)]);
+      if (!c || c.channel !== channel) return json(res, 404, { error: 'conversation_unknown' });
+      if (c.ended) return json(res, 409, { error: 'conversation_ended' });
       id = c.id;
     } else {
       id = (await upsertConversation({ channel, callerIdentifier: channel === 'eval' ? String(b.eval_run_id ?? 'eval') : 'web',
         model: model ?? null, evalRunId: channel === 'eval' && b.eval_run_id ? String(b.eval_run_id) : null })).id;
     }
-    if (full(id)) return json(res, 200, { conversation_id: id, reply: LINES.capacity, answer_type: 'decline', status: 'capacity' });
-    await sessions.getOrOpen(id, { model, mcpFault });
-    const said: string[] = [];
-    const sink: SpeechSink = { say: (t) => said.push(t) };
-    const turn = runTurn({ sessions }, { conversationId: id, text: message }, sink);
+    // 3. A session that is gone is rebuilt from what was said, the same way a call is rebuilt from Vapi's history.
+    let prior: string | undefined;
+    if (!sessions.has(id)) {
+      const turns = await query<{ user_transcript: string; assistant_response: string }>(
+        'select user_transcript, assistant_response from public.conversation_turns where conversation_id = $1 order by seq', [id]);
+      prior = priorFromTurns(turns) || undefined;
+    }
+    // 4. Room, or the capacity line.
+    if (!(await hasRoom(id))) return json(res, 200, { conversation_id: id, reply: LINES.capacity, answer_type: 'decline', status: 'capacity',
+      ended: false, records: await chatRecords(id) });
+    // 5. The same turn as a call. Eval is framed as voice, because the brief grades the voice agent.
+    await sessions.getOrOpen(id, { model, mcpFault, kind: 'chat' });
+    const sink = collectSink();
+    const turn = runTurn({ sessions }, { conversationId: id, text: message, prior, channel: channel === 'eval' ? 'voice' : 'chat' }, sink);
     later(turn);
     const out = await turn;
-    json(res, 200, { conversation_id: id, reply: said.join(' '), answer_type: out.answerType, status: out.status });
+    const reply = sink.reply();
+    // 6. The chat goodbye ends the conversation, as the end-call phrase ends a call.
+    const ended = channel === 'web_text' && endsChat(reply);
+    if (ended) { await finalizeConversation(id, { endedReason: 'customer-ended-chat' }); await sessions.close(id); }
+    // 7. References from rows, so what the page shows exists.
+    json(res, 200, { conversation_id: id, reply, answer_type: out.answerType, status: out.status, ended, records: await chatRecords(id) });
   }
 
   async function chatEnd(req: IncomingMessage, res: ServerResponse) {

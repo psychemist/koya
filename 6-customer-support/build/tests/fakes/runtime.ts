@@ -28,3 +28,18 @@ export async function logToolCall(conversationId: string, tool: string, resultSu
   await query(`insert into public.tool_calls (conversation_id, tool_name, purpose, input_summary, result_summary, status, duration_ms)
     values ($1, $2, 'test', $3, $4, 'ok', 1)`, [conversationId, tool, JSON.stringify(inputSummary), JSON.stringify(resultSummary)]);
 }
+
+/** Task 14b: every turn of every session takes the next scripted response in order; a plain clarify when empty. */
+export function queueRuntime() {
+  const prompts: string[] = [];
+  const queue: Array<(text: string, conversationId: string) => RuntimeEvent[] | Promise<RuntimeEvent[]>> = [];
+  let opened = 0;
+  const fallback = (): RuntimeEvent[] => [{ kind: 'result', ok: true, costUsd: 0.001, durationMs: 5, output: { answer_type: 'clarify',
+    spoken_response: 'Could you tell me a little more?', citations: [], confidence_note: 'queue default', escalation_category: null } }];
+  const runtime: AgentRuntime = { async open(conversationId) { opened++; return {
+    conversationId, model: 'fake',
+    async *turn(text: string) { prompts.push(text); for (const e of await (queue.shift() ?? fallback)(text, conversationId)) yield e; },
+    async interrupt() {}, async close() {},
+  }; } };
+  return { runtime, prompts, next: (fn: (typeof queue)[number]) => { queue.push(fn); }, get opened() { return opened; } };
+}
