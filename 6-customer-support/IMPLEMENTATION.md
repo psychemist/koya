@@ -1161,7 +1161,7 @@ test('a turn with an unknown answer type is refused by the database', { skip: sk
 test('two open tickets with one dedupe key cannot coexist, but a closed one frees the key', { skip: skipWithoutDatabase }, async () => {
   const c = await newConversation();
   const ins = () => query(`insert into public.support_tickets (conversation_id, category, priority, summary, dedupe_key)
-    values ($1,'payment','normal','invoice payment failed', $1 || ':payment') returning id`, [c.id]);
+    values ($1,'payment','normal','invoice payment failed', $1::uuid::text || ':payment') returning id`, [c.id]);
   const [t] = await ins();
   await assert.rejects(ins, /unique/);
   await query(`update public.support_tickets set status='closed' where id=$1`, [t.id]);
@@ -3910,7 +3910,7 @@ test('the reference note comes from the ticket row, not from the model', { skip:
   q.next(async (_text, conv) => {
     // Stands in for the MCP server writing a ticket during the turn.
     await query(`insert into public.support_tickets (conversation_id, category, priority, summary, dedupe_key)
-      values ($1, 'invoice', 'normal', 'Invoice payment failed and the customer wants it checked.', $1 || ':invoice')`, [conv]);
+      values ($1, 'invoice', 'normal', 'Invoice payment failed and the customer wants it checked.', $1::uuid::text || ':invoice')`, [conv]);
     return [say('I have logged that for a specialist to review.')];
   });
   const r = await chat({ message: 'please log my failed invoice payment' });
@@ -4422,7 +4422,7 @@ test('restore returns the chat turns in order, with the references built from ro
   const c = await newConversation({ channel: 'web_text' });
   await turn(c.id, 2, 'q2', 'a2'); await turn(c.id, 1, 'q1', 'a1');
   await query(`insert into public.support_tickets (conversation_id, category, priority, summary, dedupe_key)
-    values ($1, 'invoice', 'normal', 'Invoice payment failed and needs a look.', $1 || ':invoice')`, [c.id]);
+    values ($1, 'invoice', 'normal', 'Invoice payment failed and needs a look.', $1::uuid::text || ':invoice')`, [c.id]);
   const t = await chatTranscript(c.id);
   assert.deepEqual(t.turns.map((x) => [x.you, x.relaypay]), [['q1', 'a1'], ['q2', 'a2']]);
   assert.match(t.records.ticket_ref!, /^RP-T-\d{6}$/);
