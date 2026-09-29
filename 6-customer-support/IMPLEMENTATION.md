@@ -240,7 +240,7 @@ SEED_AGENT_EMAIL=agent@example.com
 SEED_AGENT_PASSWORD=
 ```
 
-The root `.gitignore` already ignores `.env`, `.env.local` and `*/.env.local` (checked 2026-09-28). `build/.gitignore` adds `node_modules`, `.next` and `agent/workspace/*` except `.gitkeep`.
+The root `.gitignore` ignores `.env` and `.env.local` by name, but its `*/.env.local` and `*/node_modules/` patterns reach only one directory deep and **do not cover `6-customer-support/build/`** (found in Task 0, 2026-09-29). So `build/.gitignore` is created in Task 0, before the first build commit, and ignores `node_modules/`, `.next/`, `.env`, `.env.local`, `.env.*.local` and `agent/workspace/*` except `.gitkeep`.
 
 ---
 
@@ -2755,7 +2755,7 @@ Spec §8. The most important safety property in the system: nothing reaches the 
 
 **Interfaces:**
 - Produces:
-  - `ReplySchema` (zod), `type Reply`, `REPLY_JSON_SCHEMA` (`z.toJSONSchema(ReplySchema)`)
+  - `ReplySchema` (zod), `type Reply`, `REPLY_JSON_SCHEMA` (`z.toJSONSchema(ReplySchema)` without its `$schema` key, which the CLI refuses; a unit test pins `!('$schema' in REPLY_JSON_SCHEMA)`)
   - `type TurnFacts = { groundedChunkIds: Set<string>; escalationRequired: boolean; supportNotes: string[]; callerText: string; knownEmails: string[]; verifiedCustomerId: string | null }`
   - `type Violation = { gate: 'G1' | 'G2' | 'G3' | 'G4' | 'G5' | 'G6'; detail: string }`
   - `checkReply(raw: unknown, facts: TurnFacts): { ok: boolean; violations: Violation[]; reply: Reply | null }`
@@ -2924,7 +2924,9 @@ export const ReplySchema = z.object({
   escalation_category: z.enum(['compliance', 'account', 'dispute', 'payment', 'other']).nullable(),
 });
 export type Reply = z.infer<typeof ReplySchema>;
-export const REPLY_JSON_SCHEMA = z.toJSONSchema(ReplySchema);
+// The CLI refuses zod 4's `$schema: draft 2020-12` stamp (SPIKE.md), so it is dropped.
+const { $schema: _dialect, ...replyJsonSchema } = z.toJSONSchema(ReplySchema) as Record<string, unknown>;
+export const REPLY_JSON_SCHEMA = replyJsonSchema;
 export type TurnFacts = { groundedChunkIds: Set<string>; escalationRequired: boolean; supportNotes: string[];
   callerText: string; knownEmails: string[]; verifiedCustomerId: string | null };
 export type Violation = { gate: 'G1' | 'G2' | 'G3' | 'G4' | 'G5' | 'G6'; detail: string };
@@ -3263,6 +3265,8 @@ export function claudeRuntime(queryFn: typeof sdkQuery = sdkQuery): AgentRuntime
   } };
 }
 ```
+
+**From the Task 0 spike (SPIKE.md):** the SDK delivers structured output through a built-in `StructuredOutput` tool that appears as a `tool_use` block and reaches PreToolUse. So `ClaudeSession.turn` yields `tool_start` only for names starting `mcp__relaypay__`, and the hook always allows `StructuredOutput` without counting it. Add both as tests: a scripted `StructuredOutput` tool_use yields no `tool_start`, and five calls where one is `StructuredOutput` are all allowed. `canUseTool` is shadowed for `mcp__relaypay__*` by `allowedTools` (the SDK warns), which is why every per-call rule lives in the hook.
 
 `agent/hooks.ts` implements the three rules in the tests. The deny shape is `{ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason } }`, and the reasons are plain sentences the model can act on. `agent/queue.ts` is a standard pending-resolver queue: `push` resolves a waiting `next()` or buffers, and `end` resolves `{ done: true }`.
 
@@ -3604,7 +3608,7 @@ For **Review Focus 4**, the fake runtime's turn awaits a promise the test resolv
 
 - [ ] **Step 3: Implement** the four files. `agent/main.ts`:
 1. Checks config at boot, reading `config.agent.dailyCapUsd`, which throws if misconfigured.
-2. Calls `startup({ options: { model: config.models.agent } })` to prewarm, logging a warning on failure (Week 5 `worker/index.ts:206` pattern).
+2. Faults in the native binary with one throwaway `startup({ options: { model: config.models.agent } })` that is `close()`d at once, logging a warning on failure (Week 5 `worker/index.ts:206` pattern). A `WarmQuery` is single-use and bound to its options, including the per-call `x-conversation-id` header (SPIKE.md), so the real prewarm is per call: `sessions.getOrOpen` on `status-update in-progress` opens the session with `startup({ options })` while Vapi speaks the first message.
 3. Starts HTTP on `PORT ?? 8787`.
 4. Runs `closeIdle` every 60 s.
 5. On `SIGTERM`, stops accepting, settles in-flight turns for up to 10 s, then closes all sessions.

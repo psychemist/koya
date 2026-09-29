@@ -1,0 +1,15 @@
+# Dependencies and build output.
+node_modules/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+
+# Secrets. The root .gitignore patterns (*/.env.local) only reach one level deep,
+# so they do not cover this folder.
+.env
+.env.local
+.env.*.local
+
+# The Agent SDK subprocess cwd stays empty.
+agent/workspace/*
+!agent/workspace/.gitkeep
