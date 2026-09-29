@@ -61,3 +61,11 @@ test('each turn resets the per-turn tool count', async () => {
   for await (const _ of s.turn('b')) { /* drain */ }
   assert.equal(s.state.toolCallsThisTurn, 0);
 });
+
+test('spec §12: when the RelayPay MCP server did not connect, the turn fails rather than letting the model answer without its tools', async () => {
+  const rt = claudeRuntime(fakeQuery([[
+    { type: 'system', subtype: 'init', mcp_servers: [{ name: 'relaypay', status: 'failed' }] },
+    { type: 'result', subtype: 'success', structured_output: { answer_type: 'decline' }, total_cost_usd: 0.001, duration_ms: 1 }]]) as any);
+  const s = await rt.open('c'); const ev: any[] = []; for await (const e of s.turn('check TXN-9001')) ev.push(e);
+  assert.deepEqual([ev.at(-1).ok, ev.at(-1).subtype], [false, 'mcp_unavailable']);
+});

@@ -60,15 +60,21 @@ class ClaudeSession implements AgentSession {
   async *turn(text: string): AsyncGenerator<RuntimeEvent> {
     this.state.toolCallsThisTurn = 0;
     this.queue.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null, session_id: '' } as SDKUserMessage);
+    let mcpDown = false;
     for (;;) {
       const { value: m, done } = await this.iter.next();
       if (done) { yield { kind: 'result', ok: false, subtype: 'session_closed', costUsd: 0, durationMs: 0 }; return; }
       // Only RelayPay tools start a tool: StructuredOutput is how the reply itself arrives (SPIKE.md).
       if (m.type === 'assistant') for (const b of m.message?.content ?? [])
         if (b.type === 'tool_use' && b.name !== STRUCTURED_OUTPUT_TOOL && String(b.name).startsWith('mcp__relaypay__')) yield { kind: 'tool_start', tool: b.name };
+      // Spec §12: without its tools the agent must not improvise, so a RelayPay server that did not
+      // connect fails the turn, and the caller hears the failure line instead of a guess.
+      if (m.type === 'system' && m.subtype === 'init')
+        mcpDown = !(m.mcp_servers ?? []).some((x: any) => x.name === 'relaypay' && x.status === 'connected');
       if (m.type === 'result') {
         const total = Number(m.total_cost_usd ?? 0); const costUsd = Math.max(0, total - this.costSoFar); this.costSoFar = total;
         if (m.subtype === 'error_max_budget_usd') this.state.budgetExhausted = true;
+        if (mcpDown) { yield { kind: 'result', ok: false, subtype: 'mcp_unavailable', costUsd, durationMs: m.duration_ms ?? 0 }; return; }
         yield m.subtype === 'success'
           ? { kind: 'result', ok: true, output: m.structured_output, costUsd, durationMs: m.duration_ms ?? 0 }
           : { kind: 'result', ok: false, subtype: m.subtype, costUsd, durationMs: m.duration_ms ?? 0 };
