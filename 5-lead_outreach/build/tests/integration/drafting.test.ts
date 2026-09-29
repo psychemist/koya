@@ -5,13 +5,12 @@ import { query, one } from '../../lib/db.ts';
 import { seedRun, dropRun, skipWithoutDatabase } from '../helpers.ts';
 
 /**
- * Drafts could be blocked and never unblocked.
+ * Every draft on the desk is written through here.
  *
- * `save_outreach` sets `drafts_blocked` when the copy gates reject a draft
- * twice, and a lead promoted by a reviewer after the run has no drafts at all.
- * Either way the reviewer saw "Copy needs writing by hand" and had no way to
- * ask for another attempt, so the only route back was re-running the whole
- * agent for a company that was already qualified.
+ * The run itself no longer writes copy: the agent qualifies companies and a
+ * reviewer asks for the messages they want. So this is the only path to the
+ * drafts table, it holds the copy gates, and a rejection has to leave the lead
+ * in a state the reviewer can act on rather than merely refuse.
  *
  * The generator is injected, as the Firecrawl fetcher is. The lesson from the
  * first pass was that a provider you cannot substitute is a provider your
@@ -240,7 +239,7 @@ test('a failed one step rewrite does not block the lead or lose what was there',
     const id = await seedQualifiedLead(run.id, null);
     await draftForLead(id, { generate: generator() });
 
-    // An em dash fails the house style gate, exactly as save_outreach gates it.
+    // An em dash fails the house style gate, which every draft passes through.
     const bad = [{ ...GOOD[1], body: 'Acme is hiring a revenue operations manager — and we '
       + 'place trained assistants who take on invoice reconciliation.' }];
     await assert.rejects(
@@ -262,17 +261,17 @@ test('the reviewer note reaches the generator, trimmed and capped',
     const id = await seedQualifiedLead(run.id, null);
 
     let seen: string | undefined;
-    let seenStep: number | undefined;
+    let seenSteps: number[] | undefined;
     await draftForLead(id, {
       step: 1,
       context: '  make it   shorter\n and mention their funding  ',
       generate: async (input) => {
-        seen = input.context; seenStep = input.step;
+        seen = input.context; seenSteps = input.steps;
         return { steps: [GOOD[1]], costUsd: 0 };
       },
     });
     assert.equal(seen, 'make it shorter and mention their funding');
-    assert.equal(seenStep, 1);
+    assert.deepEqual(seenSteps, [1]);
     await dropRun(run.id);
   });
 
@@ -288,3 +287,95 @@ test('an unknown step is refused before anything is generated or spent',
     assert.equal(called, false, 'the model was called for a step that cannot exist');
     await dropRun(run.id);
   });
+
+/**
+ * Copy is written when somebody asks for it, not when a lead qualifies.
+ *
+ * The run used to write a LinkedIn message and three emails for every company
+ * it qualified, which spent the model budget on four messages per lead before
+ * a reviewer had decided whether they wanted any of them. A reviewer now asks
+ * for the message they want, so the set of steps has to travel end to end.
+ */
+const EMAILS = [
+  { ...GOOD[1], step: 1 },
+  { ...GOOD[1], step: 2, subject: 'Following up on reconciliation' },
+  { ...GOOD[1], step: 3, subject: 'Last note on reconciliation' },
+];
+
+test('asking for two emails writes those two and touches nothing else',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ status: 'complete', icp: {} as any });
+    const id = await seedQualifiedLead(run.id, null);
+
+    // The LinkedIn message is already there, and must survive.
+    await draftForLead(id, { steps: [0], generate: generator([GOOD[0]]) });
+
+    let asked: number[] | undefined;
+    await draftForLead(id, {
+      steps: [1, 2],
+      generate: async (input) => {
+        asked = input.steps;
+        return { steps: [EMAILS[0], EMAILS[1]], costUsd: 0 };
+      },
+    });
+
+    assert.deepEqual(asked, [1, 2], 'the generator was not told which steps to write');
+    const rows = await query<{ step: number }>(
+      'select step from public.outreach_drafts where lead_id = $1 order by step', [id]);
+    assert.deepEqual(rows.map((r) => r.step), [0, 1, 2]);
+    await dropRun(run.id);
+  });
+
+test('a model that skips a requested email is rejected rather than half saved',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ status: 'complete', icp: {} as any });
+    const id = await seedQualifiedLead(run.id, null);
+
+    await assert.rejects(
+      // Asked for three, returns two. Saving those two would leave a gap the
+      // reviewer has to notice for themselves.
+      () => draftForLead(id, {
+        steps: [1, 2, 3], attempts: 1,
+        generate: async () => ({ steps: [EMAILS[0], EMAILS[1]], costUsd: 0 }),
+      }),
+      /email 3/i);
+    const rows = await query<{ n: string }>(
+      'select count(*)::text as n from public.outreach_drafts where lead_id = $1', [id]);
+    assert.equal(rows[0]!.n, '0', 'a partial sequence was written');
+    await dropRun(run.id);
+  });
+
+test('a partial write leaves the other steps alone rather than blocking the lead',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ status: 'complete', icp: {} as any });
+    const id = await seedQualifiedLead(run.id, null);
+    await draftForLead(id, { steps: [0], generate: generator([GOOD[0]]) });
+
+    await assert.rejects(
+      () => draftForLead(id, {
+        steps: [1], attempts: 1,
+        generate: async () => ({ steps: [], costUsd: 0 }),
+      }),
+      /rejected after/i);
+
+    const lead = await one<{ drafts_blocked: string | null }>(
+      'select drafts_blocked from public.leads where id = $1', [id]);
+    assert.equal(lead!.drafts_blocked, null,
+      'a refused email marked the whole lead as needing copy written by hand');
+    const rows = await query<{ step: number }>(
+      'select step from public.outreach_drafts where lead_id = $1', [id]);
+    assert.deepEqual(rows.map((r) => r.step), [0], 'the LinkedIn message was lost');
+    await dropRun(run.id);
+  });
+
+test('there is no fourth email to ask for', { skip: skipWithoutDatabase }, async () => {
+  const run = await seedRun({ status: 'complete', icp: {} as any });
+  const id = await seedQualifiedLead(run.id, null);
+  let called = false;
+  await assert.rejects(
+    () => draftForLead(id, { steps: [1, 2, 3, 4], generate: async () => {
+      called = true; return { steps: [], costUsd: 0 }; } }),
+    /no step 4/i);
+  assert.equal(called, false, 'the model was called for a step that cannot exist');
+  await dropRun(run.id);
+});

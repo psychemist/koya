@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { percent } from '../../ui/format';
+
 /**
  * Judge this lead again.
  *
@@ -76,7 +78,7 @@ export function Reassess({ leadId, confidence }: { leadId: string; confidence: s
             : 'This judges again on the evidence already gathered. It reads nothing new '
               + 'and costs a few cents.'}{' '}
           Your note is weighed against the evidence, not taken as fact, and qualified still
-          needs a fit reason and confidence of at least 0.40.
+          needs a fit reason and confidence of at least 40%.
         </p>
         <button onClick={() => go(research)} disabled={busy}>
           {busy ? 'Judging' : research ? 'Research and judge again' : 'Judge again'}
@@ -100,8 +102,9 @@ export function Reassess({ leadId, confidence }: { leadId: string; confidence: s
         </button>
       </div>
       <p className="small muted" style={{ margin: '6px 0 0' }}>
-        Confidence is {confidence}, and {Number(confidence) < 0.4 ? 'below' : 'at or above'} the
-        0.40 a qualified lead needs. Judging again can move it either way.
+        Confidence is {percent(confidence)}, and{' '}
+        {Number(confidence) < 0.4 ? 'below' : 'at or above'} the 40% a qualified lead needs.
+        Judging again can move it either way.
       </p>
       {error && <p className="small state-failed" style={{ margin: '6px 0 0' }}>{error}</p>}
     </div>

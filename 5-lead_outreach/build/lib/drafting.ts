@@ -31,8 +31,9 @@ export type Generator = (input: {
   company: string; domain: string; evidence: string;
   fitReasons: string[]; sourceUrls: string[]; guidance: string;
   previousFailure?: string;
-  /** Rewrite this step alone, leaving the rest of the sequence standing. */
-  step?: number;
+  /** Write these steps and no others, leaving the rest of the sequence
+   *  standing. Omitted, the whole sequence is written. */
+  steps?: number[];
   /** What the reviewer asked for, in their own words. */
   context?: string;
 }) => Promise<{ steps: GeneratedDraft[]; costUsd: number }>;
@@ -43,6 +44,26 @@ export const STEP_NAMES: Record<number, string> = {
   2: 'Email 2',
   3: 'Email 3',
 };
+
+/** Step 0 is the LinkedIn message. */
+export const LINKEDIN_STEP = 0;
+
+/**
+ * The emails, in order, and there are only ever these three.
+ *
+ * The table already refuses a fourth through `drafts_step_valid`, so this is
+ * the same ceiling said where a reader and a reviewer can see it rather than
+ * discovered as a constraint violation.
+ */
+export const EMAIL_STEPS = [1, 2, 3] as const;
+export const MAX_EMAILS = EMAIL_STEPS.length;
+
+/** Reads as a list a person would say out loud: "Email 1, Email 2 and Email 3". */
+function named(steps: number[]): string {
+  const names = steps.map((n) => STEP_NAMES[n] ?? `step ${n}`);
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
 
 /**
  * A reviewer's note is a request, not a rule.
@@ -87,14 +108,26 @@ function copyGuidance(): string {
  * enforce are stated here rather than left to be discovered by rejection.
  */
 export function draftingSystemPrompt(
-  guidance: string, previousFailure?: string, step?: number,
+  guidance: string, previousFailure?: string, want?: number | number[],
 ): string {
-  const one = step !== undefined;
+  const steps = want === undefined ? undefined
+    : Array.isArray(want) ? [...new Set(want)].sort((a, b) => a - b) : [want];
+  const one = steps?.length === 1;
+  const some = steps !== undefined && steps.length > 1;
   return `${guidance}\n\n` +
     (one
-      ? `Rewrite ONE step of an existing outreach sequence: step ${step}, the ` +
-        `${STEP_NAMES[step] ?? `step ${step}`}. The other steps are already written and ` +
-        'are not being changed, so return this step and no other. '
+      ? `Rewrite ONE step of an existing outreach sequence: step ${steps![0]}, the ` +
+        `${STEP_NAMES[steps![0]] ?? `step ${steps![0]}`}. The other steps are already ` +
+        'written and are not being changed, so return this step and no other. '
+      : some
+      // A reviewer asks for the messages they want, so the model is told the
+      // set rather than the whole sequence. Anything outside the set either
+      // exists already or was not asked for, and writing it would spend money
+      // on copy nobody requested.
+      ? `Write ONLY these steps of an outreach sequence: ${named(steps!)}. ` +
+        `Return exactly ${steps!.length} entries, with step set to ` +
+        `${steps!.join(', ')} respectively, and no others. Any other step either ` +
+        'exists already or was not asked for. '
       : 'Write a 3 step email sequence and one LinkedIn message for the company below. ') +
     'Ground every claim in the supplied evidence and nothing else.\n\n' +
     'HARD LIMITS, checked in code and rejected if missed:\n' +
@@ -106,7 +139,7 @@ export function draftingSystemPrompt(
     'Return JSON only, as {"steps":[{"step":0|1|2|3,"subject":"emails only","body":"...",' +
     '"personalization_note":"which detail this uses","source_url":"..."}]}. ' +
     'Step 0 is the LinkedIn message; 1, 2 and 3 are the emails in order.' +
-    (one ? ` Return exactly one entry, with step set to ${step}.` : '') +
+    (one ? ` Return exactly one entry, with step set to ${steps![0]}.` : '') +
     /**
      * Said here because the note arrives in the user turn, where a request to
      * write "a proper long email" reads like an instruction unless the frame
@@ -138,7 +171,7 @@ const liveGenerator: Generator = async (input) => {
      * Deep thinking here buys nothing and was crowding out the answer.
      */
     output_config: { effort: 'low' },
-    system: draftingSystemPrompt(input.guidance, input.previousFailure, input.step),
+    system: draftingSystemPrompt(input.guidance, input.previousFailure, input.steps),
     messages: [{
       role: 'user',
       content:
@@ -166,6 +199,8 @@ export async function draftForLead(
     generate?: Generator; attempts?: number;
     /** Rewrite this step alone. Omitted, the whole sequence is rewritten. */
     step?: number;
+    /** Write exactly these steps. Takes precedence over `step`. */
+    steps?: number[];
     /** The reviewer's note, in their own words. */
     context?: string;
   } = {},
@@ -225,12 +260,23 @@ export async function draftForLead(
   const generate = opts.generate ?? liveGenerator;
   const guidance = copyGuidance();
   const maxAttempts = opts.attempts ?? ATTEMPTS;
-  const step = opts.step;
   const context = cleanContext(opts.context);
 
-  if (step !== undefined && !(step in STEP_NAMES)) {
-    throw new ProviderError('DRAFT_NO_STEP',
-      `There is no step ${step}. The sequence is 0 (LinkedIn) and 1 to 3 (the emails).`);
+  // One shape from here down: a sorted set of steps, or undefined for the
+  // whole sequence. `step` stays because a per-step rewrite is still a single
+  // step, and there is no reason to make that caller build an array.
+  const asked = opts.steps ?? (opts.step !== undefined ? [opts.step] : undefined);
+  const wanted = asked === undefined
+    ? undefined : [...new Set(asked)].sort((a, b) => a - b);
+
+  for (const n of wanted ?? []) {
+    if (!(n in STEP_NAMES)) {
+      throw new ProviderError('DRAFT_NO_STEP',
+        `There is no step ${n}. The sequence is 0 (LinkedIn) and 1 to 3 (the emails).`);
+    }
+  }
+  if (wanted?.length === 0) {
+    throw new ProviderError('DRAFT_NO_STEP', 'Name at least one message to write.');
   }
 
   let costUsd = 0;
@@ -240,21 +286,29 @@ export async function draftForLead(
     const out = await generate({
       company: lead.company_name, domain: lead.company_domain, evidence,
       fitReasons: lead.fit_reasons ?? [], sourceUrls: lead.source_urls ?? [],
-      guidance, previousFailure: lastFailure || undefined, step, context,
+      guidance, previousFailure: lastFailure || undefined, steps: wanted, context,
     });
     costUsd += out.costUsd ?? 0;
 
-    // A single-step rewrite takes only the step it asked for, whatever else
-    // came back. A model returning the whole sequence anyway must not quietly
-    // overwrite three drafts the reviewer did not ask to change.
-    const produced = step === undefined
+    // Only the steps that were asked for, whatever else came back, and one
+    // draft per step. A model returning the whole sequence anyway must not
+    // quietly overwrite drafts the reviewer did not ask to change.
+    const produced = wanted === undefined
       ? out.steps
-      : out.steps.filter((d) => Number(d.step) === step).slice(0, 1);
+      : wanted
+          .map((n) => out.steps.find((d) => Number(d.step) === n))
+          .filter((d): d is GeneratedDraft => d !== undefined);
 
-    if (!produced.length) {
-      lastFailure = step === undefined
+    // Every step that was asked for, or none of them. Writing two of three
+    // requested emails and calling it done leaves a gap the reviewer has to
+    // notice for themselves.
+    const missing = wanted === undefined ? [] : wanted.filter(
+      (n) => !produced.some((d) => Number(d.step) === n));
+
+    if (!produced.length || missing.length) {
+      lastFailure = wanted === undefined
         ? 'the model returned no drafts'
-        : `the model returned nothing for step ${step}`;
+        : `the model returned nothing for ${named(missing)}`;
       continue;
     }
 
@@ -274,11 +328,11 @@ export async function draftForLead(
     // reviewer opening the lead should not have to work out which is current.
     // Scoped to the one step when that is what was asked for, so rewriting the
     // second email does not take the other three with it.
-    if (step === undefined) {
+    if (wanted === undefined) {
       await query('delete from public.outreach_drafts where lead_id = $1', [leadId]);
     } else {
-      await query('delete from public.outreach_drafts where lead_id = $1 and step = $2',
-        [leadId, step]);
+      await query('delete from public.outreach_drafts where lead_id = $1 and step = any($2)',
+        [leadId, wanted]);
     }
     for (const { draft, results } of gated) {
       await query(
@@ -293,7 +347,7 @@ export async function draftForLead(
     // Only a full rewrite can clear the block, because only a full rewrite
     // knows the whole sequence passed. One good step says nothing about the
     // three that are not being touched.
-    if (step === undefined) {
+    if (wanted === undefined) {
       await query('update public.leads set drafts_blocked = null where id = $1', [leadId]);
     }
     if (costUsd > 0) {
@@ -310,7 +364,7 @@ export async function draftForLead(
   // A failed single-step rewrite must not mark the whole lead as needing to be
   // written by hand: the other three steps are untouched and still fine. The
   // reviewer is told inline instead, and what they had is still there.
-  if (step === undefined) {
+  if (wanted === undefined) {
     await query('update public.leads set drafts_blocked = $2 where id = $1', [leadId, reason]);
   }
   if (costUsd > 0) {

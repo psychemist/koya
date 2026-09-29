@@ -38,16 +38,32 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   // A body is optional: no body still means "rewrite the whole sequence",
   // which is what the button did before it could do anything narrower.
   const body = await request.json().catch(() => ({})) as
-    { step?: unknown; context?: unknown };
+    { step?: unknown; steps?: unknown; context?: unknown };
+
   const step = body.step === undefined || body.step === null
     ? undefined : Number(body.step);
   if (step !== undefined && !Number.isInteger(step)) {
     return NextResponse.json({ error: 'step must be a whole number.' }, { status: 400 });
   }
 
+  // A set of steps is how the page asks for "the LinkedIn message" or "two
+  // emails". Which steps those are is worked out on the page, because only the
+  // page knows what the lead already has.
+  let steps: number[] | undefined;
+  if (body.steps !== undefined && body.steps !== null) {
+    if (!Array.isArray(body.steps) || !body.steps.length) {
+      return NextResponse.json(
+        { error: 'steps must be a list naming at least one message.' }, { status: 400 });
+    }
+    steps = body.steps.map(Number);
+    if (!steps.every(Number.isInteger)) {
+      return NextResponse.json({ error: 'Every step must be a whole number.' }, { status: 400 });
+    }
+  }
+
   try {
     const out = await draftForLead(id, {
-      step,
+      step, steps,
       context: typeof body.context === 'string' ? body.context : undefined,
     });
     return NextResponse.json({ saved: out.saved, costUsd: out.costUsd });

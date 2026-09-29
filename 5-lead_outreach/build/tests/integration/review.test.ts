@@ -103,11 +103,13 @@ test('a promoted lead reaches the delivered list, so a later run does not redisc
     await dropRun(run.id);
   });
 
-test('a promoted lead with no drafts says so rather than shipping with no copy',
+test('a promoted lead is not accused of needing copy written by hand',
   { skip: skipWithoutDatabase }, async () => {
-    // The agent only writes copy for leads it qualified itself, so a lead
-    // promoted afterwards has none. Silence here would hand a reviewer a
-    // qualified company with nothing to send.
+    // It used to be marked that way, because the agent wrote copy for the
+    // leads it qualified and never for anything promoted afterwards. The
+    // agent writes no copy at all now, so having none is the ordinary state
+    // of a qualified lead and means only that nobody has asked for any. The
+    // old marking would put a warning on every promotion.
     const run = await seedRun();
     const lead = await seedLead(run.id);
 
@@ -115,8 +117,8 @@ test('a promoted lead with no drafts says so rather than shipping with no copy',
 
     const [row] = await query<{ drafts_blocked: string | null }>(
       'select drafts_blocked from public.leads where id = $1', [lead.id]);
-    assert.ok(row.drafts_blocked && /hand/i.test(row.drafts_blocked),
-      `a promoted lead with no drafts was left silent: ${row.drafts_blocked}`);
+    assert.equal(row.drafts_blocked, null,
+      `a promotion blocked the drafts: ${row.drafts_blocked}`);
 
     await dropRun(run.id);
   });

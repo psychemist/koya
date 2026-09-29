@@ -331,6 +331,30 @@ a:hover { text-decoration-thickness: 2px; }
   margin-bottom: 10px;
 }
 
+/*
+ * The criteria, as a reader would lay them out.
+ *
+ * A label column narrow enough that the values line up down the page, because
+ * the question a reviewer is answering is "what were the rules", and rules
+ * read as a list of pairs rather than as prose.
+ */
+.criteria { display: grid; gap: 14px 0; margin: 0; }
+.criteria-row {
+  display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 0 20px;
+  align-items: baseline;
+}
+.criteria dt { font-size: 12px; font-weight: 700; }
+.criteria dd { margin: 0; font-size: 13.5px; }
+@media (max-width: 720px) {
+  .criteria-row { grid-template-columns: 1fr; gap: 4px 0; }
+}
+
+/* A value short enough to be a label rather than a sentence: an industry, a
+   country. Outlined rather than filled, so a row of them never competes with
+   a verdict chip. */
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { border: 1px solid var(--rule); padding: 2px 8px; font-size: 12.5px; }
+
 ul.tight { margin: 0 0 12px; padding-left: 18px; }
 ul.tight li { margin-bottom: 5px; }
 

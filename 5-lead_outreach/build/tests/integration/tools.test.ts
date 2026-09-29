@@ -6,7 +6,6 @@ import { saveIcp } from '../../lib/agent/tools/save-icp.ts';
 import { discoverCompanies } from '../../lib/agent/tools/discover-companies.ts';
 import { scrapeCompanySite } from '../../lib/agent/tools/scrape-company-site.ts';
 import { saveLead } from '../../lib/agent/tools/save-lead.ts';
-import { saveOutreach } from '../../lib/agent/tools/save-outreach.ts';
 import { finishRun } from '../../lib/agent/tools/finish-run.ts';
 import { query, one } from '../../lib/db.ts';
 import { seedRun, dropRun, skipWithoutDatabase } from '../helpers.ts';
@@ -30,7 +29,7 @@ test('no tool accepts a system limit from the model', () => {
     '^(max_results|max_items|maxItems|limit|n|top_k|candidate_budget|scrape_budget|' +
     'budget_usd|target_leads|max_turns)$', 'i');
   for (const t of [getRunState, saveIcp, discoverCompanies, scrapeCompanySite,
-                   saveLead, saveOutreach, finishRun] as any[]) {
+                   saveLead, finishRun] as any[]) {
     for (const key of Object.keys(t.inputSchema)) {
       assert.ok(!forbidden.test(key), `${t.name} exposes "${key}" to the model`);
     }
@@ -39,7 +38,7 @@ test('no tool accepts a system limit from the model', () => {
 
 test('the tool surface contains no route to a person', () => {
   for (const t of [getRunState, saveIcp, discoverCompanies, scrapeCompanySite,
-                   saveLead, saveOutreach, finishRun] as any[]) {
+                   saveLead, finishRun] as any[]) {
     assert.ok(!/notify|send|email|discord|webhook/i.test(t.name), `reachable: ${t.name}`);
   }
 });
@@ -176,31 +175,6 @@ test('scrape_company_site refuses a domain that is not a candidate of this run',
     await dropRun(run.id);
   });
 
-test('save_outreach refuses a draft with an em dash and says which gate',
-  { skip: skipWithoutDatabase }, async () => {
-    const run = await seedRun({});
-    await query(
-      `insert into public.scraped_pages
-         (run_id, company_domain, url, content_hash, screened_summary)
-       values ($1,'acme.co','https://acme.co/about','h',$2)`, [run.id, SOURCE]);
-    const lead = await one<{ id: string }>(
-      `insert into public.leads
-         (run_id, company_name, company_domain, qualification_status, confidence,
-          fit_reasons, source_urls, source_summary)
-       values ($1,'Acme','acme.co','qualified',0.9,'{"us"}','{"https://acme.co/about"}',$2)
-       returning id`, [run.id, SOURCE]);
-
-    const r = await call(saveOutreach, {
-      run_id: run.id, purpose: 't', lead_id: lead!.id,
-      steps: [{ step: 1, subject: 'Hi',
-                body: 'You build payroll tools — we can help.',
-                personalization_note: 'from the about page' }],
-    });
-    assert.equal(r.isError, true);
-    assert.match(text(r), /house-style/);
-    await dropRun(run.id);
-  });
-
 test('finish_run refuses complete when the recount disagrees',
   { skip: skipWithoutDatabase }, async () => {
     const run = await seedRun({});
@@ -251,3 +225,4 @@ test('get_run_state returns usable text rather than failing on an unknown run',
     assert.equal(r.isError, undefined);
     assert.match(text(r), /unavailable/i);
   });
+

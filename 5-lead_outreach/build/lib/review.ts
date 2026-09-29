@@ -21,13 +21,7 @@ export type VerdictOutcome = {
   status: string;
   promoted: boolean;
   demoted: boolean;
-  /** True when the promotion left the lead with no copy to send. */
-  draftsBlocked: boolean;
 };
-
-const NO_DRAFTS =
-  'Promoted by a reviewer after the run, so the agent never wrote copy for it. ' +
-  'Write the outreach by hand.';
 
 type LeadRow = {
   id: string; run_id: string; company_domain: string;
@@ -80,14 +74,11 @@ export async function applyHumanVerdict(
       : lead.qualification_status;
     const moved = promoted || demoted;
 
-    // Only a promotion can leave a lead with nothing to send: the agent writes
-    // copy for what it qualified itself, and never for anything else.
-    let draftsBlocked = false;
-    if (promoted) {
-      const { rows: drafts } = await client.query<{ n: string }>(
-        'select count(*)::text as n from public.outreach_drafts where lead_id = $1', [leadId]);
-      draftsBlocked = Number(drafts[0]?.n ?? 0) === 0;
-    }
+    // A promoted lead used to be marked "write the outreach by hand" when it
+    // had no drafts, because the agent wrote copy for what it qualified and
+    // never for anything else. The agent writes no copy at all now, so having
+    // none is the ordinary state of every qualified lead and means only that
+    // nobody has asked yet. Marking it would put a warning on every promotion.
 
     await client.query(
       `update public.leads
@@ -98,11 +89,10 @@ export async function applyHumanVerdict(
               -- originally said.
               agent_verdict    = case when $5 then coalesce(agent_verdict, $6)
                                       else agent_verdict end,
-              human_decided_at = case when $5 then now() else human_decided_at end,
-              drafts_blocked   = case when $7 then $8 else drafts_blocked end
+              human_decided_at = case when $5 then now() else human_decided_at end
         where id = $1`,
       [leadId, status ?? null, note ?? null, nextStatus, moved,
-       lead.qualification_status, draftsBlocked, NO_DRAFTS],
+       lead.qualification_status],
     );
 
     if (promoted) {
@@ -126,6 +116,6 @@ export async function applyHumanVerdict(
       );
     }
 
-    return { status: nextStatus, promoted, demoted, draftsBlocked };
+    return { status: nextStatus, promoted, demoted };
   });
 }

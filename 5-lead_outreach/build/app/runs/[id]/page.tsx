@@ -5,7 +5,10 @@ import { notificationStatus } from '../../../lib/notify/index.ts';
 import { splitObjective } from '../../../lib/objective.ts';
 import { ConfirmDelete } from '../../ui/confirm';
 import { ContinueRun } from './continue-run';
+import { DraftRequests } from './draft-requests';
 import { Redraft } from './redraft';
+import { percent } from '../../ui/format';
+import { IcpCriteria } from './icp-criteria';
 import { Nav } from '../../ui/nav';
 import { Progress } from './progress';
 import { DraftEditor } from './draft-editor';
@@ -106,7 +109,9 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           <span className="chip" data-verdict={lead.qualification_status}>
             {lead.qualification_status.replace(/_/g, ' ')}
           </span>
-          <span className="small muted lead-confidence">confidence {lead.confidence}</span>
+          <span className="small muted lead-confidence">
+            confidence {percent(lead.confidence)}
+          </span>
           {/* The slot is spent whether or not it is filled, because the head
               only lines up down a list of thirty if every card spends the
               same cells. It reads the shared mark rather than the row, so it
@@ -204,21 +209,36 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               </div>
             )}
             {leadDrafts.length === 0 && !lead.drafts_blocked && (
-              <p className="small muted">No drafts were written for this lead.</p>
+              <p className="small muted">
+                No copy has been written for this lead yet.
+              </p>
             )}
             {leadDrafts.map((d) => <DraftEditor key={d.id} draft={d} leadId={lead.id} />)}
-            {/* Offered on every qualified lead, not only on a blocked one. A
-                block is answerable by trying again, but so is copy that simply
-                reads badly, and the only route there was re-running the whole
-                agent for a company already qualified and researched. Asking
-                again REPLACES what is there, so the button confirms first when
-                there is something to lose. */}
+            {/* Only a qualified lead gets copy, which the API enforces too. A
+                reviewer who disagrees with the verdict accepts the lead first,
+                and that promotion is what makes these buttons appear. */}
+            {/* Only a qualified lead gets copy, which the API enforces too. A
+                needs_review lead a reviewer accepted IS qualified: accepting
+                moves qualification_status itself, so it arrives here without
+                needing a case of its own.
+
+                Three things, in the order a reviewer reaches for them: ask for
+                the messages you want, rewrite one that reads badly (under the
+                draft itself), or write the whole lot again. */}
             {lead.qualification_status === 'qualified' && (
-              <Redraft
-                leadId={lead.id}
-                existingDrafts={leadDrafts.length}
-                editedByHuman={leadDrafts.filter((d) => d.edited_by_human).length}
-              />
+              <>
+                <DraftRequests
+                  leadId={lead.id}
+                  existingSteps={leadDrafts.map((d) => d.step)}
+                />
+                {leadDrafts.length > 0 && (
+                  <Redraft
+                    leadId={lead.id}
+                    steps={leadDrafts.map((d) => d.step)}
+                    editedByHuman={leadDrafts.filter((d) => d.edited_by_human).length}
+                  />
+                )}
+              </>
             )}
           </section>
         </div>
@@ -306,9 +326,9 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
       {icp && (
         <details className="card" style={{ padding: '12px 18px', marginBottom: 18 }}>
           <summary><b>The criteria these companies were judged against</b></summary>
-          <pre className="excerpt" style={{ marginTop: 12 }}>
-            {JSON.stringify(icp, null, 2)}
-          </pre>
+          <div style={{ marginTop: 14 }}>
+            <IcpCriteria icp={icp} />
+          </div>
         </details>
       )}
 

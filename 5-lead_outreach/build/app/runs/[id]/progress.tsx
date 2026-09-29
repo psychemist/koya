@@ -17,7 +17,8 @@ type Activity = {
 };
 
 type Snapshot = {
-  status: string; turns: number; candidatesRemaining: number; scrapesRemaining: number;
+  status: string;
+  turns: number; candidatesRemaining: number; scrapesRemaining: number;
   stats: { qualified: number; assessed: number; flaggedPages: number; blockedDrafts: number };
   activity: Activity[];
 };
@@ -29,6 +30,9 @@ const STAGE: Record<string, string> = {
   discover_companies: 'Searching for companies',
   scrape_company_site: 'Reading a company site',
   save_lead: 'Recording a verdict',
+  // Kept for runs recorded before the agent stopped drafting: their tool_calls
+  // rows still name it, and a stage label is more use to a reader than the raw
+  // tool name would be.
   save_outreach: 'Drafting outreach',
   get_run_state: 'Checking what is left',
   finish_run: 'Checking the list before finishing',

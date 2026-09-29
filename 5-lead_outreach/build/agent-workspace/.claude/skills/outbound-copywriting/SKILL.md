@@ -1,14 +1,19 @@
 ---
 name: outbound-copywriting
-description: Write a review-ready 3-step cold email sequence and a short LinkedIn message for a qualified lead, grounded in that lead's stored source context.
+description: Write the review-ready outreach a reviewer has asked for on a qualified lead, one message at a time, grounded in that lead's stored source context.
 ---
 
 Write for a human reviewer who will edit and then send. Nothing here is sent by the system.
 
-## Required output per qualified lead
-Three emails (`step` 1, 2, 3) each with `subject`, `body`, `personalization_note`, and
-the `source_url` the specific detail came from. Plus one LinkedIn message (`step` 0),
-body only, under 300 characters.
+## What a message carries
+An email (`step` 1, 2 or 3) carries a `subject`, a `body`, a `personalization_note` and
+the `source_url` the specific detail came from. A LinkedIn message (`step` 0) is body
+only, under 300 characters.
+
+Write the steps you were asked for and no others. A reviewer asks for a LinkedIn message
+or for one, two or three emails on the lead they have chosen, so the sequence is built up
+a message at a time rather than written in full for every company that qualifies. A step
+you were not asked for either exists already or was not wanted.
 
 ## House style, enforced in code
 - **No em dash. No double hyphen as a substitute.** Use a full stop, a comma, a colon
@@ -33,6 +38,8 @@ Fake urgency ("act now", "limited spots", "last chance"). Any personal email add
 Any calendar auto-book link. Any claim that something has already been sent or scheduled.
 
 ## Sequence shape
+The place each email holds, whether or not the others have been written yet.
+
 **Email 1** Open on a specific observation from the source context, connect it to AI
 automation support, ask one low-pressure question.
 **Email 2** A different angle: a workflow bottleneck, scaling challenge or operational
@@ -44,6 +51,6 @@ Good references evidence: website positioning, product or service category, audi
 served, a hiring or scaling signal, a public workflow clue.
 Weak is vague praise. The gate cannot always tell the difference. You can.
 
-## Before you call `save_outreach`
+## Before you hand a draft back
 Does each email name a real company-specific detail? Can each claim be traced to the
 source context? Is the ask clear? Would a human want to review this before sending?

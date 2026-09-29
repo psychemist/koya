@@ -202,5 +202,6 @@ test('row 21: the agent holds no tool that can reach a person', async () => {
     assert.ok(!LEADGEN_TOOL_NAMES.some((t) => t.toLowerCase().includes(banned)),
       `reachable: ${banned}`);
   }
-  assert.equal(LEADGEN_TOOL_NAMES.length, 7);
+  assert.equal(LEADGEN_TOOL_NAMES.length, 6);
 });
+

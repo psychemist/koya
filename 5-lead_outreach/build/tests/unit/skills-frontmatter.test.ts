@@ -31,3 +31,28 @@ test('no skill instructs the agent toward a capability it does not have', () => 
     }
   }
 });
+
+/**
+ * A skill naming a tool that was removed is worse than one naming a tool that
+ * never existed: it reads as current, and the model is told to call it.
+ *
+ * `save_outreach` was removed when drafting moved out of the run, and the
+ * copywriting skill went on ending with "before you call save_outreach" while
+ * the copy gates and the drafting prompt had moved on. The tool list is the
+ * source of truth, so the skills are checked against it rather than against a
+ * hand-kept list of names to avoid.
+ */
+test('no skill names a leadgen tool that is not wired up', async () => {
+  const { LEADGEN_TOOL_NAMES } = await import('../../lib/agent/server.ts');
+  const live = new Set(LEADGEN_TOOL_NAMES.map((t) => t.replace(/^mcp__leadgen__/, '')));
+
+  for (const name of SKILLS) {
+    const text = readFileSync(
+      new URL(`../../agent-workspace/.claude/skills/${name}/SKILL.md`, import.meta.url), 'utf8');
+    // The shape every tool on this server has: a verb, an underscore, a noun.
+    for (const named of text.match(/\b(?:save|get|discover|scrape|finish)_[a-z_]+\b/g) ?? []) {
+      assert.ok(live.has(named),
+        `${name} tells the agent to call ${named}, which is not a tool it has`);
+    }
+  }
+});

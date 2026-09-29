@@ -4,13 +4,20 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
- * Ask for the copy to be written again.
+ * Ask for the copy this lead already has to be written again.
  *
- * Offered only where it can do something: a qualified lead whose drafts are
- * blocked, either because the gates rejected two attempts or because a
- * reviewer promoted it after the run and the agent never wrote any. Before
- * this the page stated the block and offered no way out of it except
- * re-running the whole agent for a company already qualified and researched.
+ * The last of the three things a reviewer can do with copy: ask for the
+ * messages they want, rewrite one that reads badly, or throw the lot out and
+ * start over.
+ *
+ * "The whole copy" means the messages that exist, not the full four. A lead
+ * holding a LinkedIn message and one email gets those two written again and
+ * does not quietly acquire two more emails nobody asked for. That was this
+ * button's old behaviour, and it is the reason drafting moved onto buttons in
+ * the first place.
+ *
+ * Offered only once there is something to replace. With nothing written the
+ * question is which messages to write, which is what Write the outreach asks.
  *
  * The button says it spends money, because it does.
  */
@@ -19,9 +26,10 @@ import { useRouter } from 'next/navigation';
 const NOTE_MAX = 500;
 
 export function Redraft(
-  { leadId, existingDrafts = 0, editedByHuman = 0 }:
-  { leadId: string; existingDrafts?: number; editedByHuman?: number },
+  { leadId, steps, editedByHuman = 0 }:
+  { leadId: string; steps: number[]; editedByHuman?: number },
 ) {
+  const existingDrafts = steps.length;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
@@ -41,11 +49,12 @@ export function Redraft(
     setBusy(true);
     setError(null);
     try {
-      // No step: this rewrites the whole sequence. The note is optional.
+      // Named steps, not a bare request. Sending none means "write the whole
+      // sequence", which hands four messages back to a lead that has two.
       const res = await fetch(`/api/leads/${leadId}/drafts`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ context: note.trim() || undefined }),
+        body: JSON.stringify({ steps, context: note.trim() || undefined }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) { setError(body.error ?? 'That did not work.'); return; }
@@ -98,7 +107,7 @@ export function Redraft(
               To change one message on its own, use Rewrite this step under it instead.
             </>
           ) : (
-            'This writes the full sequence: the LinkedIn message and all three emails.'
+            'This writes the messages this lead already has again.'
           )}{' '}
           The copy is checked against the same gates, costs a few cents, and counts against
           the daily budget.
@@ -120,8 +129,8 @@ export function Redraft(
         {busy ? 'Writing the copy' : 'Write the copy again'}
       </button>
       <p className="small muted" style={{ margin: '6px 0 0' }}>
-        This asks the model for a fresh attempt at the whole sequence and checks it against
-        the same gates. It costs a few cents and counts against the daily budget.
+        A fresh attempt at every message this lead has, checked against the same gates. It
+        costs a few cents and counts against the daily budget.
       </p>
       {error && <p className="small state-failed" style={{ margin: '6px 0 0' }}>{error}</p>}
     </div>
