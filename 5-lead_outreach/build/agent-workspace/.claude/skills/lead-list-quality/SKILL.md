@@ -21,7 +21,7 @@ Run this before calling `finish_run`.
 | ICP fit | Matches every hard filter in the refined ICP |
 | Evidence quality | The decision uses real source context, not inference |
 | Duplicate rate | No domain appears twice |
-| Outreach relevance | Each sequence uses company-specific context |
+| Outreach relevance | Any copy that exists carries a body. A list with no copy passes: outreach is written on request, after the run |
 | Data completeness | Required fields present |
 | Safety compliance | No emails found, validated or sent |
 

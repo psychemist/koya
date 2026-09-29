@@ -315,3 +315,103 @@ test('a company that states no size is judged on its evidence, not dropped',
     assert.equal(lead.qualification_status, 'qualified');
     await dropRun(run.id);
   });
+
+/**
+ * The exit has to exist.
+ *
+ * Every test around finish_run asserted a REFUSAL: a recount that disagrees,
+ * a short list with no reason. Nothing asserted that a run doing its job
+ * properly can actually end, and on 2026-09-29 it could not. Moving drafting
+ * out of the run left the Outreach relevance dimension demanding drafts that
+ * no run writes any more, so the scorecard could never pass. Run 64a17413
+ * called finish_run ten times, was refused eight times on that one dimension,
+ * burned seventy turns and $1.57, and never finished.
+ *
+ * A gate nobody can satisfy is not strict, it is broken, and the way that
+ * stays visible is a test that walks through it.
+ */
+async function seedFinishable(runId: string, domain: string) {
+  await query(
+    `insert into public.scraped_pages
+       (run_id, company_domain, url, content_hash, screened_summary, http_status)
+     values ($1,$2,$3,'h',$4,200)`, [runId, domain, `https://${domain}/about`, SOURCE]);
+  await query(
+    `insert into public.leads
+       (run_id, company_name, company_domain, qualification_status, confidence,
+        fit_reasons, source_urls, source_summary)
+     values ($1,'Acme',$2,'qualified',0.8,ARRAY['Hiring a revenue operations manager'],
+             ARRAY[$3],$4)`,
+    [runId, domain, `https://${domain}/about`, SOURCE]);
+}
+
+test('a run that met its target finishes, with no copy written',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ target_leads: 1 });
+    await seedFinishable(run.id, 'finishable.test');
+
+    const r = await call(finishRun, {
+      run_id: run.id, purpose: 't', claimed_qualified: 1,
+      summary: 'One qualified company, with the page it was judged from.',
+    });
+
+    // A pass returns the scorecard too, so the refusal wording is what is
+    // checked rather than the mere mention of one.
+    assert.notEqual(r.isError, true, text(r));
+    assert.doesNotMatch(text(r), /does not pass|rejected/i,
+      `finish_run refused a well formed list: ${text(r)}`);
+    const [after] = await query<{ status: string }>(
+      'select status from public.runs where id = $1', [run.id]);
+    assert.equal(after.status, 'complete');
+    await dropRun(run.id);
+  });
+
+test('a run that fell short finishes as partial when it says why',
+  { skip: skipWithoutDatabase }, async () => {
+    const run = await seedRun({ target_leads: 5 });
+    await seedFinishable(run.id, 'short-run.test');
+
+    const r = await call(finishRun, {
+      run_id: run.id, purpose: 't', claimed_qualified: 1,
+      summary: 'One qualified company.',
+      shortfall_reason: 'The candidate budget ran out after 40 companies were assessed.',
+    });
+
+    assert.notEqual(r.isError, true, text(r));
+    const [after] = await query<{ status: string; shortfall_reason: string | null }>(
+      'select status, shortfall_reason from public.runs where id = $1', [run.id]);
+    assert.equal(after.status, 'partial');
+    assert.match(after.shortfall_reason ?? '', /candidate budget/);
+    await dropRun(run.id);
+  });
+
+test('a run that qualified nothing can still end',
+  { skip: skipWithoutDatabase }, async () => {
+    // The emptiest list there is. Every dimension is computed over qualified
+    // leads, so an empty set must pass them all rather than divide by zero or
+    // find fault with a list that has nothing in it.
+    const run = await seedRun({ target_leads: 3 });
+    const r = await call(finishRun, {
+      run_id: run.id, purpose: 't', claimed_qualified: 0,
+      summary: 'Nothing in this market matched the criteria.',
+      shortfall_reason: 'Discovery returned 12 companies and none passed the hard filters.',
+    });
+
+    assert.notEqual(r.isError, true, text(r));
+    const [after] = await query<{ status: string }>(
+      'select status from public.runs where id = $1', [run.id]);
+    assert.equal(after.status, 'partial');
+    await dropRun(run.id);
+  });
+
+/**
+ * The drafting tool is gone, and a named assertion says so.
+ *
+ * The count check next door catches an addition; this catches the specific
+ * one, so a future reader sees that its absence is deliberate rather than an
+ * oversight to be helpfully corrected.
+ */
+test('the agent has no way to write outreach during a run', async () => {
+  const { LEADGEN_TOOL_NAMES } = await import('../../lib/agent/server.ts');
+  assert.ok(!LEADGEN_TOOL_NAMES.some((t) => /outreach|draft/i.test(t)),
+    `a drafting tool is wired up again: ${LEADGEN_TOOL_NAMES.join(', ')}`);
+});

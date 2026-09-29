@@ -77,13 +77,24 @@ export async function recomputeScorecard(runId: string): Promise<Scorecard> {
     ? bad('Duplicate rate', `Repeated: ${dupes.map((d) => d.company_domain).join(', ')}.`)
     : ok('Duplicate rate', 'No company appears twice.'));
 
-  // Outreach relevance: a qualified lead has drafts, or a stated reason it has none.
-  const undrafted = leads.filter(
-    (l) => Number(l.draft_count) === 0 && !l.drafts_blocked);
-  dimensions.push(undrafted.length
-    ? bad('Outreach relevance',
-        `${undrafted.map(name).join(', ')} have neither drafts nor a reason they are blocked.`)
-    : ok('Outreach relevance', 'Every qualified lead has drafts or a stated blocker.'));
+  /**
+   * Outreach relevance, judged only where there is outreach to judge.
+   *
+   * This required every qualified lead to carry drafts or a stated reason it
+   * had none, which was right while the run wrote copy for everything it
+   * qualified. The run writes none now: a reviewer asks for the messages they
+   * want after reading the lead, so having no drafts is the ordinary state of
+   * a finished list rather than a fault in it.
+   *
+   */
+  const drafted = leads.filter((l) => Number(l.draft_count) > 0);
+  const hollow = drafted.filter((l) => !(l.bodies ?? []).some((b) => b?.trim()));
+  dimensions.push(hollow.length
+    ? bad('Outreach relevance', `${hollow.map(name).join(', ')} have drafts with no copy in them.`)
+    : ok('Outreach relevance', drafted.length
+        ? `Every draft stored on ${drafted.length} lead${drafted.length === 1 ? '' : 's'} carries copy.`
+        : 'No copy was written during this run, which is expected: it is written per '
+          + 'message, on request, after a reviewer has read the lead.'));
 
   // Data completeness: the fields a reviewer reads are present.
   const incomplete = leads.filter(
