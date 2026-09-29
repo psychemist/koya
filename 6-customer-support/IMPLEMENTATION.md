@@ -36,6 +36,7 @@
 | 3 | Runtime schema and lockdown | `feat(week6): runtime schema with row level security locked down` |
 | 4 | Pure domain helpers | `feat(week6): reference normaliser, identity matcher and support hours` |
 | 5 | Knowledge base | `feat(week6): knowledge chunking, voyage embeddings and hybrid search` |
+| 5b | Embedding timeouts | `fix(week6): give document embedding its own timeout and never throw an abort` |
 | 6 | MCP core | `feat(week6): mcp server core with transport-bound conversation and tool log` |
 | 7 | Retrieval tool | `feat(week6): search_knowledge_base tool with retrieval logging` |
 | 8 | Lookup tools | `feat(week6): lookup tools with two-identifier verification and safe outputs` |
@@ -60,6 +61,8 @@
 | 20f | Deliverables index | `docs(week6): deliverables index and readme` |
 
 **Rows added on 2026-09-29, with their reasons.** P: the `6-customer-support/` folder was untracked, so the spec and this plan are committed before any code, and the ledger exists in history before the work it governs. 14b and 16b: the owner asked for voice and chat as equals, not a typed fallback. Row 16's subject changed from `…voice page with typed fallback` because the typed box became Task 16b's chat box.
+
+5b (added 2026-09-29, after Task 5's commit): the first real ingest after the suite timed out, because documents and queries shared the 4 s timeout meant for a live query, and the abort escaped as an uncaught `DOMException` from the body read. Test first in `tests/unit/kb-embed.test.ts`.
 
 **Do not start Task 12 before Tasks 6 to 11 are green.** The agent must meet its cage finished, not the other way round.
 

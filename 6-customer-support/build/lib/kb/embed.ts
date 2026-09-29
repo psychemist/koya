@@ -5,18 +5,25 @@ import { config } from '../config.ts';
 export interface Embedder { model: string; embed(texts: string[], kind: 'document' | 'query'): Promise<{ vectors: number[][]; tokens: number }> }
 export const toVectorLiteral = (v: number[]) => `[${v.join(',')}]`;
 
+/** A live query is on the voice path and must fail fast; an ingest batch is not, and is larger. */
+const TIMEOUT_MS = { query: 4_000, document: 30_000 } as const;
+
 export function voyageEmbedder(apiKey: string, model = 'voyage-3.5-lite', dims = 1024): Embedder {
   return { model, async embed(texts, kind) {
-    let res: Response;
+    // Every failure, including an abort that fires while the body is still being read, is one
+    // EMBEDDING_FAILED, so search degrades to full text instead of crashing the caller.
     try {
-      res = await fetch('https://api.voyageai.com/v1/embeddings', {
+      const res = await fetch('https://api.voyageai.com/v1/embeddings', {
         method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
         body: JSON.stringify({ input: texts, model, input_type: kind, output_dimension: dims }),
-        signal: AbortSignal.timeout(4000) });
-    } catch (e) { throw new ToolError('EMBEDDING_FAILED', `voyage unreachable: ${(e as Error).message}`); }
-    if (!res.ok) throw new ToolError('EMBEDDING_FAILED', `voyage returned ${res.status}`);
-    const j = (await res.json()) as { data: { embedding: number[]; index: number }[]; usage: { total_tokens: number } };
-    return { vectors: j.data.sort((a, b) => a.index - b.index).map((d) => d.embedding), tokens: j.usage.total_tokens };
+        signal: AbortSignal.timeout(TIMEOUT_MS[kind]) });
+      if (!res.ok) throw new ToolError('EMBEDDING_FAILED', `voyage returned ${res.status}`);
+      const j = (await res.json()) as { data: { embedding: number[]; index: number }[]; usage: { total_tokens: number } };
+      return { vectors: j.data.sort((a, b) => a.index - b.index).map((d) => d.embedding), tokens: j.usage.total_tokens };
+    } catch (e) {
+      if (e instanceof ToolError) throw e;
+      throw new ToolError('EMBEDDING_FAILED', `voyage unreachable: ${(e as Error).message}`);
+    }
   } };
 }
 
