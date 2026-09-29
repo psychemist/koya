@@ -113,3 +113,12 @@ Until these are answered, the plan's fallbacks stand: `parseChatRequest` reads t
 - Ties in fused rank are broken by text rank, then similarity, then id, so retrieval logs are reproducible.
 - `ingestKb` re-embeds a chunk whose `embedding_model` differs from the embedder's, so the integration suite's fixture vectors never survive a real ingest. **After running the integration suite against this project, run `npm run kb:ingest` to restore Voyage vectors** (one request, 37 chunks).
 - `KB_FTS_STRONG` raised from 0.10 to 1.0: a body-only single-word match scored 0.1 and grounded "Should I invoice in euros for tax reasons?" in degraded mode. 1.0 means a query term on the FAQ heading. Task 18 tunes both thresholds on real vectors.
+
+## Owner actions still open (2026-09-29)
+
+| Needed for | Action | Unblocks |
+|---|---|---|
+| Live search quality | Add a payment method on the Voyage billing page (lifts the 3 RPM limit) | Non-degraded retrieval on every turn, Task 18 tuning |
+| Q8 to Q11 | Run `scripts/spike/vapi-log-server.ts` behind a tunnel against a throwaway assistant | Confirms the custom-llm path and call-id location |
+| Task 15, Step 4 | In the Vapi dashboard: a Custom LLM credential (value `VAPI_CUSTOM_LLM_KEY`) and a Bearer credential with header `X-Vapi-Secret` (value `VAPI_WEBHOOK_SECRET`); copy both ids into `.env.local`; restrict the public key's origins; set `VAPI_PRIVATE_KEY` and `AGENT_PUBLIC_URL`; `npm run vapi:sync`; create the free US number and assign the assistant | Voice calls, the phone number |
+| Task 10, Step 4 | Import `n8n/relaypay-escalation.json`, attach the Google Calendar, Discord and Gmail credentials, set the Variables `RELAYPAY_ESCALATION_SECRET` and `RELAYPAY_SUPPORT_INBOX`, set the calendar id, activate, and put the production webhook URL in `N8N_ESCALATION_URL` | Booked callbacks; until then every escalation takes the Resend fallback, which is tested |
