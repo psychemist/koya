@@ -50,6 +50,14 @@ test('custom-llm without the bearer key is 401, and the webhook without X-Vapi-S
   assert.equal((await fetch(`${base}/vapi/events`, { method: 'POST', body: '{}' })).status, 401);
 });
 
+test('the webhook also accepts the secret as Authorization: Bearer, which is how a Vapi Bearer Token credential sends it', async () => {
+  const send = (auth: string) => fetch(`${base}/vapi/events`, { method: 'POST',
+    headers: { authorization: auth, 'content-type': 'application/json' }, body: JSON.stringify({ message: { type: 'status-update' } }) });
+  assert.equal((await send('Bearer hook-test')).status, 200);
+  assert.equal((await send('Bearer wrong')).status, 401);
+  assert.equal((await send('hook-test')).status, 401);
+});
+
 test('a Vapi turn streams the reply as SSE and records the conversation with channel voice_web', { skip: skipWithoutDatabase }, async () => {
   const callId = `call-${randomUUID()}`;
   const res = await completion(callId, 'My payment is stuck.');

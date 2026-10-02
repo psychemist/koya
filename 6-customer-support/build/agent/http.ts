@@ -70,7 +70,12 @@ export function createAgentServer(deps: { sessions: SessionManager }): Server & 
   }
 
   async function vapiEvent(req: IncomingMessage, res: ServerResponse) {
-    if (!secretMatches(req.headers['x-vapi-secret'] as string | undefined, config.vapi.webhookSecret)) return json(res, 401, { error: 'unauthorized' });
+    // Either header carries the secret: X-Vapi-Secret from a custom-header credential, or
+    // Authorization: Bearer from a Bearer Token credential. Both are compared in constant time.
+    const hook = config.vapi.webhookSecret;
+    const viaHeader = secretMatches(req.headers['x-vapi-secret'] as string | undefined, hook);
+    const viaBearer = /^Bearer\s+/i.test(req.headers.authorization ?? '') && secretMatches(bearer(req), hook);
+    if (!viaHeader && !viaBearer) return json(res, 401, { error: 'unauthorized' });
     const m = parseServerMessage(await readJson(req));
     json(res, 200, {});                                   // Vapi is answered first; the work happens after.
     if (!m.callId) return;
