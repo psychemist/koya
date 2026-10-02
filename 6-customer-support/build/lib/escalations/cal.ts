@@ -25,6 +25,9 @@ async function call(base: string, path: string, version: string, init: { method?
   return { status: res.status, ok: res.ok, json };
 }
 
+/** Cal.com's own reason, kept in the outbox's last_error so a failed booking says why, not only its status. */
+const why = (j: any) => { const m = String(j?.error?.message ?? j?.message ?? '').trim(); return m ? `: ${m.slice(0, 200)}` : ''; };
+
 const sameInstant = (a: unknown, b: string) => typeof a === 'string' && new Date(a).getTime() === new Date(b).getTime();
 
 /**
@@ -44,13 +47,13 @@ export async function bookCallback(r: CallbackRequest, opts: { baseUrl: string; 
       const pad = (iso: string, min: number) => new Date(new Date(iso).getTime() + min * 60_000).toISOString();
       const found = await call(opts.baseUrl, '/v2/bookings', V_LIST, { query: { attendeeEmail: r.email, eventTypeId: String(eventTypeId),
         afterStart: pad(r.start, -1), beforeEnd: pad(end, 1) } });
-      if (!found.ok) return { result: 'failed', error: `cal.com lookup returned ${found.status}` };
+      if (!found.ok) return { result: 'failed', error: `cal.com lookup returned ${found.status}${why(found.json)}` };
       const hit = (found.json?.data ?? []).find((b: any) => sameInstant(b.start, r.start) && b.status !== 'cancelled');
       if (hit?.uid) return { result: 'booked', uid: String(hit.uid) };
     }
 
     const slots = await call(opts.baseUrl, '/v2/slots', V_SLOTS, { query: { eventTypeId: String(eventTypeId), start: r.start, end } });
-    if (!slots.ok) return { result: 'failed', error: `cal.com slots returned ${slots.status}` };
+    if (!slots.ok) return { result: 'failed', error: `cal.com slots returned ${slots.status}${why(slots.json)}` };
     const open = Object.values<any[]>(slots.json?.data ?? {}).flat().some((s) => sameInstant(s?.start, r.start));
     if (!open) return { result: 'slot_taken' };
 
@@ -59,7 +62,7 @@ export async function bookCallback(r: CallbackRequest, opts: { baseUrl: string; 
     if (made.ok && made.json?.data?.uid) return { result: 'booked', uid: String(made.json.data.uid) };
     // Someone took the slot between the check and the booking: the customer is offered other times, as for any taken slot.
     if (made.status < 500 && TAKEN.test(String(made.json?.error?.message ?? made.json?.message ?? ''))) return { result: 'slot_taken' };
-    return { result: 'failed', error: `cal.com booking returned ${made.status}` };
+    return { result: 'failed', error: `cal.com booking returned ${made.status}${why(made.json)}` };
   } catch (err) {
     return { result: 'failed', error: redactString(`cal.com unreachable: ${(err as Error).message}`) };
   }

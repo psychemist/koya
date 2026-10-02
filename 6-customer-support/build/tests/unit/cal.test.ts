@@ -59,7 +59,14 @@ test('any other refusal is a failure that carries the reason, and never throws',
   reset(free, () => ({ status: 500, json: { status: 'error', error: { message: 'internal' } } }));
   const r = await run();
   assert.equal(r.result, 'failed');
-  assert.match(r.error!, /cal\.com booking returned 500/);
+  assert.match(r.error!, /cal\.com booking returned 500: internal$/);
+});
+
+test('a 400 keeps Cal.com\'s own reason, so the outbox says why the booking failed', async () => {
+  reset(free, () => ({ status: 400, json: { status: 'error', error: { message: 'Attendee email domain is blocked' } } }));
+  const r = await run();
+  assert.equal(r.result, 'failed');
+  assert.equal(r.error, 'cal.com booking returned 400: Attendee email domain is blocked');
 });
 
 test('Cal.com unreachable is a failure, never a throw', async () => {
