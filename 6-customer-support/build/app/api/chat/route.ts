@@ -3,6 +3,8 @@ import { foreignOrigin } from '../../../lib/auth.ts';
 import { chatCookie, clearChatCookie, CHAT_COOKIE, issueChatToken, readChatToken } from '../../../lib/chat-session.ts';
 import { chatTranscript } from '../../../lib/chat-transcript.ts';
 import { createLimiter } from '../../../lib/rate-limit.ts';
+import { endAgentChat } from '../../../lib/agent-client.ts';
+import { CALLER_COOKIE, cookieFrom, readCallerCookie, type Caller } from '../../../lib/caller.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,13 +14,10 @@ const secure = () => config.web.baseUrl.startsWith('https://');
 const json = (status: number, body: unknown, cookie?: string) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...(cookie ? { 'set-cookie': cookie } : {}) } });
 
-function cookieToken(req: Request): string | null {
-  for (const part of (req.headers.get('cookie') ?? '').split(';')) {
-    const [k, ...v] = part.trim().split('=');
-    if (k === CHAT_COOKIE) return v.join('=');
-  }
-  return null;
-}
+const cookieToken = (req: Request) => cookieFrom(req.headers.get('cookie'), CHAT_COOKIE);
+const callerOf = (req: Request) => readCallerCookie(cookieFrom(req.headers.get('cookie'), CALLER_COOKIE));
+const callerBody = (c: Caller) => (c.mode === 'customer' ? { mode: 'customer', customer_id: c.customerId } : { mode: 'guest' });
+const NO_CALLER = 'Sign in or continue as a guest to start a chat.';
 const ipOf = (req: Request) => (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'unknown';
 /** A browser on another site may not drive this chat. */
 const foreign = foreignOrigin;
@@ -43,14 +42,16 @@ export async function POST(req: Request): Promise<Response> {
   try { message = ((await req.json()) as { message?: unknown }).message; } catch { return json(400, { error: 'Please type a message.' }); }
   if (typeof message !== 'string' || !message.trim()) return json(400, { error: 'Please type a message.' });
   if (message.length > 1000) return json(400, { error: 'Please keep your message under 1,000 characters.' });
+  const caller = callerOf(req);
+  if (!caller) return json(401, { error: NO_CALLER, signed_out: true });
   if (!limiter.take(ipOf(req))) return json(429, { error: "You're sending messages quickly. Please wait a minute and try again." });
 
   const current = readChatToken(cookieToken(req));
-  let r = await askAgent({ conversation_id: current ?? undefined, message, channel: 'web_text' });
+  let r = await askAgent({ conversation_id: current ?? undefined, message, channel: 'web_text', caller: callerBody(caller) });
   let newChat = false;
   if (current && r && (r.status === 404 || r.status === 409)) {
-    // The old chat ended or is not a chat: start a fresh one rather than failing the customer.
-    r = await askAgent({ message, channel: 'web_text' });
+    // The old chat ended, is not a chat, or belongs to whoever was signed in before: start a fresh one.
+    r = await askAgent({ message, channel: 'web_text', caller: callerBody(caller) });
     newChat = true;
   }
   if (!r || r.status !== 200 || !r.json?.conversation_id) return json(503, { error: UNAVAILABLE });
@@ -61,7 +62,7 @@ export async function POST(req: Request): Promise<Response> {
 /** The transcript for this browser's chat, so a refresh or a return visit shows what was said. */
 export async function GET(req: Request): Promise<Response> {
   const id = readChatToken(cookieToken(req));
-  if (!id) return json(200, { turns: [], ended: false, records: null });
+  if (!id || !callerOf(req)) return json(200, { turns: [], ended: false, records: null });
   try { return json(200, await chatTranscript(id)); } catch { return json(503, { error: UNAVAILABLE }); }
 }
 
@@ -69,10 +70,6 @@ export async function GET(req: Request): Promise<Response> {
 export async function DELETE(req: Request): Promise<Response> {
   if (foreign(req)) return json(403, { error: 'This chat only accepts messages from the RelayPay support page.' });
   const id = readChatToken(cookieToken(req));
-  if (id) {
-    await fetch(`${config.web.agentUrl}/chat/end`, { method: 'POST', signal: AbortSignal.timeout(15_000),
-      headers: { authorization: `Bearer ${config.agent.internalToken}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ conversation_id: id, reason: 'customer-ended-chat' }) }).catch(() => undefined);
-  }
+  if (id) await endAgentChat(id, 'customer-ended-chat');
   return new Response(null, { status: 204, headers: { 'set-cookie': clearChatCookie(secure()), 'cache-control': 'no-store' } });
 }

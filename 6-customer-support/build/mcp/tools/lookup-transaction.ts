@@ -2,6 +2,7 @@ import { z } from 'zod/v4';
 import { one } from '../../lib/db.ts';
 import { normalizeRef } from '../../lib/refs.ts';
 import { recordNeedsEscalation } from '../../lib/safe-summaries.ts';
+import { callerOf, GUEST_REFUSAL } from '../../lib/caller-binding.ts';
 import type { ToolSpec } from '../define.ts';
 
 const input = z.object({ transaction_id: z.string().trim().min(1).max(80).describe('The reference the caller gave, as they said it.') });
@@ -15,6 +16,7 @@ export const transactionTool: ToolSpec<typeof input> = {
     'support_summary in plain words. The amount is returned only when the owning customer is verified on this call.',
   input, readOnly: true,
   async run({ transaction_id }, conversationId) {
+    if ((await callerOf(conversationId)).mode === 'guest') return { result: GUEST_REFUSAL, summary: GUEST_REFUSAL };
     const ref = normalizeRef(transaction_id, 'TXN');
     if (!ref) {
       const result = { found: false, reason: 'unrecognised_reference', message: 'Ask the caller to repeat the reference, for example T X N and four digits.' };

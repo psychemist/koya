@@ -3,6 +3,10 @@ import type { Channel } from '../lib/conversations.ts';
 type Msg = { role?: string; content?: unknown };
 const textOf = (c: unknown) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p: any) => p?.text ?? '').join(' ') : '').trim();
 
+/** The support page starts a web call with its signed caller token in the call metadata. Vapi echoes it on the call object. */
+const callerTokenOf = (call: any): string | null =>
+  call?.metadata?.rp_caller ?? call?.assistantOverrides?.metadata?.rp_caller ?? null;
+
 /**
  * Vapi sends the whole history every turn. Only the user text after the last
  * assistant message is new; everything before it is context, used only when
@@ -23,6 +27,7 @@ export function parseChatRequest(body: any, url?: URL) {
     callId, callType: (body?.call?.type as string | undefined) ?? null,
     newUserText: fresh.map((m) => textOf(m.content)).filter(Boolean).join(' '),
     prior, customerNumber: (body?.call?.customer?.number as string | undefined) ?? null,
+    callerToken: callerTokenOf(body?.call) ?? body?.metadata?.rp_caller ?? null,
   };
 }
 
@@ -32,7 +37,7 @@ export function parseServerMessage(body: any) {
   return {
     type: String(m.type ?? ''), callId: (m.call?.id as string | undefined) ?? null, status: m.status as string | undefined,
     callType: m.call?.type as string | undefined, customerNumber: (m.call?.customer?.number as string | undefined) ?? null,
-    endedReason: m.endedReason as string | undefined,
+    endedReason: m.endedReason as string | undefined, callerToken: callerTokenOf(m.call),
   };
 }
 

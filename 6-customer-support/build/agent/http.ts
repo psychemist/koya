@@ -11,6 +11,8 @@ import { collectSink, runTurn } from './turn.ts';
 import { endsChat, priorFromTurns } from './chat.ts';
 import { chatRecords } from '../lib/chat-records.ts';
 import type { SessionManager } from './sessions.ts';
+import { readCallToken, type Caller } from '../lib/caller.ts';
+import { bindCaller } from '../lib/caller-binding.ts';
 
 const MAX_MESSAGE = 1000;
 const MAX_BODY = 256 * 1024;
@@ -28,6 +30,19 @@ async function readJson(req: IncomingMessage): Promise<any> {
   let raw = '';
   for await (const c of req) { raw += c; if (raw.length > MAX_BODY) throw Object.assign(new Error('body too large'), { status: 413 }); }
   try { return raw ? JSON.parse(raw) : {}; } catch { throw Object.assign(new Error('invalid JSON'), { status: 400 }); }
+}
+
+/** The web server's word for who is chatting, behind the internal token. Only the web page sends it. */
+function parseCaller(v: any): Caller | null {
+  if (v?.mode === 'guest') return { mode: 'guest' };
+  if (v?.mode === 'customer' && typeof v.customer_id === 'string' && /^CUS-\d{4,}$/.test(v.customer_id)) return { mode: 'customer', customerId: v.customer_id };
+  return null;
+}
+
+/** A web call carries the caller's signed token through Vapi. A missing or bad token leaves the call on the two-identifier flow. */
+async function bindCallToken(conversationId: string, channel: string, token: unknown) {
+  const caller = channel === 'voice_web' ? readCallToken(token) : null;
+  if (caller) await bindCaller(conversationId, caller).catch(() => undefined);
 }
 
 const systemEvent = (conversationId: string, type: string, summary: string, metadata: object = {}) =>
@@ -56,6 +71,7 @@ export function createAgentServer(deps: { sessions: SessionManager; prefetch?: P
     if (!p.callId) return json(res, 400, { error: 'no call id' });
     const conv = await upsertConversation({ vapiCallId: p.callId, channel: channelFor(p.callType),
       callerIdentifier: p.customerNumber ? maskNumber(p.customerNumber) : 'web' });
+    await bindCallToken(conv.id, conv.channel, p.callerToken);
     const sse = openSse(res);
     if (!(await hasRoom(conv.id))) {
       sse.say(`${LINES.capacity} ${LINES.goodbye}`); sse.finish();
@@ -84,6 +100,7 @@ export function createAgentServer(deps: { sessions: SessionManager; prefetch?: P
       later((async () => {
         const conv = await upsertConversation({ vapiCallId: m.callId, channel: channelFor(m.callType),
           callerIdentifier: m.customerNumber ? maskNumber(m.customerNumber) : 'web' });
+        await bindCallToken(conv.id, conv.channel, m.callerToken);
         if (sessions.has(conv.id) || !(await hasRoom(conv.id))) return;
         await sessions.getOrOpen(conv.id, { kind: 'voice' });             // opened while Vapi speaks the first message
         await systemEvent(conv.id, 'session_opened', 'session opened on call start');
@@ -115,6 +132,8 @@ export function createAgentServer(deps: { sessions: SessionManager; prefetch?: P
     if (b.channel !== 'web_text' && b.channel !== 'eval') return json(res, 400, { error: 'channel must be web_text or eval' });
     const channel = b.channel as Extract<Channel, 'web_text' | 'eval'>;
     const model = channel === 'eval' && (config.models.allowed as readonly string[]).includes(b.model) ? b.model as string : undefined;
+    const caller = parseCaller(b.caller);
+    if (b.caller !== undefined && !caller) return json(res, 400, { error: 'caller must be a guest or a customer_id' });
     const mcpFault = config.agent.allowFaults && (b.fault === 'mcp_down' || b.fault === 'calendar_down') ? b.fault as 'mcp_down' | 'calendar_down' : null;
     // 1 and 2. A chat continues only its own kind of conversation, and never one that has ended.
     let id: string;
@@ -124,9 +143,12 @@ export function createAgentServer(deps: { sessions: SessionManager; prefetch?: P
       if (!c || c.channel !== channel) return json(res, 404, { error: 'conversation_unknown' });
       if (c.ended) return json(res, 409, { error: 'conversation_ended' });
       id = c.id;
+      // A chat belongs to whoever started it. Someone else signed in on this browser gets a new one.
+      if (caller && (await bindCaller(id, caller)) === 'mismatch') return json(res, 409, { error: 'conversation_caller_changed' });
     } else {
       id = (await upsertConversation({ channel, callerIdentifier: channel === 'eval' ? String(b.eval_run_id ?? 'eval') : 'web',
         model: model ?? null, evalRunId: channel === 'eval' && b.eval_run_id ? String(b.eval_run_id) : null })).id;
+      if (caller && (await bindCaller(id, caller)) === 'mismatch') return json(res, 400, { error: 'caller_unknown' });
     }
     // 3. A session that is gone is rebuilt from what was said, the same way a call is rebuilt from Vapi's history.
     let prior: string | undefined;

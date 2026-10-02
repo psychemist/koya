@@ -23,8 +23,15 @@ test('prior transcript is the last 12 user and assistant messages, labelled', ()
 
 test('server messages parse in both the nested and flat shapes', () => {
   assert.deepEqual(parseServerMessage({ message: { type: 'status-update', status: 'in-progress', call: { id: 'c', type: 'inboundPhoneCall', customer: { number: '+15551234567' } } } }),
-    { type: 'status-update', callId: 'c', status: 'in-progress', callType: 'inboundPhoneCall', customerNumber: '+15551234567', endedReason: undefined });
+    { type: 'status-update', callId: 'c', status: 'in-progress', callType: 'inboundPhoneCall', customerNumber: '+15551234567', endedReason: undefined, callerToken: null });
   assert.equal(parseServerMessage({ message: { type: 'end-of-call-report', endedReason: 'customer-ended-call', call: { id: 'c' } } }).endedReason, 'customer-ended-call');
+});
+
+test('the support page caller token is read from the call metadata, on both the completion and the events webhook', () => {
+  assert.equal(parseChatRequest({ call: { id: 'c', metadata: { rp_caller: 'tok' } }, messages: [] }).callerToken, 'tok');
+  assert.equal(parseChatRequest({ call: { id: 'c', assistantOverrides: { metadata: { rp_caller: 'tok2' } } }, messages: [] }).callerToken, 'tok2');
+  assert.equal(parseChatRequest({ call: { id: 'c' }, messages: [] }).callerToken, null);
+  assert.equal(parseServerMessage({ message: { type: 'status-update', call: { id: 'c', metadata: { rp_caller: 'tok' } } } }).callerToken, 'tok');
 });
 
 test('a phone number is stored masked', () => { assert.equal(maskNumber('+15551234567'), '***4567'); });

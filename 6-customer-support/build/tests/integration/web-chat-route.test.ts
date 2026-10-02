@@ -6,6 +6,9 @@ import { startStub } from '../fakes/http-stub.ts';
 Object.assign(process.env, { APP_BASE_URL: 'http://localhost:3000', SESSION_SECRET: 's'.repeat(32), AGENT_INTERNAL_TOKEN: 'internal-test' });
 const { POST, DELETE } = await import('../../app/api/chat/route.ts');
 const { issueChatToken, readChatToken } = await import('../../lib/chat-session.ts');
+const { issueCallerCookie } = await import('../../lib/caller.ts');
+const guest = `rp_caller=${issueCallerCookie({ mode: 'guest' })}`;
+const amara = `rp_caller=${issueCallerCookie({ mode: 'customer', customerId: 'CUS-1001' })}`;
 
 let agent: Awaited<ReturnType<typeof startStub>>;
 let reply: (body: any) => { status: number; json: any } = () => ({ status: 500, json: {} });
@@ -13,8 +16,10 @@ before(async () => { agent = await startStub(async (body) => reply(body)); proce
 after(() => agent.close());
 
 let ip = 0;
+// Every request is from someone who chose how to continue (a guest, unless the test says otherwise).
 const req = (method: string, body?: unknown, h: Record<string, string> = {}) => new Request('http://localhost:3000/api/chat', {
-  method, headers: { 'content-type': 'application/json', 'x-forwarded-for': `10.0.0.${++ip}`, ...h },
+  method, headers: { 'content-type': 'application/json', 'x-forwarded-for': `10.0.0.${++ip}`, ...h,
+    cookie: [h.caller ?? guest, h.cookie].filter(Boolean).join('; ') },
   body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body) });
 const cookieOf = (r: Response) => r.headers.get('set-cookie')?.match(/rp_chat=([^;]*)/)?.[1] ?? null;
 const conv = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -93,4 +98,26 @@ test('end chat tells the agent once and clears the cookie', async () => {
   assert.equal(agent.calls.length - before, 1);
   assert.deepEqual([agent.calls.at(-1)!.path, agent.calls.at(-1)!.body.conversation_id], ['/chat/end', conv]);
   assert.match(r.headers.get('set-cookie')!, /rp_chat=;.*Max-Age=0/);
+});
+
+test('a browser that has not signed in or chosen guest is 401, and the agent is never called', async () => {
+  const before = agent.calls.length;
+  const r = await POST(new Request('http://localhost:3000/api/chat', { method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '10.7.7.7' }, body: JSON.stringify({ message: 'hi' }) }));
+  assert.equal(r.status, 401);
+  assert.equal((await r.json()).signed_out, true);
+  assert.equal(agent.calls.length, before);
+});
+
+test('the agent is told who is chatting, from the signed cookie: a guest, or the signed-in customer', async () => {
+  reply = () => ok();
+  await POST(req('POST', { message: 'what are your fees' }));
+  assert.deepEqual(agent.calls.at(-1)!.body.caller, { mode: 'guest' });
+  await POST(req('POST', { message: 'where is TXN-9001' }, { caller: amara }));
+  assert.deepEqual(agent.calls.at(-1)!.body.caller, { mode: 'customer', customer_id: 'CUS-1001' });
+});
+
+test('a forged caller cookie counts as signed out', async () => {
+  const forged = amara.slice(0, -1) + (amara.endsWith('A') ? 'B' : 'A');
+  assert.equal((await POST(req('POST', { message: 'hi' }, { caller: forged }))).status, 401);
 });
