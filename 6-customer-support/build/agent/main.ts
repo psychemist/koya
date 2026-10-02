@@ -3,6 +3,7 @@ import { startup } from './sdk.ts';
 import { claudeRuntime } from './claude-runtime.ts';
 import { SessionManager } from './sessions.ts';
 import { createAgentServer } from './http.ts';
+import { mcpPrefetch } from './prefetch.ts';
 import { finalizeStale } from '../lib/conversations.ts';
 
 // 1. Misconfiguration fails the boot, not the first caller.
@@ -15,7 +16,7 @@ catch (e) { console.warn(JSON.stringify({ level: 'warn', at: 'agent_boot', messa
 
 // 3. Serve.
 const sessions = new SessionManager(claudeRuntime());
-const server = createAgentServer({ sessions });
+const server = createAgentServer({ sessions, prefetch: mcpPrefetch() });
 const port = Number(process.env.PORT ?? 8787);
 server.listen(port, () => console.log(JSON.stringify({ level: 'info', at: 'agent_boot', port, model: config.models.agent, max: sessions.max })));
 

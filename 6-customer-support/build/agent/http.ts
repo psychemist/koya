@@ -5,6 +5,7 @@ import { dbHealthy, one, query } from '../lib/db.ts';
 import { LINES } from '../lib/lines.ts';
 import { finalizeConversation, upsertConversation, type Channel } from '../lib/conversations.ts';
 import { openSse } from './sse.ts';
+import type { Prefetch } from './prefetch.ts';
 import { channelFor, maskNumber, parseChatRequest, parseServerMessage } from './vapi.ts';
 import { collectSink, runTurn } from './turn.ts';
 import { endsChat, priorFromTurns } from './chat.ts';
@@ -39,8 +40,8 @@ const systemEvent = (conversationId: string, type: string, summary: string, meta
  * /chat. Every route that runs a turn goes through runTurn, so voice and text
  * pass the same gates.
  */
-export function createAgentServer(deps: { sessions: SessionManager }): Server & { drain(): Promise<void> } {
-  const { sessions } = deps;
+export function createAgentServer(deps: { sessions: SessionManager; prefetch?: Prefetch }): Server & { drain(): Promise<void> } {
+  const { sessions, prefetch } = deps;
   const background = new Set<Promise<unknown>>();
   const later = (p: Promise<unknown>) => { const q = p.catch((e) => console.error(JSON.stringify({ level: 'error', at: 'agent_bg', message: e.message })));
     background.add(q); q.finally(() => background.delete(q)); };
@@ -64,7 +65,7 @@ export function createAgentServer(deps: { sessions: SessionManager }): Server & 
     const recovering = !sessions.has(conv.id) && !!p.prior;
     await sessions.interruptInFlight(conv.id);
     if (recovering) await systemEvent(conv.id, 'session_recovered', 'warm session missing; rebuilt from the call history');
-    const turn = runTurn({ sessions }, { conversationId: conv.id, text: p.newUserText, prior: recovering ? p.prior : undefined }, sse);
+    const turn = runTurn({ sessions, prefetch }, { conversationId: conv.id, text: p.newUserText, prior: recovering ? p.prior : undefined }, sse);
     later(turn);
     try { await turn; } finally { sse.finish(); }
   }
@@ -140,7 +141,7 @@ export function createAgentServer(deps: { sessions: SessionManager }): Server & 
     // 5. The same turn as a call. Eval is framed as voice, because the brief grades the voice agent.
     await sessions.getOrOpen(id, { model, mcpFault, kind: 'chat' });
     const sink = collectSink();
-    const turn = runTurn({ sessions }, { conversationId: id, text: message, prior, channel: channel === 'eval' ? 'voice' : 'chat' }, sink);
+    const turn = runTurn({ sessions, prefetch }, { conversationId: id, text: message, prior, channel: channel === 'eval' ? 'voice' : 'chat' }, sink);
     later(turn);
     const out = await turn;
     const reply = sink.reply();

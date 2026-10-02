@@ -145,6 +145,30 @@ test('over the daily cap, the capacity line and goodbye are spoken, with no mode
   } finally { if (cap === undefined) delete process.env.DAILY_CLAUDE_CAP_USD; else process.env.DAILY_CLAUDE_CAP_USD = cap; }
 });
 
+test('a prefetched search reaches the model in the turn message and grounds the answer with no model tool call', { skip: skipWithoutDatabase }, async () => {
+  const c = await newConversation(); const prompts: string[] = [];
+  const prefetch = async (id: string) => { await logToolCall(id, 'search_knowledge_base', { grounded: true, chunks: [{ id: 'faq/fees', grounded: true }] });
+    return '[Knowledge search, already run on this turn for the caller\'s words: grounded true]'; };
+  const rt = fakeRuntime([(p) => { prompts.push(p); return [ok(answer(['faq/fees']))]; }]);
+  const s = sink();
+  const r = await runTurn({ sessions: new SessionManager(rt), prefetch }, { conversationId: c.id, text: 'what fees do you charge' }, s);
+  assert.equal(r.status, 'ok');
+  assert.match(prompts[0], /Caller said: what fees do you charge\n\[Knowledge search/);
+  assert.deepEqual(s.said, [answer([]).spoken_response]);
+  await dropConversation(c.id);
+});
+
+test('a prefetch that fails leaves the turn to the model, which still answers', { skip: skipWithoutDatabase }, async () => {
+  const c = await newConversation(); const prompts: string[] = [];
+  const rt = fakeRuntime([(p) => { prompts.push(p); return [{ kind: 'result', ok: true, costUsd: 0.001, durationMs: 5, output: { answer_type: 'clarify',
+    spoken_response: 'Is that an incoming transfer or an outgoing payout?', citations: [], confidence_note: 'vague', escalation_category: null } }]; }]);
+  const r = await runTurn({ sessions: new SessionManager(rt), prefetch: async () => { throw new Error('mcp down'); } },
+    { conversationId: c.id, text: 'what about my payment' }, sink());
+  assert.equal(r.status, 'ok');
+  assert.doesNotMatch(prompts[0], /Knowledge search/);
+  await dropConversation(c.id);
+});
+
 test('a slow turn speaks the filler before the reply, and the filler never follows the reply', { skip: skipWithoutDatabase }, async () => {
   const before = process.env.AGENT_FILLER_AFTER_MS; process.env.AGENT_FILLER_AFTER_MS = '50';
   try {

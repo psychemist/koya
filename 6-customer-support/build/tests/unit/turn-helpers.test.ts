@@ -13,3 +13,9 @@ test('each turn carries the current time, and prior transcript is labelled as co
   assert.match(t, /\[Prior transcript, for context only\]/);
   assert.match(t, /Caller said: hello$/);
 });
+
+test('a prefetched knowledge search follows the caller line, and is absent when there is none', () => {
+  const now = new Date('2026-10-05T09:00:00Z');
+  assert.match(frameCallerText('what fees', now, undefined, 'voice', '[Knowledge search] x'), /Caller said: what fees\n\[Knowledge search\] x$/);
+  assert.doesNotMatch(frameCallerText('what fees', now, undefined, 'voice', null), /Knowledge search/);
+});

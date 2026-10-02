@@ -6,6 +6,7 @@ import { checkReply, retryMessage, type Violation } from '../lib/gates/reply.ts'
 import { loadTurnFacts } from './facts.ts';
 import type { SessionManager } from './sessions.ts';
 import type { RuntimeEvent } from './runtime.ts';
+import type { Prefetch } from './prefetch.ts';
 
 /** Voice speaks both kinds; chat shows only replies, because a filler line is a pause, not a message. */
 export interface SpeechSink { say(text: string, kind?: 'filler' | 'reply'): void }
@@ -26,11 +27,12 @@ export function isNoise(text: string): boolean {
   return t === '' || FILLERS.has(t);
 }
 
-/** The per-turn facts the cached system prompt cannot hold: the time, and on recovery, what was said before. */
-export function frameCallerText(text: string, now: Date, prior?: string, channel: TurnChannel = 'voice'): string {
+/** The per-turn facts the cached system prompt cannot hold: the time, on recovery what was said before, and a prefetched search. */
+export function frameCallerText(text: string, now: Date, prior?: string, channel: TurnChannel = 'voice', knowledge?: string | null): string {
   const lines = [`[Current time: ${now.toISOString()} UTC]`, `[Channel: ${channel === 'chat' ? 'web chat' : 'voice call'}]`];
   if (prior) lines.push('[Prior transcript, for context only]', prior, '[End of prior transcript]');
   lines.push(`Caller said: ${text}`);
+  if (knowledge) lines.push(knowledge);
   return lines.join('\n');
 }
 
@@ -69,7 +71,7 @@ async function recordTurn(r: { conversationId: string; text: string; spoken: str
  * Nothing reaches the sink that the gates have not passed, except the fixed
  * lines, which are reviewed copy. Turns for one conversation run in order.
  */
-export function runTurn(deps: { sessions: SessionManager; now?: () => Date },
+export function runTurn(deps: { sessions: SessionManager; now?: () => Date; prefetch?: Prefetch },
   input: { conversationId: string; text: string; prior?: string; channel?: TurnChannel }, sink: SpeechSink): Promise<TurnOutcome> {
   const { sessions } = deps;
   const text = input.text.trim();
@@ -111,15 +113,16 @@ export function runTurn(deps: { sessions: SessionManager; now?: () => Date },
       return { status: 'capacity', answerType: 'decline', spoken: LINES.limitReached, turnId };
     }
 
+    // The prefetch starts after `since`, so the search row it writes counts as grounded on this turn.
     const since = pre.now;
     const now = deps.now?.() ?? new Date();
-    const session = await sessions.getOrOpen(id);
+    const [session, knowledge] = await Promise.all([sessions.getOrOpen(id), deps.prefetch?.(id, text).catch(() => null) ?? null]);
     let cost = 0, attempts = 0, violations: Violation[] = [], retriedFor: Violation[] = [], intended: AnswerType | undefined;
     let facts = null as Awaited<ReturnType<typeof loadTurnFacts>> | null;
     let approved = null as ReturnType<typeof checkReply>['reply'];
 
     for (attempts = 1; attempts <= 2; attempts++) {
-      const prompt = attempts === 1 ? frameCallerText(text, now, input.prior, channel) : retryMessage(violations);
+      const prompt = attempts === 1 ? frameCallerText(text, now, input.prior, channel, knowledge) : retryMessage(violations);
       let result: Extract<RuntimeEvent, { kind: 'result' }> | null = null;
       try {
         for await (const e of session.turn(prompt)) {
