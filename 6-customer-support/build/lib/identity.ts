@@ -14,15 +14,33 @@ export function normalizeSpokenEmail(s: string): string | null {
   return EMAIL.test(e) ? e : null;
 }
 
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/**
+ * Speech-to-text drops and swaps letters in names ("Okafor" heard as "Okafo"), so a full name or a
+ * company may differ by one letter, or two in a long one. A first name alone stays exact: "Amaka" is
+ * another person, not a mishearing of "Amara". References and emails stay exact too, and two
+ * identifiers must still agree on exactly one account.
+ */
+const near = (given: string, stored: string) => {
+  const a = normKey(given), b = normKey(stored);
+  return a === b || (b.length >= 8 && editDistance(a, b) <= (b.length >= 14 ? 2 : 1));
+};
+
 function fieldMatches(k: keyof Identifiers, r: CustomerRow, v: string): boolean {
   switch (k) {
     case 'customer_id': return normalizeRef(v, 'CUS') === r.customer_id;
     case 'email': return (normalizeSpokenEmail(v) ?? '') === r.contact_email.toLowerCase();
-    case 'company_name': return normKey(v) === normKey(r.company_name);
-    case 'contact_name': {
-      const given = normKey(v);
-      return given === normKey(r.contact_name) || given === normKey(r.contact_name.split(/\s+/)[0]);
-    }
+    case 'company_name': return near(v, r.company_name);
+    case 'contact_name': return near(v, r.contact_name) || normKey(v) === normKey(r.contact_name.split(/\s+/)[0]);
   }
 }
 

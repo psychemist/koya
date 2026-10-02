@@ -43,3 +43,15 @@ test('Review Focus 1: something that is not an email stays null', () => {
   assert.equal(normalizeSpokenEmail('amara lagos ledger'), null);
   assert.equal(normalizeSpokenEmail('amara at lagosledger'), null);
 });
+
+test('a full name misheard by one letter still matches, with a second identifier that agrees', () => {
+  assert.equal(matchCustomer(rows, { contact_name: 'Amara Okafo', email: 'amara@lagosledger.example' }).status, 'matched');
+  assert.equal(matchCustomer(rows, { contact_name: 'Amara Okafo', company_name: 'Lagos Ledger' }).status, 'matched');
+  assert.equal(matchCustomer(rows, { contact_name: 'Amara Okafor', company_name: 'Lagos Leger' }).status, 'matched');
+});
+
+test('the slack is for mishearing, not for another person: a first name stays exact, and a far name is no_match', () => {
+  assert.equal(matchCustomer(rows, { contact_name: 'Amaka', company_name: 'LagosLedger' }).status, 'no_match');
+  assert.equal(matchCustomer(rows, { contact_name: 'Amara Okeke', company_name: 'LagosLedger' }).status, 'no_match');
+  assert.equal(matchCustomer(rows, { contact_name: 'Amara Okafo', company_name: 'NairobiOps' }).status, 'no_match');
+});
