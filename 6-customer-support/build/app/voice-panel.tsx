@@ -115,6 +115,9 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
   const meter = useRef<HTMLSpanElement>(null);
   // End call pressed while the call is still connecting: the start is cancelled, not left to connect afterwards.
   const cancelled = useRef(false);
+  // Whether a call is in progress. The SDK's stop() drops its speaking timer without clearing it, so a speech-end can
+  // arrive up to a second after call-end; without this it put the live strip back on screen after End call.
+  const live = useRef(false);
   const closing = useRef<{ heard: boolean; speaking: boolean; timer: ReturnType<typeof setTimeout> | null }>({ heard: false, speaking: false, timer: null });
   const configured = Boolean(PUBLIC_KEY && ASSISTANT_ID);
   const timer = useRef<ReturnType<typeof startTimer> | null>(null);
@@ -142,11 +145,12 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
    */
   function hangUpSoon(afterMs: number) {
     if (closing.current.timer) clearTimeout(closing.current.timer);
-    closing.current.timer = setTimeout(() => vapi.current?.stop(), afterMs);
+    closing.current.timer = setTimeout(() => { live.current = false; vapi.current?.stop(); }, afterMs);
   }
 
   async function start() {
     cancelled.current = false;
+    live.current = true;
     setError(''); setEntries([]); setMuted(false); setTurn('greeting'); setCallId(null); setState('connecting');
     primeTones();
     if (closing.current.timer) clearTimeout(closing.current.timer);
@@ -163,17 +167,19 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
         const VapiClient = fake ?? (await loadSdk());
         const v = new VapiClient(PUBLIC_KEY) as unknown as Vapi;
         v.on('call-start-progress', (p: any) => timer.current?.stage(p));
-        v.on('call-start', () => { timer.current?.mark('connected'); cue('connected'); setTurn('greeting'); setState('listening'); });
-        v.on('call-end', () => { if (closing.current.timer) clearTimeout(closing.current.timer); cue('ended'); requestsChanged(); setState('ended'); meter.current?.style.setProperty('--lvl', '0'); });
-        v.on('speech-start', () => { timer.current?.greeted(); closing.current.speaking = true; setTurn('agent'); setState('speaking'); });
+        v.on('call-start', () => { if (!live.current) return; timer.current?.mark('connected'); cue('connected'); setTurn('greeting'); setState('listening'); });
+        v.on('call-end', () => { live.current = false; if (closing.current.timer) clearTimeout(closing.current.timer); cue('ended'); requestsChanged(); setState('ended'); meter.current?.style.setProperty('--lvl', '0'); });
+        v.on('speech-start', () => { if (!live.current) return; timer.current?.greeted(); closing.current.speaking = true; setTurn('agent'); setState('speaking'); });
         v.on('speech-end', () => {
+          if (!live.current) return;
           closing.current.speaking = false;
           if (closing.current.heard) hangUpSoon(600);
           if (!closing.current.heard) cue('yourTurn');
           setTurn('you'); setState('listening'); meter.current?.style.setProperty('--lvl', '0'); });
         // Written straight to a CSS variable: ten updates a second should not re-render the transcript.
-        v.on('volume-level', (level: number) => meter.current?.style.setProperty('--lvl', String(Math.min(1, Math.max(0, level)))));
+        v.on('volume-level', (level: number) => { if (live.current) meter.current?.style.setProperty('--lvl', String(Math.min(1, Math.max(0, level)))); });
         v.on('message', (m: any) => {
+          if (!live.current) return;
           // The caller's own speech: started means we hear them, stopped means the agent is now working on it.
           if (m?.type === 'speech-update' && m.role === 'user') {
             if (m.status === 'started') setTurn('hearing');
@@ -215,6 +221,7 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
 
   function endCall() {
     cancelled.current = true;
+    live.current = false;
     vapi.current?.stop();
     if (state === 'connecting') setState('ended');
   }
