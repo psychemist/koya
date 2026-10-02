@@ -65,13 +65,24 @@ test('row 27: an ended chat refuses a new message with 409 and writes nothing', 
 });
 
 test('the chat goodbye ends and finalises the conversation', { skip: skipWithoutDatabase }, async () => {
+  // Not a bare sign-off, so the model answers it, and its closing line is what ends the chat. A bare "thanks,
+  // that is all" skips the model altogether (the next test), which left this step queued for the test after.
   q.next(() => [say(`Glad I could help. ${LINES.chatGoodbye}`)]);
-  const r = await chat({ message: 'thanks, that is all' });
+  const r = await chat({ message: 'okay I will check the dashboard for the fee then' });
   assert.equal(r.json.ended, true);
   const [row] = await query('select ended_at, ended_reason from public.conversations where id = $1', [r.json.conversation_id]);
   assert.ok(row.ended_at);
   assert.equal(row.ended_reason, 'customer-ended-chat');
   assert.equal(sessions.has(r.json.conversation_id), false);
+  await dropConversation(r.json.conversation_id);
+});
+
+test('a bare sign-off gets the closing line with no model call, and ends the chat', { skip: skipWithoutDatabase }, async () => {
+  const before = q.prompts.length;
+  const r = await chat({ message: 'thanks, that is all' });
+  assert.deepEqual([r.json.reply, r.json.ended, q.prompts.length], [LINES.chatGoodbye, true, before]);
+  const [row] = await query('select ended_reason from public.conversations where id = $1', [r.json.conversation_id]);
+  assert.equal(row.ended_reason, 'customer-ended-chat');
   await dropConversation(r.json.conversation_id);
 });
 
