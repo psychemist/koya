@@ -163,7 +163,6 @@ time, .num { font-variant-numeric: tabular-nums; }
   .sp-rail-text { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.875rem; font-weight: 500; }
   .sp-rail-grow, .sp-rail-safe { display: none; }
   .sp-main { padding: 16px; }
-  .sp-main .rp-desk { height: auto; min-height: 520px; }
   .sp-signin { padding-top: 24px; }
 }
 
@@ -308,8 +307,18 @@ time, .num { font-variant-numeric: tabular-nums; }
 .rp-live-actions { display: flex; gap: 10px; margin-left: auto; }
 .rp-live-actions .rp-btn-quiet[aria-pressed='true'] { color: var(--rp-bad); border-color: var(--rp-bad); }
 
-@media (max-width: 959px) {
-  .rp-desk-body { max-height: 62vh; }
+/* A phone gets the same frame as a desktop: the desk fills the screen below the bar and the folded panel, and only
+   the conversation scrolls, instead of the page and the transcript both scrolling with the controls in between. */
+@media (max-width: 899px) {
+  .sp-main .rp-desk { height: calc(100dvh - 60px - 60px - 32px); min-height: 440px; }
+  .sp-body:not([data-collapsed='true']) .sp-main .rp-desk { height: auto; }
+  .sp-body:not([data-collapsed='true']) .rp-desk-body { max-height: 60vh; }
+}
+.rp-scroll { position: relative; }
+.rp-jump {
+  position: sticky; bottom: 12px; display: block; margin: 8px 0 0 auto; padding: 0 14px; min-height: 34px; border-radius: 999px;
+  border: 1px solid var(--rp-blue); background: var(--rp-blue); color: #fff; font-size: 0.8125rem; font-weight: 500; cursor: pointer;
+  box-shadow: 0 6px 16px -8px rgba(11, 42, 91, 0.5);
 }
 @media (max-width: 520px) {
   .sp-top-note, .sp-who { display: none; }

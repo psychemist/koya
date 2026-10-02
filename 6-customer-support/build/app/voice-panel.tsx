@@ -130,7 +130,14 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
             closing.current.heard = true;
             hangUpSoon(closing.current.speaking ? 8000 : 900);
           }
-          setEntries((prev) => [...prev, { who: m.role === 'user' ? 'you' : 'relaypay', text: m.transcript, at: new Date().toISOString() }]);
+          // The transcriber finalises speech in fragments. Fragments from the same speaker in a row are one turn,
+          // so they join one row instead of stacking up short rows that make the window jump.
+          const who = m.role === 'user' ? 'you' : 'relaypay';
+          setEntries((prev) => {
+            const before = prev.at(-1);
+            if (before && before.who === who) return [...prev.slice(0, -1), { ...before, text: `${before.text} ${m.transcript}`.trim() }];
+            return [...prev, { who, text: m.transcript, at: new Date().toISOString() }];
+          });
         });
         v.on('error', (e: unknown) => { setError(describeError(e)); setState('error'); });
         vapi.current = v;

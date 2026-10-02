@@ -6,6 +6,7 @@ import { CheckIcon, CopyIcon } from './ui/icons.tsx';
 /** A note may carry the reference it announces, so the page can offer to copy it without parsing the sentence. */
 export type Entry = { who: 'you' | 'relaypay' | 'note'; text: string; at?: string; ref?: string };
 const LABEL: Record<Entry['who'], string> = { you: 'You', relaypay: 'RelayPay', note: 'Reference' };
+const smooth = () => { try { return !window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 const hhmm = (iso?: string) => (iso ? new Date(iso).toISOString().slice(11, 16) : '');
 
 function CopyRef({ value }: { value: string }) {
@@ -31,12 +32,39 @@ export function Transcript({ entries, label = 'Conversation', pending, empty }: 
   entries: Entry[]; label?: string; pending?: string; empty?: React.ReactNode;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const away = useRef(false);
+  const [behind, setBehind] = useState(false);
+  const shown = entries.length > 0 || !!pending;
+  const box = () => root.current?.closest<HTMLElement>('.rp-desk-body') ?? null;
+
+  // Follow the conversation only while the reader is at the bottom. Someone who scrolled up to read an answer
+  // is not yanked back down by the next line; they get a button to jump to it instead.
+  useEffect(() => {
+    const el = box();
+    if (!el) return;
+    const onScroll = () => {
+      away.current = el.scrollHeight - el.scrollTop - el.clientHeight > 80;
+      if (!away.current) setBehind(false);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [shown]);
+
   // Scroll only the transcript's own box. scrollIntoView also scrolls every clipped ancestor, which slid the
   // desk header and the End call button out of view once a long conversation overflowed.
+  const last = entries.at(-1);
   useEffect(() => {
-    const box = root.current?.closest<HTMLElement>('.rp-desk-body');
-    if (box) box.scrollTop = box.scrollHeight;
-  }, [entries.length, pending]);
+    const el = box();
+    if (!el) return;
+    if (away.current) { setBehind(true); return; }
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth() ? 'smooth' : 'auto' });
+  }, [entries.length, last?.text.length, pending]);
+
+  function jump() {
+    const el = box();
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth() ? 'smooth' : 'auto' });
+    away.current = false; setBehind(false);
+  }
   if (!entries.length && !pending) return empty ? <div className="rp-empty">{empty}</div> : null;
   return (
     <div className="rp-scroll" ref={root}>
@@ -58,6 +86,7 @@ export function Transcript({ entries, label = 'Conversation', pending, empty }: 
           </li>
         ))}
       </ol>
+      {behind && <button type="button" className="rp-jump" onClick={jump}>Jump to latest</button>}
       {pending && (
         <div className="rp-pending" aria-hidden="true">
           <span className="rp-who">RelayPay</span>
