@@ -38,11 +38,16 @@ export async function dispatchNotification(notificationId: string, opts: { dryRu
     const slot = n.slot_key === 'none' ? null : n.slot_key;
 
     if (opts.dryRun) {
-      await query(`update public.notifications set status = 'sent', sent_at = now() where id = $1`, [n.id]);
+      // Eval conversations reach no real service. A calendar_down fault still fails the booking, so eval row 23
+      // tests what the caller is told when the calendar is down, without emailing the real inbox on every run.
+      const failBooking = !!slot && opts.fault === 'calendar_down';
+      await query(`update public.notifications set status = 'sent', sent_at = now(), booking_result = $2 where id = $1`,
+        [n.id, slot ? (failBooking ? 'failed' : 'booked') : null]);
       await query(`update public.escalations set notify_status = 'sent', updated_at = now(),
-        booking_status = case when $2::timestamptz is null then booking_status else 'dry_run' end,
-        call_booked = ($2::timestamptz is not null), appointment_at = coalesce($2::timestamptz, appointment_at) where id = $1`, [e.id, slot]);
-      return { status: 'sent', booked: !!slot, appointmentAt: slot };
+        booking_status = case when $2::timestamptz is null then booking_status when $3 then 'failed' else 'dry_run' end,
+        call_booked = ($2::timestamptz is not null and not $3),
+        appointment_at = case when $3 then appointment_at else coalesce($2::timestamptz, appointment_at) end where id = $1`, [e.id, slot, failBooking]);
+      return { status: 'sent', booked: !!slot && !failBooking, appointmentAt: failBooking ? null : slot };
     }
 
     // 1. The booking, unless an earlier attempt settled it. A failed booking is tried again: Cal.com may be back.

@@ -85,6 +85,16 @@ test('an eval conversation never reaches Cal.com, Discord or the inbox: booking 
   await dropConversation(c.id);
 });
 
+test('row 23 in eval: a calendar_down fault fails the dry-run booking honestly, and still reaches no real service', { skip: skipWithoutDatabase }, async () => {
+  const c = await newConversation({ channel: 'eval' });
+  const calls = () => lanes.cal.calls.length + lanes.discord.calls.length + lanes.resend.calls.length;
+  const before = calls();
+  const r = await esc(c.id, { preferred_time: '2026-10-07T10:30:00Z' }, 'calendar_down');
+  assert.deepEqual([r.call_booked, r.booking_status, calls() - before], [false, 'failed', 0]);
+  assert.match(r.follow_up_summary, /follow up by email to confirm a time/);
+  await dropConversation(c.id);
+});
+
 test('a ticket reference links the ticket, and an unverified customer id is not attached', { skip: skipWithoutDatabase }, async () => {
   const c = await newConversation({ channel: 'eval' });
   const [t] = await query(`insert into public.support_tickets (conversation_id, category, priority, summary, dedupe_key)
