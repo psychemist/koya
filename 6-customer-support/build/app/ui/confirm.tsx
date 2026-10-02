@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 /**
  * A confirmation that names the consequence (ported from Week 5). "Are you
@@ -14,6 +14,7 @@ export function ConfirmButton({ label, title, body, confirmLabel, cancelLabel, o
   onConfirm: () => Promise<string | null>; className?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,8 +30,8 @@ export function ConfirmButton({ label, title, body, confirmLabel, cancelLabel, o
   return (
     <>
       <button type="button" className={className} onClick={() => { setError(null); dialog.current?.showModal(); }}>{label}</button>
-      <dialog ref={dialog} className="rp-dialog" aria-labelledby="rp-dialog-title">
-        <h2 id="rp-dialog-title">{title}</h2>
+      <dialog ref={dialog} className="rp-dialog" aria-labelledby={titleId}>
+        <h2 id={titleId}>{title}</h2>
         <p>{body}</p>
         {error && <p className="rp-status" data-tone="bad" role="alert">{error}</p>}
         <div className="rp-row">
