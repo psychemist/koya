@@ -176,6 +176,8 @@ time, .num { font-variant-numeric: tabular-nums; }
 .rp-desk-hint { display: inline-flex; align-items: center; gap: 7px; min-width: 0; color: var(--rp-mute); font-size: 0.8125rem; }
 .rp-desk-hint i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--rp-teal); }
 .rp-desk-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* Only the conversation scrolls; the head, the live call strip and the composer stay put however long it gets. */
+.rp-desk-head, .rp-live, .rp-composer { flex: none; }
 
 /* Call | Chat. Two equal options; the chosen one is filled deep blue, and the fill slides to answer the click. */
 .rp-modes {

@@ -30,11 +30,16 @@ function CopyRef({ value }: { value: string }) {
 export function Transcript({ entries, label = 'Conversation', pending, empty }: {
   entries: Entry[]; label?: string; pending?: string; empty?: React.ReactNode;
 }) {
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'nearest' }); }, [entries.length, pending]);
+  const root = useRef<HTMLDivElement>(null);
+  // Scroll only the transcript's own box. scrollIntoView also scrolls every clipped ancestor, which slid the
+  // desk header and the End call button out of view once a long conversation overflowed.
+  useEffect(() => {
+    const box = root.current?.closest<HTMLElement>('.rp-desk-body');
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [entries.length, pending]);
   if (!entries.length && !pending) return empty ? <div className="rp-empty">{empty}</div> : null;
   return (
-    <div className="rp-scroll">
+    <div className="rp-scroll" ref={root}>
       <ol className="rp-transcript" role="log" aria-live="polite" aria-relevant="additions" aria-label={label}>
         {entries.map((e, i) => e.who === 'note' ? (
           <li key={i} data-who="note">
@@ -60,7 +65,6 @@ export function Transcript({ entries, label = 'Conversation', pending, empty }: 
           <span className="rp-mute">{pending}</span>
         </div>
       )}
-      <div ref={end} />
     </div>
   );
 }
