@@ -30,7 +30,8 @@ export function isNoise(text: string): boolean {
   return t === '' || FILLERS.has(t);
 }
 
-export type SignedIn = { customer_id: string; contact_name: string; company_name: string; plan: string };
+export type OpenRequest = { ref: string; kind: 'ticket' | 'escalation'; category: string; status: string; callback_at: string | null };
+export type SignedIn = { customer_id: string; contact_name: string; company_name: string; plan: string; open?: OpenRequest[] | null };
 export type CallerFrame = { mode: 'customer'; account: SignedIn } | { mode: 'guest' } | null;
 
 /** One line saying who the caller is, from the conversation row, never from anything the caller typed. */
@@ -38,8 +39,10 @@ export function callerLine(c: CallerFrame): string | null {
   if (!c) return null;
   if (c.mode === 'guest') return '[Caller: guest, not signed in. Knowledge base answers only; account, transaction and payout lookups are not available.]';
   const a = c.account;
+  const open = (a.open ?? []).slice(0, 5).map((r) => `${r.ref} (${r.kind === 'ticket' ? 'ticket' : 'specialist case'}, ${r.category.replace(/_/g, ' ')}, ` +
+    `${r.status.replace(/_/g, ' ')}${r.callback_at ? `, callback booked for ${new Date(r.callback_at).toISOString()}` : ''})`);
   return `[Caller: signed in on the support page as ${a.contact_name} of ${a.company_name}, customer ID ${a.customer_id}, ${a.plan} plan. ` +
-    'Identity is already verified.]';
+    `Identity is already verified. Open requests: ${open.length ? open.join('; ') : 'none'}.]`;
 }
 
 /** The per-turn facts the cached system prompt cannot hold: the time, who is calling, on recovery what was said before, and a prefetched search. */
@@ -62,7 +65,17 @@ const preflight = (conversationId: string) => one<Preflight>(
   `select now() as now, ${SPENT_TODAY_SQL} as spent_today,
      (select cost_usd::float8 from public.conversations where id = $1) as conv_cost,
      (select caller_mode from public.conversations where id = $1) as caller_mode,
-     (select json_build_object('customer_id', c.customer_id, 'contact_name', c.contact_name, 'company_name', c.company_name, 'plan', c.plan)
+     (select json_build_object('customer_id', c.customer_id, 'contact_name', c.contact_name, 'company_name', c.company_name, 'plan', c.plan,
+        'open', (select json_agg(r order by r.created_at desc) from (
+           select t.ticket_ref as ref, 'ticket' as kind, t.category, t.status, null::timestamptz as callback_at, t.created_at
+             from public.support_tickets t join public.conversations tc on tc.id = t.conversation_id
+            where t.status <> 'closed' and tc.channel <> 'eval' and (t.customer_id = c.customer_id or tc.verified_customer_id = c.customer_id)
+           union all
+           select e.escalation_ref, 'escalation', e.category, e.status,
+                  case when e.call_booked and e.booking_status = 'booked' then e.appointment_at end, e.created_at
+             from public.escalations e join public.conversations ec on ec.id = e.conversation_id
+            where e.status <> 'closed' and ec.channel <> 'eval' and (e.customer_id = c.customer_id or ec.verified_customer_id = c.customer_id)
+           limit 5) r))
         from public.conversations v join public.customers c on c.customer_id = v.verified_customer_id
         where v.id = $1 and v.caller_mode = 'customer') as signed_in,
      l.id as latest_id, l.user_transcript, l.assistant_response, l.answer_type, l.fresh

@@ -6,6 +6,8 @@ import { Transcript, type Entry } from './transcript.tsx';
 import { ConfirmButton } from './ui/confirm.tsx';
 import { usePersisted } from './ui/use-persisted.ts';
 import { SendIcon } from './ui/icons.tsx';
+import { Feedback } from './ui/feedback.tsx';
+import { requestsChanged } from './support/requests.tsx';
 
 type Records = { ticket_ref: string | null; escalation_ref: string | null; call_booked: boolean; appointment: string | null } | null;
 const LIMIT = 1000;
@@ -86,6 +88,8 @@ export function ChatPanel({ starters }: { starters: string[] }) {
         { who: 'relaypay', text: j.reply, at: new Date().toISOString() }, ...notesFor(j.records, seen.current),
         ...(j.ended ? [{ who: 'note' as const, text: ENDED }] : [])]);
       setEnded(!!j.ended);
+      // A new ticket or escalation reference: the Requests tab and the panel show it without a refresh.
+      if (j.records?.ticket_ref || j.records?.escalation_ref) requestsChanged();
       setDraft(''); clearDraft();
     } catch {
       if (await recovered(turnsBefore)) { setDraft(''); clearDraft(); return; }
@@ -117,6 +121,7 @@ export function ChatPanel({ starters }: { starters: string[] }) {
       <div className="rp-desk-body">
         <Transcript entries={entries} label="Chat transcript" pending={pending ? 'is replying' : undefined} empty={empty} />
       </div>
+      {ended && entries.length > 0 && <div className="rp-chat-feedback"><Feedback channel="web_text" label="How was this chat?" /></div>}
       <form className="rp-composer" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         {error && <p className="rp-status" data-tone="bad" role="alert">{error}</p>}
         <p className="rp-sr" role="status" aria-live="polite">{pending ? 'RelayPay is replying' : ''}</p>

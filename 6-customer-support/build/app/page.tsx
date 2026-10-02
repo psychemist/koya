@@ -7,6 +7,9 @@ import { SupportShell } from './support/shell.tsx';
 import { SignInForm } from './support/sign-in-form.tsx';
 import { SwitchCaller } from './support/switch-caller.tsx';
 import { ShieldIcon } from './ui/icons.tsx';
+import { Lines } from './ui/lines.tsx';
+import { PanelRequests } from './support/requests.tsx';
+import { requestsFor, type CustomerRequest } from '../lib/customer-requests.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +54,7 @@ function Hours() {
   return (
     <div className="sp-hours">
       <p className="sp-hours-h">Specialist callbacks</p>
-      <p>{callbackHours()}{PHONE ? `. Or call ${PHONE}.` : '.'}</p>
+      <p><Lines text={`${callbackHours()}.${PHONE ? ` Or call ${PHONE}.` : ''}`} /></p>
     </div>
   );
 }
@@ -83,7 +86,7 @@ export default async function SupportPage() {
 
   if (caller.mode === 'guest') {
     return (
-      <SupportShell rail="guest" railText="Guest: general questions" topRight={<><span className="sp-who">Guest</span><SwitchCaller kind="guest" /></>} panel={
+      <SupportShell rail="guest" railText="Guest: General Questions" topRight={<><span className="sp-who">Guest</span><SwitchCaller kind="guest" /></>} panel={
         <>
           <p className="sp-kicker" data-tone="quiet">Guest</p>
           <h1 className="sp-title">Ask us anything general</h1>
@@ -94,13 +97,15 @@ export default async function SupportPage() {
           <Safety />
         </>
       }>
-        <ModeSwitch hint="Guest: general questions" starters={GUEST_STARTERS} />
+        <ModeSwitch hint="Guest: General Questions" starters={GUEST_STARTERS} />
       </SupportShell>
     );
   }
 
   const a = account!;
   const first = a.contact_name.split(/\s+/)[0];
+  // A failed read shows an empty list, which the panel and the tab refresh on their own.
+  const requests: CustomerRequest[] = await requestsFor(a.customer_id).catch(() => []);
   return (
     <SupportShell rail="customer" railText={`${a.contact_name}, ${a.company_name}`} initials={a.contact_name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('')}
       topRight={<><span className="sp-who">{a.contact_name}</span><SwitchCaller kind="customer" /></>} panel={
@@ -114,12 +119,13 @@ export default async function SupportPage() {
           <div><dt>Plan</dt><dd>{a.plan}</dd></div>
           <div><dt>Account</dt><dd>{sentence(a.account_status)}</dd></div>
         </dl>
+        <PanelRequests initial={requests} />
         <Hours />
         <div className="sp-grow" />
         <Safety />
       </>
     }>
-      <ModeSwitch hint={`Signed in as ${a.company_name}`} starters={CUSTOMER_STARTERS} />
+      <ModeSwitch hint={`Signed in as ${a.company_name}`} starters={CUSTOMER_STARTERS} firstName={first} requests={requests} />
     </SupportShell>
   );
 }

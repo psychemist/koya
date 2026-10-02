@@ -54,3 +54,12 @@ test('the turn tells the model a signed-in caller is verified, and a guest gets 
   assert.match(framed, /\[Channel: web chat\]\n\[Caller: guest/);
   assert.doesNotMatch(frameCallerText('hi', new Date(), undefined, 'voice', null, null), /\[Caller:/);
 });
+
+test('a signed-in caller line carries their open requests, so the agent can answer about a case without a lookup', () => {
+  const account = { customer_id: 'CUS-1001', contact_name: 'Amara Okafor', company_name: 'LagosLedger', plan: 'Growth',
+    open: [{ ref: 'RP-E-000341', kind: 'escalation' as const, category: 'dispute', status: 'open', callback_at: '2026-10-05T11:00:00Z' },
+           { ref: 'RP-T-000120', kind: 'ticket' as const, category: 'payout', status: 'in_progress', callback_at: null }] };
+  const line = callerLine({ mode: 'customer', account })!;
+  assert.match(line, /Open requests: RP-E-000341 \(specialist case, dispute, open, callback booked for 2026-10-05T11:00:00.000Z\); RP-T-000120 \(ticket, payout, in progress\)/);
+  assert.match(callerLine({ mode: 'customer', account: { ...account, open: null } })!, /Open requests: none/);
+});

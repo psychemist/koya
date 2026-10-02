@@ -3,10 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Transcript, type Entry } from './transcript.tsx';
 import { MicIcon, MicOffIcon, PhoneIcon } from './ui/icons.tsx';
+import { Lines } from './ui/lines.tsx';
+import { Feedback } from './ui/feedback.tsx';
+import { primeTones, tones } from './ui/tones.ts';
+import { usePersisted } from './ui/use-persisted.ts';
+import { requestsChanged } from './support/requests.tsx';
 
 type CallState = 'checking' | 'idle' | 'unavailable' | 'connecting' | 'listening' | 'speaking' | 'ended' | 'error';
 type Vapi = {
-  start(assistantId: string, overrides?: { metadata?: Record<string, string> }): Promise<unknown>; stop(): void; setMuted(mute: boolean): void;
+  start(assistantId: string, overrides?: { metadata?: Record<string, string>; firstMessage?: string }): Promise<{ id?: string } | null | unknown>; stop(): void; setMuted(mute: boolean): void;
   on(event: string, fn: (...a: any[]) => void): void; removeAllListeners?(): void;
 };
 
@@ -64,14 +69,23 @@ function useElapsed(running: boolean) {
   return secs;
 }
 
-export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: () => void; onCallActive?: (active: boolean) => void }) {
+export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
+  onSwitchToChat?: () => void; onCallActive?: (active: boolean) => void; firstName?: string;
+}) {
   const [state, setState] = useState<CallState>('checking');
   const [error, setError] = useState('');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [muted, setMuted] = useState(false);
   const [turn, setTurn] = useState<Turn>('greeting');
+  const [callId, setCallId] = useState<string | null>(null);
+  const [sound, setSound] = usePersisted('rp_call_sounds', true);
+  const soundOn = useRef(sound);
+  soundOn.current = sound;
+  const cue = (name: keyof typeof tones) => { if (soundOn.current) tones[name](); };
   const vapi = useRef<Vapi | null>(null);
   const meter = useRef<HTMLSpanElement>(null);
+  // End call pressed while the call is still connecting: the start is cancelled, not left to connect afterwards.
+  const cancelled = useRef(false);
   const closing = useRef<{ heard: boolean; speaking: boolean; timer: ReturnType<typeof setTimeout> | null }>({ heard: false, speaking: false, timer: null });
   const configured = Boolean(PUBLIC_KEY && ASSISTANT_ID);
 
@@ -101,7 +115,9 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
   }
 
   async function start() {
-    setError(''); setEntries([]); setMuted(false); setTurn('greeting'); setState('connecting');
+    cancelled.current = false;
+    setError(''); setEntries([]); setMuted(false); setTurn('greeting'); setCallId(null); setState('connecting');
+    primeTones();
     if (closing.current.timer) clearTimeout(closing.current.timer);
     closing.current = { heard: false, speaking: false, timer: null };
     try {
@@ -111,12 +127,13 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
         const fake = process.env.NODE_ENV !== 'production' ? (window as any).__RP_FAKE_VAPI__ : undefined;
         const VapiClient = fake ?? (await import('@vapi-ai/web')).default;
         const v = new VapiClient(PUBLIC_KEY) as unknown as Vapi;
-        v.on('call-start', () => { setTurn('greeting'); setState('listening'); });
-        v.on('call-end', () => { if (closing.current.timer) clearTimeout(closing.current.timer); setState('ended'); meter.current?.style.setProperty('--lvl', '0'); });
+        v.on('call-start', () => { cue('connected'); setTurn('greeting'); setState('listening'); });
+        v.on('call-end', () => { if (closing.current.timer) clearTimeout(closing.current.timer); cue('ended'); requestsChanged(); setState('ended'); meter.current?.style.setProperty('--lvl', '0'); });
         v.on('speech-start', () => { closing.current.speaking = true; setTurn('agent'); setState('speaking'); });
         v.on('speech-end', () => {
           closing.current.speaking = false;
           if (closing.current.heard) hangUpSoon(600);
+          if (!closing.current.heard) cue('yourTurn');
           setTurn('you'); setState('listening'); meter.current?.style.setProperty('--lvl', '0'); });
         // Written straight to a CSS variable: ten updates a second should not re-render the transcript.
         v.on('volume-level', (level: number) => meter.current?.style.setProperty('--lvl', String(Math.min(1, Math.max(0, level)))));
@@ -147,10 +164,23 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
       }
       // The signed caller rides with the call, so the agent knows who is speaking without asking.
       const token = await fetch('/api/voice/token', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-      await vapi.current.start(ASSISTANT_ID, token?.token ? { metadata: { rp_caller: token.token } } : undefined);
+      if (cancelled.current) { setState('ended'); return; }
+      // A signed-in caller is greeted by name; the greeting is the only line Vapi speaks without the agent.
+      const call = await vapi.current.start(ASSISTANT_ID, {
+        ...(token?.token ? { metadata: { rp_caller: token.token } } : {}),
+        ...(firstName ? { firstMessage: `Hi ${firstName}, you've reached RelayPay support. How can I help today?` } : {}),
+      }) as { id?: string } | null;
+      if (call?.id) setCallId(call.id);
+      if (cancelled.current) vapi.current.stop();
     } catch (e) {
       setError(describeError(e)); setState('error');
     }
+  }
+
+  function endCall() {
+    cancelled.current = true;
+    vapi.current?.stop();
+    if (state === 'connecting') setState('ended');
   }
 
   function toggleMute() {
@@ -179,14 +209,14 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
             <button type="button" className="rp-btn rp-btn-quiet" aria-pressed={muted} disabled={!connected} onClick={toggleMute}>
               {muted ? <MicOffIcon size={18} /> : <MicIcon size={18} />}{muted ? 'Unmute' : 'Mute'}
             </button>
-            <button type="button" className="rp-btn rp-btn-end" onClick={() => vapi.current?.stop()}>End call</button>
+            <button type="button" className="rp-btn rp-btn-end" onClick={endCall}>End call</button>
           </div>
         </div>
       ) : (
         <div className="rp-call-start" data-state={state}>
           <span className="rp-call-mark" aria-hidden="true"><PhoneIcon size={26} /></span>
-          <p className="rp-call-title">{state === 'ended' ? 'Your call has ended' : 'Speak to RelayPay support'}</p>
-          <p className="rp-status" role="status" aria-live="polite" data-tone={tone}>{status}</p>
+          <p className="rp-call-title">{state === 'ended' ? 'Your call has ended' : 'Speak to RelayPay Support'}</p>
+          <p className="rp-status" role="status" aria-live="polite" data-tone={tone}><Lines text={status} /></p>
           <div className="rp-row rp-call-actions">
             <button type="button" className="rp-btn" disabled={state === 'checking' || state === 'unavailable'} onClick={start}>
               <PhoneIcon size={18} />{state === 'ended' || state === 'error' ? 'Call again' : 'Start call'}
@@ -194,7 +224,11 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
             {onSwitchToChat && (state === 'error' || state === 'unavailable') &&
               <button type="button" className="rp-btn rp-btn-quiet" onClick={onSwitchToChat}>Use chat</button>}
           </div>
-          <p className="rp-call-fine">Your browser will ask to use your microphone. Calls are transcribed so you can read along.</p>
+          {state === 'ended' && callId && <Feedback key={callId} channel="voice_web" callId={callId} label="How was this call?" />}
+          <p className="rp-call-fine"><Lines text="Your browser will ask to use your microphone. Calls are transcribed so you can read along." /></p>
+          <button type="button" className="rp-link-btn rp-sound" aria-pressed={sound} onClick={() => setSound(!sound)}>
+            Call sounds: {sound ? 'on' : 'off'}
+          </button>
         </div>
       )}
       {entries.length > 0 && (
