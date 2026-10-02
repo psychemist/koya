@@ -34,8 +34,9 @@ services:
     runtime: node
     region: virginia
     rootDir: 6-customer-support/build
-    # Standard (2 GB): the Agent SDK spawns one CLI subprocess per live call or chat.
-    plan: standard
+    # Starter (512 MB) for the demo. The Agent SDK spawns one CLI subprocess per
+    # live call or chat, so move to Standard (2 GB) before real concurrent traffic.
+    plan: starter
     # NOT --omit=optional: the SDK's native binary ships as an optional dependency.
     buildCommand: npm ci
     startCommand: npm run agent
