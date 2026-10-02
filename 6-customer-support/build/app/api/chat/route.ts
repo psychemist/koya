@@ -4,6 +4,7 @@ import { chatCookie, clearChatCookie, CHAT_COOKIE, issueChatToken, readChatToken
 import { chatTranscript } from '../../../lib/chat-transcript.ts';
 import { createLimiter } from '../../../lib/rate-limit.ts';
 import { endAgentChat } from '../../../lib/agent-client.ts';
+import { feedbackCookie } from '../../../lib/feedback.ts';
 import { CALLER_COOKIE, cookieFrom, readCallerCookie, type Caller } from '../../../lib/caller.ts';
 
 export const dynamic = 'force-dynamic';
@@ -71,5 +72,9 @@ export async function DELETE(req: Request): Promise<Response> {
   if (foreign(req)) return json(403, { error: 'This chat only accepts messages from the RelayPay support page.' });
   const id = readChatToken(cookieToken(req));
   if (id) await endAgentChat(id, 'customer-ended-chat');
-  return new Response(null, { status: 204, headers: { 'set-cookie': clearChatCookie(secure()), 'cache-control': 'no-store' } });
+  const headers = new Headers({ 'cache-control': 'no-store' });
+  headers.append('set-cookie', clearChatCookie(secure()));
+  // The chat is over, but the feedback asked next still needs to know which chat it is about.
+  if (id) headers.append('set-cookie', feedbackCookie(issueChatToken(id), secure()));
+  return new Response(null, { status: 204, headers });
 }
