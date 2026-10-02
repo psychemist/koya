@@ -1,4 +1,5 @@
 import { config } from '../../../lib/config.ts';
+import { foreignOrigin } from '../../../lib/auth.ts';
 import { chatCookie, clearChatCookie, CHAT_COOKIE, issueChatToken, readChatToken } from '../../../lib/chat-session.ts';
 import { chatTranscript } from '../../../lib/chat-transcript.ts';
 import { createLimiter } from '../../../lib/rate-limit.ts';
@@ -19,8 +20,8 @@ function cookieToken(req: Request): string | null {
   return null;
 }
 const ipOf = (req: Request) => (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'unknown';
-/** A browser on another site may not drive this chat. Same-origin requests carry our origin or none. */
-const foreign = (req: Request) => { const o = req.headers.get('origin'); return !!o && o !== config.web.baseUrl; };
+/** A browser on another site may not drive this chat. */
+const foreign = foreignOrigin;
 
 async function askAgent(body: object): Promise<{ status: number; json: any } | null> {
   try {

@@ -56,3 +56,15 @@ test('roles read as words a person would use', () => {
   assert.equal(roleLabel('support_agent'), 'Support agent');
   assert.equal(roleLabel('admin'), 'Admin');
 });
+
+test('the origin check refuses other sites but accepts this server under another name', async () => {
+  const { foreignOrigin } = await import('../../lib/auth.ts');
+  const r = (headers: Record<string, string>) => new Request('http://localhost:3000/api/chat', { method: 'POST', headers });
+  assert.equal(foreignOrigin(r({})), false);
+  assert.equal(foreignOrigin(r({ origin: 'http://localhost:3000', host: 'localhost:3000' })), false);
+  assert.equal(foreignOrigin(r({ origin: 'http://127.0.0.1:3000', host: '127.0.0.1:3000' })), false);
+  assert.equal(foreignOrigin(r({ origin: 'http://192.168.1.20:3000', host: '192.168.1.20:3000' })), false);
+  assert.equal(foreignOrigin(r({ origin: 'https://evil.example', host: 'localhost:3000' })), true);
+  assert.equal(foreignOrigin(r({ origin: 'http://127.0.0.1:3000' })), true);
+  assert.equal(foreignOrigin(r({ origin: 'null', host: 'localhost:3000' })), true);
+});

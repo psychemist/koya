@@ -50,8 +50,17 @@ export async function userFromCookieHeader(cookieHeader: string | null | undefin
 /** For route handlers: null means answer 401. */
 export const userFromRequest = (req: Request) => userFromCookieHeader(req.headers.get('cookie'));
 
-/** A change to a record is refused when it comes from another site, whatever cookie it carries. */
-export const foreignOrigin = (req: Request) => { const o = req.headers.get('origin'); return !!o && o !== config.web.baseUrl; };
+/**
+ * A change to a record is refused when it comes from another site, whatever cookie it carries.
+ * Same-origin means our configured URL, or the host this request was sent to: the same server
+ * reached as 127.0.0.1 or a LAN address is not another site, and a page elsewhere cannot set Host.
+ */
+export const foreignOrigin = (req: Request) => {
+  const o = req.headers.get('origin');
+  if (!o || o === config.web.baseUrl) return false;
+  const host = req.headers.get('host');
+  try { return !host || new URL(o).host !== host; } catch { return true; }
+};
 
 export const sessionCookie = (token: string) =>
   `${cookieName}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${cookieMaxAge}${config.web.baseUrl.startsWith('https://') ? '; Secure' : ''}`;
