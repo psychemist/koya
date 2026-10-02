@@ -1,7 +1,7 @@
 import { config } from '../config.ts';
 import { one, query } from '../db.ts';
 import { redactString } from '../sanitise.ts';
-import { bookCallback } from './cal.ts';
+import { bookCallback, cancelCallback } from './cal.ts';
 import { postEmailGaveUp, postToDiscord } from './discord.ts';
 import { sendSupportEmail } from './support-email.ts';
 import type { Alert, BookingOutcome } from './alert.ts';
@@ -62,9 +62,21 @@ export async function dispatchNotification(notificationId: string, opts: { dryRu
       await query(`update public.notifications set booking_result = $2, booking_uid = $3 where id = $1`, [n.id, booking, uid]);
     }
     const booked = booking === 'booked';
+    // A moved callback: the new time is booked, so the booking it replaces is cancelled, or the team sees both.
+    const before = slot && booked ? await one<{ calendar_event_id: string | null; conversation_id: string }>(
+      'select calendar_event_id, conversation_id from public.escalations where id = $1', [e.id]) : null;
     if (slot) await query(`update public.escalations set updated_at = now(), booking_status = $2, call_booked = $3,
         appointment_at = case when $3 then $4::timestamptz else appointment_at end, calendar_event_id = coalesce($5, calendar_event_id)
       where id = $1`, [e.id, booked ? 'booked' : booking === 'slot_taken' ? 'slot_unavailable' : 'failed', booked, slot, uid]);
+
+    if (before?.calendar_event_id && uid && before.calendar_event_id !== uid) {
+      const baseUrl = opts.fault === 'calendar_down' ? 'http://127.0.0.1:9/' : config.escalation.calApiUrl;
+      const c = await cancelCallback(before.calendar_event_id, `Moved to ${slot} (${e.escalation_ref})`, { baseUrl });
+      await query(`insert into public.conversation_events (conversation_id, event_type, source, summary) values ($1, 'note', 'system', $2)`,
+        [before.conversation_id, c.ok ? `Callback moved to ${slot}; the earlier booking ${before.calendar_event_id} was cancelled.`
+          : `Callback moved to ${slot}, but the earlier booking ${before.calendar_event_id} could not be cancelled: ${c.error}`.slice(0, 500)])
+        .catch(() => undefined);
+    }
 
     const outcome: BookingOutcome = !slot ? 'no_slot' : booked ? 'booked' : booking === 'slot_taken' ? 'slot_taken' : 'booking_failed';
 

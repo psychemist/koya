@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { bookCallback } from '../../lib/escalations/cal.ts';
+import { bookCallback, cancelCallback } from '../../lib/escalations/cal.ts';
 import { startStub, type Stub, type StubCall } from '../fakes/http-stub.ts';
 
 type Answer = { status: number; json: unknown };
@@ -119,4 +119,23 @@ test('a retry looks for the earlier booking under the same attendee address it b
   await bookCallback({ ...input, email: 'efua@accrastack.example' }, { baseUrl: cal.url, lookFirst: true });
   const look = cal.calls.find((c) => c.method === 'GET' && c.path === '/v2/bookings')!;
   assert.equal(look.query.get('attendeeEmail'), 'support@relaypay.io');
+});
+
+test('a moved callback cancels the booking it replaces, on the cancel endpoint with a reason', async () => {
+  reset(free, () => ({ status: 200, json: { status: 'success', data: { status: 'cancelled' } } }));
+  assert.deepEqual(await cancelCallback('bk_old', 'Moved to 2026-10-07T14:00:00.000Z (RP-E-000004)', { baseUrl: cal.url }), { ok: true });
+  const post = posts()[0];
+  assert.equal(post.path, '/v2/bookings/bk_old/cancel');
+  assert.equal(post.headers['cal-api-version'], '2026-02-25');
+  assert.match(post.body.cancellationReason, /Moved to/);
+});
+
+test('a booking that is already gone counts as cancelled; any other refusal is reported, never thrown', async () => {
+  reset(free, () => ({ status: 404, json: { status: 'error', error: { message: 'Booking not found' } } }));
+  assert.deepEqual(await cancelCallback('bk_gone', 'moved', { baseUrl: cal.url }), { ok: true });
+  reset(free, () => ({ status: 400, json: { status: 'error', error: { message: 'This booking has already been cancelled' } } }));
+  assert.deepEqual(await cancelCallback('bk_done', 'moved', { baseUrl: cal.url }), { ok: true });
+  reset(free, () => ({ status: 500, json: { status: 'error', error: { message: 'internal' } } }));
+  assert.deepEqual(await cancelCallback('bk_x', 'moved', { baseUrl: cal.url }), { ok: false, error: 'cal.com cancel returned 500: internal' });
+  assert.equal((await cancelCallback('bk_x', 'moved', { baseUrl: 'http://127.0.0.1:9/' })).ok, false);
 });

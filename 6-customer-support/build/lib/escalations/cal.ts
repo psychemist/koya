@@ -79,3 +79,18 @@ export async function bookCallback(r: CallbackRequest, opts: { baseUrl: string; 
     return { result: 'failed', error: redactString(`cal.com unreachable: ${(err as Error).message}`) };
   }
 }
+
+/**
+ * Cancels a booking an escalation no longer uses: when the caller moves their callback, the new time is
+ * booked first and the old one is cancelled after, so the team never has no booking at all. A booking that
+ * is already gone counts as cancelled. Never throws.
+ */
+export async function cancelCallback(uid: string, reason: string, opts: { baseUrl: string }): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await call(opts.baseUrl, `/v2/bookings/${encodeURIComponent(uid)}/cancel`, V_CREATE, { method: 'POST', body: { cancellationReason: reason } });
+    if (res.ok || res.status === 404 || /already (been )?cancel/i.test(String(res.json?.error?.message ?? res.json?.message ?? ''))) return { ok: true };
+    return { ok: false, error: `cal.com cancel returned ${res.status}${why(res.json)}` };
+  } catch (err) {
+    return { ok: false, error: redactString(`cal.com unreachable: ${(err as Error).message}`) };
+  }
+}
