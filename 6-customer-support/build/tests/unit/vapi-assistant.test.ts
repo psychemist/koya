@@ -27,6 +27,8 @@ test('the first message and every spoken phrase in the file are free of em and e
   assert.ok(!/[\u2014\u2013]/.test(JSON.stringify(a)));
 });
 
-test('the transcriber is primed with the words callers say that a generic model mishears', () => {
-  for (const w of ['RelayPay', 'LagosLedger', 'AccraStack']) assert.ok(a.transcriber.keyterm.includes(w), w);
+test('the voice settings tuned in the Vapi dashboard on 2026-10-02 live in this file, so a sync never reverts them', () => {
+  assert.equal(a.transcriber.provider, 'soniox');
+  assert.equal(a.startSpeakingPlan.smartEndpointingPlan.provider, 'vapi');
+  assert.equal(a.voice.voiceId, 'Layla');
 });

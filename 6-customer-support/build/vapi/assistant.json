@@ -15,12 +15,24 @@
   },
   "voice": {
     "provider": "vapi",
-    "voiceId": "Elliot"
+    "voiceId": "Layla",
+    "version": "2",
+    "speed": 1.1,
+    "language": "auto",
+    "pronunciationDictionary": [
+      {
+        "provider": "cartesia",
+        "pronunciationDictId": "pdict_SAN5QmPKTz39Zji1U5Cd58"
+      }
+    ]
   },
   "transcriber": {
-    "provider": "deepgram",
-    "model": "nova-3",
-    "language": "en",
+    "provider": "soniox",
+    "model": "stt-rt-v5",
+    "languageHintsStrict": true,
+    "maxEndpointDelayMs": 500,
+    "endpointSensitivity": 0.3,
+    "endpointLatencyAdjustmentLevel": 2,
     "keyterm": [
       "RelayPay",
       "TXN",
@@ -29,8 +41,18 @@
       "NairobiOps",
       "AccraStack",
       "CapeCloud",
-      "KigaliWorks"
+      "KigaliWorks",
+      "Amara Okafor",
+      "Daniel Mwangi",
+      "Efua Mensah",
+      "Amina Jacobs",
+      "Patrick Ndayisaba"
     ]
+  },
+  "startSpeakingPlan": {
+    "smartEndpointingPlan": {
+      "provider": "vapi"
+    }
   },
   "server": {
     "url": "${AGENT_PUBLIC_URL}/vapi/events",
