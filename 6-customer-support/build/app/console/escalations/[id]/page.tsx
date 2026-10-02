@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { escalationDetail } from '../../../../lib/console.ts';
 import { StatusActions } from '../../../ui/status-actions.tsx';
+import { BackLink } from '../../../ui/back-link.tsx';
 import { utc, words } from '../../../ui/format.ts';
 
 /** The page the Discord alert and the support email link to. */
@@ -11,7 +12,7 @@ export default async function EscalationPage({ params }: { params: Promise<{ id:
   const e = d.escalation;
   return (
     <>
-      <p className="rp-crumb"><Link href="/console/escalations">Escalations</Link></p>
+      <BackLink href="/console/escalations" label="Back to escalations" />
       <div className="rp-page-head"><h1>{e.escalation_ref}</h1><StatusActions kind="escalations" id={e.id} reference={e.escalation_ref} status={e.status} /></div>
       <dl className="rp-facts">
         <div><dt>Category</dt><dd>{e.category}</dd></div>

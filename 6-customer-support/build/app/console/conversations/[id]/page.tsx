@@ -4,6 +4,7 @@ import { conversationDetail, CHANNEL_LABEL } from '../../../../lib/console.ts';
 import { StatusActions } from '../../../ui/status-actions.tsx';
 import { usd, utc, words } from '../../../ui/format.ts';
 import { Pill } from '../../../ui/pill.tsx';
+import { BackLink } from '../../../ui/back-link.tsx';
 
 const GATE: Record<string, string> = { G1: 'reply shape', G2: 'grounding', G3: 'required escalation', G4: 'promise', G5: 'sensitive data', G6: 'speakable' };
 
@@ -22,7 +23,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
 
   return (
     <>
-      <p className="rp-crumb"><Link href="/console">Conversations</Link></p>
+      <BackLink href="/console" label="Back to conversations" />
       <h1>{CHANNEL_LABEL[c.channel] ?? c.channel} conversation</h1>
       <dl className="rp-facts">
         <div><dt>Started</dt><dd>{utc(c.started_at)}</dd></div>

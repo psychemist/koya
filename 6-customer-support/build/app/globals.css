@@ -467,9 +467,23 @@ time, .num { font-variant-numeric: tabular-nums; }
 .rp-record p { margin: 0 0 8px; }
 .rp-bad, .rp-alert { color: var(--rp-bad); font-weight: 600; }
 .rp-tag { color: var(--rp-mute); font-size: 0.875rem; }
-.rp-actions { gap: 8px; flex-wrap: nowrap; }
-.rp-actions .rp-status { font-size: 0.875rem; }
+/* Status and its next steps as one compact control: the status, then at most two small buttons of one height. */
+.rp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.rp-actions-btns { display: inline-flex; gap: 6px; }
+.rp-step { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid var(--rp-blue); background: var(--rp-blue); color: #fff; font-size: 0.8125rem; font-weight: 500;
+  white-space: nowrap; cursor: pointer; transition: background-color 120ms, border-color 120ms; }
+.rp-step:hover:not(:disabled) { background: var(--rp-blue-hover); border-color: var(--rp-blue-hover); }
+.rp-step:disabled { opacity: 0.55; cursor: progress; }
+.rp-step-quiet { background: var(--rp-surface); color: var(--rp-ink); border-color: var(--rp-rule-strong); }
+.rp-step-quiet:hover:not(:disabled) { background: var(--rp-sunk); border-color: var(--rp-mute); }
+.rp-actions .rp-status { flex-basis: 100%; font-size: 0.8125rem; }
 .rp-crumb { margin: 0 0 6px; font-size: 0.875rem; }
+.rp-back { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; margin: 0 0 14px; padding: 0 12px 0 8px;
+  border: 1px solid var(--rp-rule-strong); border-radius: var(--rp-radius); background: var(--rp-surface);
+  color: var(--rp-blue); font-size: 0.875rem; font-weight: 500; text-decoration: none; }
+.cs-main a.rp-back { color: var(--rp-blue); text-decoration: none; }
+.rp-back:hover { border-color: var(--rp-blue); background: var(--rp-sunk); }
 .rp-crumb a { color: var(--rp-mute) !important; text-decoration: none; }
 .rp-crumb a:hover { color: var(--rp-blue) !important; text-decoration: underline; }
 /* An evaluation run is a fold: the summary line always shows, the table only when opened, and it scrolls inside. */
