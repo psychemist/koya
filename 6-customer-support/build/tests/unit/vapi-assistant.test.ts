@@ -9,7 +9,10 @@ test('recording is off and calls are capped at ten minutes', () => {
   assert.equal(a.artifactPlan.recordingEnabled, false); assert.ok(a.maxDurationSeconds <= 600);
 });
 test('both server URLs authenticate through saved credentials, and no secret is in the file', () => {
-  assert.match(a.model.credentialId, /^\$\{VAPI_CUSTOM_LLM_CREDENTIAL_ID\}$/);
+  // Vapi refuses model.credentialId for custom-llm (400, 2026-10-02); the credential is named at the assistant level,
+  // which also picks ours out of a shared org's several custom-llm credentials.
+  assert.deepEqual(a.credentialIds, ['${VAPI_CUSTOM_LLM_CREDENTIAL_ID}']);
+  assert.ok(!('credentialId' in a.model));
   assert.match(a.server.credentialId, /^\$\{VAPI_WEBHOOK_CREDENTIAL_ID\}$/);
   assert.ok(!/"secret"|sk-ant|Bearer [a-z0-9]/i.test(JSON.stringify(a)));
 });
