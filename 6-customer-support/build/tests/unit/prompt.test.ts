@@ -26,3 +26,9 @@ test('row 11: an answer from a lookup cites the reference the tool returned', ()
 test('row 17: the escalation category follows the issue, and a refund is a dispute', () => {
   assert.match(SYSTEM_PROMPT, /dispute for a refund/i);
 });
+test('brief 6: a ticket needs no contact details, so asking to log an issue creates the ticket on that turn', () => {
+  assert.match(SYSTEM_PROMPT, /ticket needs no contact details/i);
+});
+test('row 14: a contact name and a company name are two identifiers, not one', () => {
+  assert.match(SYSTEM_PROMPT, /a contact name and a company name are two identifiers/i);
+});
