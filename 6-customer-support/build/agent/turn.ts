@@ -7,6 +7,8 @@ import { loadTurnFacts } from './facts.ts';
 import type { SessionManager } from './sessions.ts';
 import type { RuntimeEvent } from './runtime.ts';
 import type { Prefetch } from './prefetch.ts';
+import { fillers, fillerKind } from './fillers.ts';
+import type { FillerKind } from '../lib/lines.ts';
 
 /** Voice speaks both kinds; chat shows only replies, because a filler line is a pause, not a message. */
 export interface SpeechSink { say(text: string, kind?: 'filler' | 'reply'): void }
@@ -27,9 +29,23 @@ export function isNoise(text: string): boolean {
   return t === '' || FILLERS.has(t);
 }
 
-/** The per-turn facts the cached system prompt cannot hold: the time, on recovery what was said before, and a prefetched search. */
-export function frameCallerText(text: string, now: Date, prior?: string, channel: TurnChannel = 'voice', knowledge?: string | null): string {
+export type SignedIn = { customer_id: string; contact_name: string; company_name: string; plan: string };
+export type CallerFrame = { mode: 'customer'; account: SignedIn } | { mode: 'guest' } | null;
+
+/** One line saying who the caller is, from the conversation row, never from anything the caller typed. */
+export function callerLine(c: CallerFrame): string | null {
+  if (!c) return null;
+  if (c.mode === 'guest') return '[Caller: guest, not signed in. Knowledge base answers only; account, transaction and payout lookups are not available.]';
+  const a = c.account;
+  return `[Caller: signed in on the support page as ${a.contact_name} of ${a.company_name}, customer ID ${a.customer_id}, ${a.plan} plan. ` +
+    'Identity is already verified.]';
+}
+
+/** The per-turn facts the cached system prompt cannot hold: the time, who is calling, on recovery what was said before, and a prefetched search. */
+export function frameCallerText(text: string, now: Date, prior?: string, channel: TurnChannel = 'voice', knowledge?: string | null, caller?: CallerFrame): string {
   const lines = [`[Current time: ${now.toISOString()} UTC]`, `[Channel: ${channel === 'chat' ? 'web chat' : 'voice call'}]`];
+  const who = callerLine(caller ?? null);
+  if (who) lines.push(who);
   if (prior) lines.push('[Prior transcript, for context only]', prior, '[End of prior transcript]');
   lines.push(`Caller said: ${text}`);
   if (knowledge) lines.push(knowledge);
@@ -37,12 +53,17 @@ export function frameCallerText(text: string, now: Date, prior?: string, channel
 }
 
 type Preflight = { now: Date; spent_today: string; conv_cost: number | null; latest_id: string | null; user_transcript: string | null;
-  assistant_response: string | null; answer_type: AnswerType | null; fresh: boolean | null };
+  assistant_response: string | null; answer_type: AnswerType | null; fresh: boolean | null;
+  caller_mode: 'customer' | 'guest' | null; signed_in: SignedIn | null };
 
 /** Everything a turn checks before the model, in one round trip: each query is a full trip to the database. */
 const preflight = (conversationId: string) => one<Preflight>(
   `select now() as now, ${SPENT_TODAY_SQL} as spent_today,
      (select cost_usd::float8 from public.conversations where id = $1) as conv_cost,
+     (select caller_mode from public.conversations where id = $1) as caller_mode,
+     (select json_build_object('customer_id', c.customer_id, 'contact_name', c.contact_name, 'company_name', c.company_name, 'plan', c.plan)
+        from public.conversations v join public.customers c on c.customer_id = v.verified_customer_id
+        where v.id = $1 and v.caller_mode = 'customer') as signed_in,
      l.id as latest_id, l.user_transcript, l.assistant_response, l.answer_type, l.fresh
    from (select 1) one_row left join lateral (
      select id, user_transcript, assistant_response, answer_type, created_at > now() - interval '5 seconds' as fresh
@@ -79,12 +100,25 @@ export function runTurn(deps: { sessions: SessionManager; now?: () => Date; pref
   if (isNoise(text)) { sink.say(LINES.didntCatch); return Promise.resolve({ status: 'noise', answerType: null, spoken: LINES.didntCatch, turnId: null }); }
 
   return sessions.withLock(input.conversationId, async (): Promise<TurnOutcome> => {
-    // A caller who hears nothing for a second thinks the line dropped: the filler fills a slow turn, and never follows the reply.
-    let fillerSaid = false, replied = false;
-    const filler = () => { if (!fillerSaid && !replied) { fillerSaid = true; sink.say(LINES.filler, 'filler'); } };
-    const timer = config.agent.fillerAfterMs > 0 ? setTimeout(filler, config.agent.fillerAfterMs) : null;
-    const speak = (line: string) => { replied = true; if (timer) clearTimeout(timer); sink.say(line); };
-    try { return await turnBody(); } finally { if (timer) clearTimeout(timer); }
+    // A caller who hears nothing for a second thinks the line dropped. At most two fillers fill a slow turn: one that fits
+    // what is happening, then "still checking" if it drags on, or a tool's own line after a generic one. Never after the reply.
+    let said = 0, lastKind: FillerKind | null = null, lastAt = 0, replied = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const later = (ms: number, fn: () => void) => { if (ms > 0) timers.push(setTimeout(fn, ms)); };
+    const filler = (kind: FillerKind) => {
+      if (replied || said >= 2 || channel === 'chat') return;
+      said++; lastKind = kind; lastAt = Date.now();
+      sink.say(fillers.pick(input.conversationId, kind), 'filler');
+      if (said === 1) later(config.agent.fillerStillAfterMs, () => { if (said === 1) filler('still'); });
+    };
+    const onTool = (tool: string) => {
+      const kind = fillerKind(text, tool);
+      if (said === 0) filler(kind);
+      else if (said === 1 && lastKind === 'general' && kind !== 'general' && Date.now() - lastAt > 1500) filler(kind);
+    };
+    later(config.agent.fillerAfterMs, () => { if (said === 0) filler(fillerKind(text)); });
+    const speak = (line: string) => { replied = true; for (const t of timers) clearTimeout(t); sink.say(line); };
+    try { return await turnBody(); } finally { for (const t of timers) clearTimeout(t); }
 
   async function turnBody(): Promise<TurnOutcome> {
     const t0 = Date.now();
@@ -115,6 +149,8 @@ export function runTurn(deps: { sessions: SessionManager; now?: () => Date; pref
 
     // The prefetch starts after `since`, so the search row it writes counts as grounded on this turn.
     const since = pre.now;
+    const caller: CallerFrame = pre.caller_mode === 'guest' ? { mode: 'guest' }
+      : pre.caller_mode === 'customer' && pre.signed_in ? { mode: 'customer', account: pre.signed_in } : null;
     const now = deps.now?.() ?? new Date();
     const [session, knowledge] = await Promise.all([sessions.getOrOpen(id), deps.prefetch?.(id, text).catch(() => null) ?? null]);
     let cost = 0, attempts = 0, violations: Violation[] = [], retriedFor: Violation[] = [], intended: AnswerType | undefined;
@@ -122,11 +158,11 @@ export function runTurn(deps: { sessions: SessionManager; now?: () => Date; pref
     let approved = null as ReturnType<typeof checkReply>['reply'];
 
     for (attempts = 1; attempts <= 2; attempts++) {
-      const prompt = attempts === 1 ? frameCallerText(text, now, input.prior, channel, knowledge) : retryMessage(violations);
+      const prompt = attempts === 1 ? frameCallerText(text, now, input.prior, channel, knowledge, caller) : retryMessage(violations);
       let result: Extract<RuntimeEvent, { kind: 'result' }> | null = null;
       try {
         for await (const e of session.turn(prompt)) {
-          if (e.kind === 'tool_start') filler();
+          if (e.kind === 'tool_start') onTool(e.tool);
           if (e.kind === 'result') result = e;
         }
       } catch { result = null; }

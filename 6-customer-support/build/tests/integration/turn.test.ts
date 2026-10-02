@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { query } from '../../lib/db.ts';
-import { LINES } from '../../lib/lines.ts';
+import { LINES, FILLERS } from '../../lib/lines.ts';
 import { runTurn } from '../../agent/turn.ts';
 import { SessionManager } from '../../agent/sessions.ts';
 import { fakeRuntime, logToolCall } from '../fakes/runtime.ts';
@@ -19,7 +19,9 @@ test('a grounded answer is spoken, after the filler, and written as one ok turn'
   const s = sink();
   const r = await runTurn({ sessions: new SessionManager(rt) }, { conversationId: c.id, text: 'what fees do you charge' }, s);
   assert.equal(r.status, 'ok');
-  assert.deepEqual(s.said, [LINES.filler, answer([]).spoken_response]);
+  assert.equal(s.said.length, 2);
+  assert.ok((FILLERS.knowledge as readonly string[]).includes(s.said[0]), s.said[0]);   // the search that started picks the line
+  assert.equal(s.said[1], answer([]).spoken_response);
   const [t] = await query('select seq, answer_type, citations, status from public.conversation_turns where conversation_id=$1', [c.id]);
   assert.deepEqual(t, { seq: 1, answer_type: 'answer', citations: ['faq/fees'], status: 'ok' });
   await dropConversation(c.id);
@@ -178,7 +180,9 @@ test('a slow turn speaks the filler before the reply, and the filler never follo
     const slow = fakeRuntime([async () => { await new Promise((r) => setTimeout(r, 200)); return [ok(clarify)]; }]);
     const s = sink();
     await runTurn({ sessions: new SessionManager(slow) }, { conversationId: c.id, text: 'my payment is stuck' }, s);
-    assert.deepEqual(s.said, [LINES.filler, clarify.spoken_response]);
+    assert.equal(s.said.length, 2);
+    assert.ok((FILLERS.general as readonly string[]).includes(s.said[0]), s.said[0]);
+    assert.equal(s.said[1], clarify.spoken_response);
     // A timer longer than the turn: once the reply is out, the moment it would have fired passes in silence.
     process.env.AGENT_FILLER_AFTER_MS = '2500';
     const c2 = await newConversation();
@@ -186,7 +190,7 @@ test('a slow turn speaks the filler before the reply, and the filler never follo
     await runTurn({ sessions: new SessionManager(fakeRuntime([[ok(clarify)]])) }, { conversationId: c2.id, text: 'my payment is stuck' }, s2);
     await new Promise((r) => setTimeout(r, Math.max(0, 2600 - (Date.now() - t0))));
     assert.equal(s2.said.at(-1), clarify.spoken_response);
-    assert.equal(s2.said.filter((x) => x === LINES.filler).length <= 1, true);
+    assert.ok(s2.said.length <= 2);
     await dropConversation(c.id); await dropConversation(c2.id);
   } finally { if (before === undefined) delete process.env.AGENT_FILLER_AFTER_MS; else process.env.AGENT_FILLER_AFTER_MS = before; }
 });

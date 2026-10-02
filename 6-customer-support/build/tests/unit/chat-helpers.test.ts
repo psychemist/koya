@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { priorFromTurns, endsChat } from '../../agent/chat.ts';
 import { frameCallerText, collectSink } from '../../agent/turn.ts';
-import { LINES } from '../../lib/lines.ts';
+import { LINES, FILLERS } from '../../lib/lines.ts';
 
 test('prior transcript from stored turns keeps the last 12 lines, oldest first, labelled', () => {
   const turns = Array.from({ length: 8 }, (_, i) => ({ user_transcript: `q${i}`, assistant_response: `a${i}` }));
@@ -29,7 +29,7 @@ test('every turn states its channel', () => {
 
 test('a chat reply keeps the approved text and drops the filler', () => {
   const s = collectSink();
-  s.say(LINES.filler, 'filler');
+  s.say(FILLERS.general[0], 'filler');
   s.say('Fees vary by corridor.');
   assert.equal(s.reply(), 'Fees vary by corridor.');
 });
