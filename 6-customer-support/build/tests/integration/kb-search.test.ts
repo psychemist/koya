@@ -59,3 +59,13 @@ test('switching embedders re-embeds every chunk, so fixture vectors never outliv
   assert.ok(r.updated > 30, `re-embedded ${r.updated}`);
   assert.equal((await ingestKb(md, e)).updated, r.updated);
 });
+
+test('vectors from another model are never scored: the search degrades to full text and says so', { skip: skipWithoutDatabase }, async () => {
+  // 2026-10-02: the suite had left fixture vectors in the live table, and Voyage query vectors were
+  // scored against them, quietly grounding answers on text matches alone.
+  const other = { model: 'some-other-model', embed: e.embed } as any;
+  const r = await searchKb('What fees does RelayPay charge for international payments?', other);
+  assert.equal(r.degraded, true);
+  assert.ok(r.chunks.every((c) => c.similarity === 0), JSON.stringify(r.chunks.map((c) => c.similarity)));
+  assert.ok(r.chunks.length > 0, 'full text still finds the fees chunk');
+});

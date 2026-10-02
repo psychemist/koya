@@ -28,9 +28,13 @@ async function queryEmbedding(q: string, e: Embedder, conversationId?: string | 
 export async function searchKb(raw: string, e: Embedder, opts: { matchCount?: number; conversationId?: string | null } = {}): Promise<SearchResult> {
   const q = raw.trim().replace(/\s+/g, ' ');
   let vec: number[] | null = null, degraded = false;
-  try { vec = await queryEmbedding(q, e, opts.conversationId); } catch { degraded = true; }
+  // No chunk embedded by this model means no vector can be compared: skip the embedding call and say so.
+  const comparable = await one<{ ok: boolean }>(
+    `select exists (select 1 from public.kb_chunks where embedding_model = $1 and embedding is not null and retired_at is null) as ok`, [e.model]);
+  if (!comparable?.ok) degraded = true;
+  else { try { vec = await queryEmbedding(q, e, opts.conversationId); } catch { degraded = true; } }
   const rows = await query<Omit<ChunkHit, 'grounded'>>(
-    'select * from public.search_kb($1, $2::extensions.vector, $3)', [q, vec ? toVectorLiteral(vec) : null, opts.matchCount ?? 4]);
+    'select * from public.search_kb($1, $2::extensions.vector, $3, $4)', [q, vec ? toVectorLiteral(vec) : null, opts.matchCount ?? 4, e.model]);
   const chunks = markGrounded(rows, config.kb.groundingThreshold, config.kb.ftsStrong, degraded);
   return { query: q, chunks, grounded: chunks.some((c) => c.grounded), degraded };
 }
