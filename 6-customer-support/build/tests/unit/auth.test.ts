@@ -68,3 +68,9 @@ test('the origin check refuses other sites but accepts this server under another
   assert.equal(foreignOrigin(r({ origin: 'http://127.0.0.1:3000' })), true);
   assert.equal(foreignOrigin(r({ origin: 'null', host: 'localhost:3000' })), true);
 });
+
+test('only an admin sees evaluations', async () => {
+  const { canSeeEvaluations } = await import('../../lib/auth.ts');
+  assert.equal(canSeeEvaluations({ role: 'admin' }), true);
+  assert.equal(canSeeEvaluations({ role: 'support_agent' }), false);
+});

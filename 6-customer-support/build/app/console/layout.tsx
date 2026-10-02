@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { requireConsoleUser } from '../../lib/console-session.ts';
-import { roleLabel } from '../../lib/auth.ts';
+import { canSeeEvaluations, roleLabel } from '../../lib/auth.ts';
 import { SignOut } from '../ui/sign-out.tsx';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +17,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           <Link href="/console">Conversations</Link>
           <Link href="/console/tickets">Tickets</Link>
           <Link href="/console/escalations">Escalations</Link>
-          <Link href="/console/evaluations">Evaluations</Link>
+          {canSeeEvaluations(user) && <Link href="/console/evaluations">Evaluations</Link>}
         </nav>
         <span className="rp-who-am-i">{user.name}, {roleLabel(user.role)}</span>
         <SignOut />

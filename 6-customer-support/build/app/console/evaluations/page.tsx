@@ -1,10 +1,19 @@
 import { listEvaluations } from '../../../lib/console.ts';
+import { canSeeEvaluations } from '../../../lib/auth.ts';
+import { requireConsoleUser } from '../../../lib/console-session.ts';
 import { ManualEvaluation } from '../../ui/manual-evaluation.tsx';
 import { usd, utc } from '../../ui/format.ts';
 
 const pct = (xs: number[], p: number) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.ceil((p / 100) * s.length) - 1)]; };
 
 export default async function Evaluations() {
+  const user = await requireConsoleUser('/console/evaluations');
+  if (!canSeeEvaluations(user)) return (
+    <>
+      <h1>Evaluations</h1>
+      <p className="rp-lede">Evaluations are for admins. Ask an admin if you need a test result.</p>
+    </>
+  );
   const rows = await listEvaluations();
   const runs = new Map<string, any[]>();
   for (const r of rows) runs.set(r.eval_run_id, [...(runs.get(r.eval_run_id) ?? []), r]);

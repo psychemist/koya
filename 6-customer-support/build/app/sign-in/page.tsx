@@ -9,7 +9,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
       <header className="rp-header"><img src="/relaypay-logo.png" alt="RelayPay" width={137} height={28} /></header>
       <section className="rp-card" aria-labelledby="signin-title">
         <h1 id="signin-title">Support console</h1>
-        <p className="rp-lede">Review conversations, work tickets and escalations, and record evaluations.</p>
+        <p className="rp-lede">Review conversations and work tickets and escalations. Admins also record evaluations.</p>
         <SignIn next={next} />
       </section>
     </main>

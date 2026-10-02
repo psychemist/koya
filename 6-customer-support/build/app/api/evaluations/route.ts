@@ -1,4 +1,4 @@
-import { foreignOrigin, userFromRequest } from '../../../lib/auth.ts';
+import { canSeeEvaluations, foreignOrigin, userFromRequest } from '../../../lib/auth.ts';
 import { recordManualEvaluation } from '../../../lib/console.ts';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +11,7 @@ export async function POST(req: Request): Promise<Response> {
   if (foreignOrigin(req)) return json(403, { error: 'Evaluations are only accepted from the console.' });
   const user = await userFromRequest(req);
   if (!user) return json(401, { error: 'Sign in to record an evaluation.' });
+  if (!canSeeEvaluations(user)) return json(403, { error: 'Only an admin can record an evaluation.' });
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const scenarioKey = text(b.scenario_key, 80), expected = text(b.expected, 2000), actual = text(b.actual, 2000);
   if (!scenarioKey || !expected || !actual || typeof b.passed !== 'boolean')

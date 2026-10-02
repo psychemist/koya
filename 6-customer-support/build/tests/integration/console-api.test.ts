@@ -19,16 +19,19 @@ const { SessionManager } = await import('../../agent/sessions.ts');
 const { fakeRuntime } = await import('../fakes/runtime.ts');
 const { skipWithoutDatabase, newConversation, dropConversation } = await import('../helpers.ts');
 
-let userId = '';
+let userId = '', adminId = '';
 before(async () => {
   if (skipWithoutDatabase) return;
   const email = `console-test-${randomUUID()}@example.com`;
   userId = (await one<{ id: string }>(`insert into public.users (email, name, role, password_hash) values ($1, 'Test Agent', 'support_agent', $2) returning id`,
     [email, hashPassword('not-used')]))!.id;
+  adminId = (await one<{ id: string }>(`insert into public.users (email, name, role, password_hash) values ($1, 'Test Admin', 'admin', $2) returning id`,
+    [`console-admin-${randomUUID()}@example.com`, hashPassword('not-used')]))!.id;
 });
 
-const req = (url: string, body: unknown, signedIn = true) => new Request(`http://localhost:3000${url}`, { method: 'POST',
-  headers: { 'content-type': 'application/json', ...(signedIn ? { cookie: `rp_console_session=${issue(userId)}` } : {}) }, body: JSON.stringify(body) });
+const req = (url: string, body: unknown, signedIn: boolean | string = true) => new Request(`http://localhost:3000${url}`, { method: 'POST',
+  headers: { 'content-type': 'application/json', ...(signedIn ? { cookie: `rp_console_session=${issue(typeof signedIn === 'string' ? signedIn : userId)}` } : {}) },
+  body: JSON.stringify(body) });
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 const escalate = (conv: string) => withRequestContext({ conversationId: conv, fault: null }, async () =>
   (await escalationTool.run({ user_name: 'Efua Mensah', user_email: 'efua@accrastack.example', category: 'account',
@@ -89,16 +92,16 @@ test('a ticket moves open to in progress to closed, and each step is recorded on
   await dropConversation(c.id);
 });
 
-test('a manual evaluation is stored with source manual and the signed-in user as created_by', { skip: skipWithoutDatabase }, async () => {
+test('a manual evaluation is stored with source manual and the signed-in admin as created_by', { skip: skipWithoutDatabase }, async () => {
   const c = await newConversation({ channel: 'voice_web' });
   const res = await evalRoute.POST(req('/api/evaluations', { scenario_key: 'brief-9-voice', scenario_title: 'Voice flow',
     expected: 'Spoken question, spoken reply, records logged with channel voice_web.', actual: 'Asked the fees question by voice and heard a grounded reply.',
-    passed: true, notes: 'Recorded from the demo call.', conversation_id: c.id }));
+    passed: true, notes: 'Recorded from the demo call.', conversation_id: c.id }, adminId));
   assert.equal(res.status, 201);
   const { id } = await res.json();
   const [row] = await query('select source, created_by, passed, conversation_id from public.evaluations where id = $1', [id]);
-  assert.deepEqual(row, { source: 'manual', created_by: userId, passed: true, conversation_id: c.id });
-  assert.equal((await evalRoute.POST(req('/api/evaluations', { scenario_key: '', expected: 'x', actual: 'y', passed: true }))).status, 400);
+  assert.deepEqual(row, { source: 'manual', created_by: adminId, passed: true, conversation_id: c.id });
+  assert.equal((await evalRoute.POST(req('/api/evaluations', { scenario_key: '', expected: 'x', actual: 'y', passed: true }, adminId))).status, 400);
   await query('delete from public.evaluations where id = $1', [id]);
   await dropConversation(c.id);
 });
@@ -122,6 +125,13 @@ test('conversationDetail returns every table the PRD lists for one conversation'
   await dropConversation(c.id);
 });
 
-test('cleanup: the test user is removed', { skip: skipWithoutDatabase }, async () => {
-  await query('delete from public.users where id = $1', [userId]);
+test('a support agent may not record an evaluation, and nothing is stored', { skip: skipWithoutDatabase }, async () => {
+  const before = (await one<{ n: number }>('select count(*)::int as n from public.evaluations where created_by = $1', [userId]))!.n;
+  const res = await evalRoute.POST(req('/api/evaluations', { scenario_key: 'brief-9-voice', expected: 'x', actual: 'y', passed: true }));
+  assert.equal(res.status, 403);
+  assert.equal((await one<{ n: number }>('select count(*)::int as n from public.evaluations where created_by = $1', [userId]))!.n, before);
+});
+
+test('cleanup: the test users are removed', { skip: skipWithoutDatabase }, async () => {
+  await query('delete from public.users where id = any($1)', [[userId, adminId]]);
 });

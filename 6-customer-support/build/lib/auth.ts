@@ -66,6 +66,9 @@ export const sessionCookie = (token: string) =>
   `${cookieName}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${cookieMaxAge}${config.web.baseUrl.startsWith('https://') ? '; Secure' : ''}`;
 export const clearSessionCookie = () => `${cookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
 
+/** Support agents work customers; admins also judge the system, so only they see and record evaluations. */
+export const canSeeEvaluations = (user: { role: string }) => user.role === 'admin';
+
 export const roleLabel = (role: string) =>
   ({ support_agent: 'Support agent', admin: 'Admin' }[role] ?? role.charAt(0).toUpperCase() + role.slice(1));
 
