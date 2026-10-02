@@ -52,7 +52,14 @@ export async function dispatchNotification(notificationId: string, opts: { dryRu
 
     // 1. The booking, unless an earlier attempt settled it. A failed booking is tried again: Cal.com may be back.
     let booking = n.booking_result, uid = n.booking_uid, bookError = '';
-    if (slot && booking !== 'booked' && booking !== 'slot_taken') {
+    // Another customer's open case already holds this time: it is taken, whatever the calendar would say.
+    const heldByOther = slot && booking !== 'booked' && booking !== 'slot_taken' ? await one(
+      `select 1 from public.escalations where id <> $1 and status <> 'closed' and call_booked and booking_status = 'booked'
+         and appointment_at = $2::timestamptz`, [e.id, slot]) : null;
+    if (heldByOther) {
+      booking = 'slot_taken';
+      await query(`update public.notifications set booking_result = 'slot_taken' where id = $1`, [n.id]);
+    } else if (slot && booking !== 'booked' && booking !== 'slot_taken') {
       const baseUrl = opts.fault === 'calendar_down' ? 'http://127.0.0.1:9/' : config.escalation.calApiUrl;
       const r = await bookCallback({ start: slot, name: e.user_name, email: e.user_email, timeZone: e.caller_timezone ?? 'UTC',
         ref: e.escalation_ref, key: `${e.escalation_ref}:${n.slot_key}` }, { baseUrl, lookFirst: n.attempts > 1 });
@@ -61,21 +68,55 @@ export async function dispatchNotification(notificationId: string, opts: { dryRu
       if (r.result === 'failed') bookError = r.error;
       await query(`update public.notifications set booking_result = $2, booking_uid = $3 where id = $1`, [n.id, booking, uid]);
     }
-    const booked = booking === 'booked';
-    // A moved callback: the new time is booked, so the booking it replaces is cancelled, or the team sees both.
-    const before = slot && booked ? await one<{ calendar_event_id: string | null; conversation_id: string }>(
-      'select calendar_event_id, conversation_id from public.escalations where id = $1', [e.id]) : null;
-    if (slot) await query(`update public.escalations set updated_at = now(), booking_status = $2, call_booked = $3,
-        appointment_at = case when $3 then $4::timestamptz else appointment_at end, calendar_event_id = coalesce($5, calendar_event_id)
-      where id = $1`, [e.id, booked ? 'booked' : booking === 'slot_taken' ? 'slot_unavailable' : 'failed', booked, slot, uid]);
-
-    if (before?.calendar_event_id && uid && before.calendar_event_id !== uid) {
-      const baseUrl = opts.fault === 'calendar_down' ? 'http://127.0.0.1:9/' : config.escalation.calApiUrl;
-      const c = await cancelCallback(before.calendar_event_id, `Moved to ${slot} (${e.escalation_ref})`, { baseUrl });
-      await query(`insert into public.conversation_events (conversation_id, event_type, source, summary) values ($1, 'note', 'system', $2)`,
-        [before.conversation_id, c.ok ? `Callback moved to ${slot}; the earlier booking ${before.calendar_event_id} was cancelled.`
-          : `Callback moved to ${slot}, but the earlier booking ${before.calendar_event_id} could not be cancelled: ${c.error}`.slice(0, 500)])
-        .catch(() => undefined);
+    // One booked callback per escalation, however many attempts race. The escalation row is locked while the
+    // booking is recorded, so a second attempt sees the first one's booking and replaces it rather than missing
+    // it. Only a booking for the caller's latest requested time may become the callback; an older attempt that
+    // books late is cancelled instead. A move that fails leaves the callback already booked in place.
+    const gotOne = booking === 'booked';
+    let booked = false;
+    if (slot) {
+      const swap = () => one<{ old_uid: string | null; conversation_id: string; wins: boolean; had_booking: boolean }>(
+        `with prev as (select id, calendar_event_id, call_booked, conversation_id, requested_slot_at
+                         from public.escalations where id = $1 for update),
+              w as (select prev.*, ($3 and (prev.requested_slot_at is null or prev.requested_slot_at = $4::timestamptz)) as wins from prev)
+         update public.escalations e set updated_at = now(),
+           booking_status = case when w.wins then 'booked' when w.call_booked then e.booking_status else $2 end,
+           call_booked = w.wins or w.call_booked,
+           appointment_at = case when w.wins then $4::timestamptz else e.appointment_at end,
+           calendar_event_id = case when w.wins then $5 else e.calendar_event_id end
+         from w where e.id = w.id
+         returning w.calendar_event_id as old_uid, w.conversation_id, w.wins, w.call_booked as had_booking`,
+        [e.id, booking === 'slot_taken' ? 'slot_unavailable' : 'failed', gotOne, slot, uid]);
+      let r: Awaited<ReturnType<typeof swap>>;
+      try { r = await swap(); } catch (err: any) {
+        if (err?.code !== '23505') throw err;
+        // Another customer's booking for the same time was saved first (escalations_one_booking_per_slot). This
+        // booking must not stand: cancel it on Cal.com, and record the slot as taken for this case.
+        if (uid) await cancelCallback(uid, `Slot already held by another case (${e.escalation_ref})`,
+          { baseUrl: opts.fault === 'calendar_down' ? 'http://127.0.0.1:9/' : config.escalation.calApiUrl });
+        booking = 'slot_taken'; uid = null;   // cancelled above, so nothing below may treat it as a live booking
+        await query(`update public.notifications set booking_result = 'slot_taken', booking_uid = null where id = $1`, [n.id]);
+        await query(`update public.escalations set updated_at = now(),
+            booking_status = case when call_booked then booking_status else 'slot_unavailable' end where id = $1`, [e.id]);
+        r = null;
+      }
+      booked = !!r?.wins;
+      const note = (summary: string) => query(`insert into public.conversation_events (conversation_id, event_type, source, summary)
+        values ($1, 'note', 'system', $2)`, [r!.conversation_id, summary.slice(0, 500)]).catch(() => undefined);
+      const calBase = opts.fault === 'calendar_down' ? 'http://127.0.0.1:9/' : config.escalation.calApiUrl;
+      if (r?.wins && r.old_uid && r.old_uid !== uid) {
+        // A moved callback: the new time is booked, so the booking it replaces is cancelled, or the team sees both.
+        const c = await cancelCallback(r.old_uid, `Moved to ${slot} (${e.escalation_ref})`, { baseUrl: calBase });
+        await note(c.ok ? `Callback moved to ${slot}; the earlier booking ${r.old_uid} was cancelled.`
+          : `Callback moved to ${slot}, but the earlier booking ${r.old_uid} could not be cancelled: ${c.error}`);
+      } else if (gotOne && uid && !r?.wins && uid !== r?.old_uid) {
+        // This attempt booked a time the caller has since moved away from: it must not stay on the calendar.
+        const c = await cancelCallback(uid, `Superseded by a later request (${e.escalation_ref})`, { baseUrl: calBase });
+        await note(c.ok ? `A booking for ${slot} was made after the caller asked for another time, and was cancelled.`
+          : `A superseded booking for ${slot} (${uid}) could not be cancelled: ${c.error}`);
+        await query(`update public.notifications set status = 'superseded' where id = $1`, [n.id]);
+        return { status: 'skipped', booked: false, appointmentAt: null, reason: 'superseded by a later request' };
+      }
     }
 
     const outcome: BookingOutcome = !slot ? 'no_slot' : booked ? 'booked' : booking === 'slot_taken' ? 'slot_taken' : 'booking_failed';

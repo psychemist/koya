@@ -14,6 +14,18 @@ const BUILTINS = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebFetch', '
 
 export const hasOpenEscalation = async (conversationId: string) =>
   !!(await one(`select 1 from public.escalations where conversation_id = $1 and status <> 'closed'`, [conversationId]));
+/**
+ * The times create_escalation offered since the caller last spoke. A turn row is written when a turn is answered,
+ * so an offer logged after the newest turn row was made on the turn still running.
+ */
+export const offeredThisTurn = async (conversationId: string): Promise<string[]> => {
+  const r = await one<{ offered: string[] | null }>(
+    `select t.result_summary->'next_slots_iso' as offered from public.tool_calls t
+      where t.conversation_id = $1 and t.tool_name = 'create_escalation' and t.status = 'ok' and t.result_summary ? 'next_slots_iso'
+        and t.created_at > coalesce((select max(created_at) from public.conversation_turns where conversation_id = $1), '-infinity'::timestamptz)
+      order by t.created_at desc limit 1`, [conversationId]).catch(() => null);
+  return Array.isArray(r?.offered) ? r!.offered : [];
+};
 
 export function buildQueryOptions(conversationId: string, state: SessionState,
   opts: { model?: string; mcpFault?: 'mcp_down' | 'calendar_down' | null }): Options {
@@ -42,7 +54,7 @@ export function buildQueryOptions(conversationId: string, state: SessionState,
     maxBudgetUsd: config.agent.maxBudgetUsd,
     maxTurns: config.agent.maxTurns,
     outputFormat: { type: 'json_schema', schema: REPLY_JSON_SCHEMA },
-    hooks: { PreToolUse: [{ hooks: [makePreToolUseHook(state, hasOpenEscalation)] }] },
+    hooks: { PreToolUse: [{ hooks: [makePreToolUseHook(state, hasOpenEscalation, offeredThisTurn)] }] },
     persistSession: false,
     ...(model === 'claude-sonnet-5' ? { effort: config.models.effort } : {}),
   } as Options;

@@ -53,10 +53,20 @@ export const escalationTool: ToolSpec<typeof input> = {
     if (!email) throw new ToolError('INVALID_INPUT', 'user_email is not a valid address; ask the caller to spell it');
     const tz = args.caller_timezone && isValidTimezone(args.caller_timezone) ? args.caller_timezone : null;
     const slot = args.preferred_time ? validateSlot(args.preferred_time, now, config.hours) : null;
-    const requested = slot?.ok ? slot.start : null;
+    let requested = slot?.ok ? slot.start : null;
 
     const customerId = account ? conv!.verified_customer_id
       : args.customer_id && normalizeRef(args.customer_id, 'CUS') === conv?.verified_customer_id ? conv!.verified_customer_id : null;
+
+    // One booked callback per customer. A caller who already has a specialist call booked from another
+    // conversation (a call, then a chat) gets their case recorded here, but not a second booking: the
+    // existing one is named instead, so the team never holds two calls for one person.
+    const elsewhere = requested ? await one<{ escalation_ref: string; appointment_at: Date }>(
+      `select escalation_ref, appointment_at from public.escalations
+        where conversation_id <> $1 and status <> 'closed' and call_booked and booking_status = 'booked' and appointment_at > $4
+          and (($2::text is not null and customer_id = $2) or lower(user_email) = $3)
+        order by appointment_at limit 1`, [conversationId, customerId, email, now]) : null;
+    if (elsewhere) requested = null;
     const ticket = args.ticket_id ? await one<{ id: string }>(
       'select id from public.support_tickets where ticket_ref = $1 and conversation_id = $2', [args.ticket_id.trim().toUpperCase(), conversationId]) : null;
 
@@ -95,6 +105,14 @@ export const escalationTool: ToolSpec<typeof input> = {
     if (slot && !slot.ok) {
       timeIssue = slot.code; suggestions = slot.suggestions;
       follow = `${TIME_ISSUE[slot.code]} The next free times are ${list(suggestions.map((d) => describeSlot(d, zone)))}.`;
+    } else if (elsewhere) {
+      follow = `You already have a specialist callback booked for ${describeSlot(elsewhere.appointment_at, zone)}, reference ` +
+        `${elsewhere.escalation_ref}, so I have not booked a second one. I have added this to your case as ${row.escalation_ref}.`;
+    } else if (requested && row.call_booked && row.appointment_at && row.appointment_at.getTime() !== requested.getTime()) {
+      // A move that did not go through: the callback already booked still stands, and the caller is told so.
+      suggestions = offer(requested).filter((d) => d.getTime() !== requested!.getTime()).slice(0, 3);
+      follow = `I could not book that time, so your callback stays booked for ${describeSlot(row.appointment_at, zone)}. ` +
+        `Other times I can try are ${list(suggestions.map((d) => describeSlot(d, zone)))}.`;
     } else if (row.call_booked && row.appointment_at) {
       follow = `A specialist will call ${row.user_name} on ${describeSlot(row.appointment_at, zone)}. The reference is ${row.escalation_ref}.`;
     } else if (row.booking_status === 'slot_unavailable') {
@@ -111,6 +129,7 @@ export const escalationTool: ToolSpec<typeof input> = {
       booking_status: row.booking_status,
       ...(suggestions ? { next_slots: suggestions.map((d) => describeSlot(d, zone)), next_slots_iso: suggestions.map((d) => d.toISOString()) } : {}),
       ...(timeIssue ? { time_issue: timeIssue } : {}),
+      ...(elsewhere ? { already_booked: { escalation_id: elsewhere.escalation_ref, appointment_time_utc: elsewhere.appointment_at.toISOString() } } : {}),
     };
     return { result, summary: { ...result, user_email: '[redacted]' } };
   },

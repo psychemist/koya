@@ -36,3 +36,7 @@ test('row 14: a contact name and a company name are two identifiers, not one', (
 test('a reference spoken in pieces over several turns is joined before the lookup', () => {
   assert.match(SYSTEM_PROMPT, /join the pieces into one reference before you look it up/i);
 });
+
+test('a taken time is reported and the caller picks from next_slots; the agent never books one for them', () => {
+  assert.match(SYSTEM_PROMPT, /Book one only after the caller picks it, on their next turn; never choose one for them/);
+});

@@ -40,7 +40,11 @@ export function useEscalationStubs() {
 export function healLanes() { Object.assign(lanes, { calAnswers: { ...calFree }, discordStatus: 204, resendStatus: 200 }); }
 
 export const monday9 = new Date('2026-10-05T09:00:00Z');
-export const base = { user_name: 'Efua Mensah', user_email: 'efua at accrastack dot example', category: 'account',
+// A fresh address per run: one booked callback per customer is gated, so an escalation left open by an earlier,
+// crashed run must not make this run's caller look like they already have a callback.
+const runTag = Math.random().toString(36).slice(2, 8).replace(/[^a-z0-9]/g, 'x');
+export const efuaEmail = `efua.${runTag}@accrastack.example`;
+export const base = { user_name: 'Efua Mensah', user_email: `efua dot ${runTag} at accrastack dot example`, category: 'account',
   reason: 'Account restricted and caller says nobody is helping.' };
 export const esc = (conv: string, a: object, fault: 'calendar_down' | null = null) => withRequestContext({ conversationId: conv, fault },
   async () => (await escalationTool.run({ ...base, ...a } as any, conv, { now: monday9 })).result as any);

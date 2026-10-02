@@ -37,3 +37,19 @@ test('a denied call explains itself in a sentence the model can act on', async (
   const r: any = await call(h, 'lookup_customer');
   assert.match(r.hookSpecificOutput.permissionDecisionReason, /escalat/i);
 });
+
+test('a time the tool just offered cannot be booked on the same turn: the caller has to choose it first', async () => {
+  const offered = ['2026-10-07T10:00:00.000Z', '2026-10-07T10:30:00.000Z'];
+  const h = makePreToolUseHook({ conversationId: 'c', toolCallsThisTurn: 0, budgetExhausted: false }, async () => false, async () => offered);
+  const book = (preferred_time: string) => h({ tool_name: 'mcp__relaypay__create_escalation', tool_input: { preferred_time } } as any, undefined, { signal: new AbortController().signal } as any);
+  const denied: any = await book('2026-10-07T10:00:00Z');
+  assert.equal(denied.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(denied.hookSpecificOutput.permissionDecisionReason, /has not chosen it/);
+  assert.deepEqual(await book('2026-10-08T09:00:00Z'), {}, 'a time the caller named themselves is not blocked');
+});
+
+test('once the caller has spoken since the offer, booking an offered time goes through', async () => {
+  const h = makePreToolUseHook({ conversationId: 'c', toolCallsThisTurn: 0, budgetExhausted: false }, async () => false, async () => []);
+  assert.deepEqual(await h({ tool_name: 'mcp__relaypay__create_escalation', tool_input: { preferred_time: '2026-10-07T10:00:00Z' } } as any,
+    undefined, { signal: new AbortController().signal } as any), {});
+});

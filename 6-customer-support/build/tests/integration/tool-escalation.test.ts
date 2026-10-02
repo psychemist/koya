@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { query } from '../../lib/db.ts';
-import { lanes, bookings, useEscalationStubs, esc } from '../fakes/escalation-fixtures.ts';
+import { lanes, bookings, useEscalationStubs, esc, efuaEmail } from '../fakes/escalation-fixtures.ts';
 import { skipWithoutDatabase, newConversation, dropConversation } from '../helpers.ts';
 
 process.env.ESCALATION_ALERT_HOLD_MS = '0';   // alerts on every attempt here; dispatch.test.ts covers the hold
@@ -14,7 +14,7 @@ test('scenario 7: an escalation is stored with the normalised email, booked, and
   assert.deepEqual([r.call_booked, r.booking_status, r.appointment_time_utc], [true, 'booked', '2026-10-06T14:00:00.000Z']);
   assert.match(r.follow_up_summary, /Tuesday 6 October at 14:00 UTC, which is 15:00 in Lagos/);
   const [row] = await query('select user_email, notify_status, calendar_event_id from public.escalations where conversation_id=$1', [c.id]);
-  assert.deepEqual(row, { user_email: 'efua@accrastack.example', notify_status: 'sent', calendar_event_id: 'bk_1' });
+  assert.deepEqual(row, { user_email: efuaEmail, notify_status: 'sent', calendar_event_id: 'bk_1' });
   assert.equal(bookings().length, 1);
   assert.equal(lanes.discord.calls.length, 1);
   assert.equal(lanes.resend.calls.length, 1);
@@ -27,7 +27,7 @@ test('the booking goes to Cal.com with the API key, the event type and the calle
   assert.deepEqual([last.body.start, last.body.eventTypeId], ['2026-10-06T14:00:00.000Z', 42]);
   // A .example address cannot receive mail, so Cal.com gets the support inbox and the customer rides in metadata.
   assert.deepEqual(last.body.attendee, { name: 'Efua Mensah', email: 'support@example.com', timeZone: 'Africa/Lagos' });
-  assert.equal(last.body.metadata.relaypay_customer_email, 'efua@accrastack.example');
+  assert.equal(last.body.metadata.relaypay_customer_email, efuaEmail);
   assert.match(last.body.metadata.relaypay_key, /^RP-E-\d{6}:2026-10-06T14:00:00\.000Z$/);
 });
 
