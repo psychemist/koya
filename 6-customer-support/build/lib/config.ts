@@ -87,6 +87,8 @@ export function loadConfig(env: Record<string, string | undefined>) {
       get discordErrorWebhookUrl() { return env.DISCORD_ERROR_WEBHOOK_URL || null; },
       // Per outbound call. Two Cal.com calls in turn, then Discord and email together: 15 s at worst, inside the tool's 20 s.
       get stepTimeoutMs() { return num('ESCALATION_STEP_TIMEOUT_MS', 5000); },
+      /** How long an unsettled alert waits for the caller to settle a time; 0 alerts on every attempt. */
+      get alertHoldMs() { return num('ESCALATION_ALERT_HOLD_MS', 120_000); },
       get resendKey() { return req('RESEND_API_KEY'); },
       get resendUrl() { return env.RESEND_API_URL || 'https://api.resend.com/emails'; },
       get supportInbox() { return req('SUPPORT_INBOX'); },

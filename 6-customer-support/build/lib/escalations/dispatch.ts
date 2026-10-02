@@ -6,12 +6,12 @@ import { postEmailGaveUp, postToDiscord } from './discord.ts';
 import { sendSupportEmail } from './support-email.ts';
 import type { Alert, BookingOutcome } from './alert.ts';
 
-export type DispatchOutcome = { status: 'sent' | 'fallback_sent' | 'retry' | 'failed' | 'skipped'; booked: boolean;
+export type DispatchOutcome = { status: 'sent' | 'fallback_sent' | 'retry' | 'failed' | 'skipped' | 'held'; booked: boolean;
   appointmentAt: string | null; reason?: string };
 export const MAX_ATTEMPTS = 3;
 
 type Claimed = { id: string; escalation_id: string; slot_key: string; attempts: number; booking_result: 'booked' | 'slot_taken' | 'failed' | null;
-  booking_uid: string | null; discord_status: string | null; email_sent_at: Date | null };
+  booking_uid: string | null; discord_status: string | null; email_sent_at: Date | null; alert_after: Date | null; created_at: Date };
 type Esc = { id: string; escalation_ref: string; category: string; reason: string; user_name: string; user_email: string; caller_timezone: string | null };
 
 /**
@@ -31,7 +31,7 @@ export async function dispatchNotification(notificationId: string, opts: { dryRu
   try {
     n = await one<Claimed>(`update public.notifications set status = 'sending', attempts = attempts + 1, claimed_at = now()
       where id = $1 and status in ('pending', 'retry')
-      returning id, escalation_id, slot_key, attempts, booking_result, booking_uid, discord_status, email_sent_at`, [notificationId]);
+      returning id, escalation_id, slot_key, attempts, booking_result, booking_uid, discord_status, email_sent_at, alert_after, created_at`, [notificationId]);
     if (!n) return { status: 'skipped', booked: false, appointmentAt: null };
     const e = (await one<Esc>(`select id, escalation_ref, category, reason, user_name, user_email, caller_timezone
       from public.escalations where id = $1`, [n.escalation_id]))!;
@@ -66,8 +66,23 @@ export async function dispatchNotification(notificationId: string, opts: { dryRu
         appointment_at = case when $3 then $4::timestamptz else appointment_at end, calendar_event_id = coalesce($5, calendar_event_id)
       where id = $1`, [e.id, booked ? 'booked' : booking === 'slot_taken' ? 'slot_unavailable' : 'failed', booked, slot, uid]);
 
-    // 2. Tell the team. Discord once, best effort; the email until it is delivered.
     const outcome: BookingOutcome = !slot ? 'no_slot' : booked ? 'booked' : booking === 'slot_taken' ? 'slot_taken' : 'booking_failed';
+
+    // 2. One alert per escalation. With no time yet, or a taken one, the caller is usually offered other times and the
+    //    agent tries again, so this row waits; the newest attempt replaces older waiting rows, and the sweeper sends
+    //    whichever is still waiting once the hold ends. A booked or failed outcome is settled, and alerts now.
+    const supersedeOlder = () => query(`update public.notifications set status = 'superseded'
+      where escalation_id = $1 and id <> $2 and status = 'held' and created_at <= $3`, [e.id, n!.id, n!.created_at]);
+    const holdMs = config.escalation.alertHoldMs;
+    if ((outcome === 'no_slot' || outcome === 'slot_taken') && holdMs > 0 && !n.alert_after) {
+      await supersedeOlder();
+      await query(`update public.notifications set status = 'held', attempts = attempts - 1,
+        alert_after = now() + make_interval(secs => $2::float8 / 1000) where id = $1`, [n.id, holdMs]);
+      return { status: 'held', booked: false, appointmentAt: null };
+    }
+    await supersedeOlder();
+
+    // 3. Tell the team. Discord once, best effort; the email until it is delivered.
     const alert: Alert = { ref: e.escalation_ref, category: e.category, reason: e.reason, userName: e.user_name, userEmail: e.user_email,
       requestedSlot: slot, consoleUrl: `${config.web.baseUrl}/console/escalations/${e.id}`, outcome };
     const [discord, mail] = await Promise.all([

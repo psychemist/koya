@@ -4,6 +4,7 @@ import { query } from '../../lib/db.ts';
 import { lanes, bookings, useEscalationStubs, esc } from '../fakes/escalation-fixtures.ts';
 import { skipWithoutDatabase, newConversation, dropConversation } from '../helpers.ts';
 
+process.env.ESCALATION_ALERT_HOLD_MS = '0';   // alerts on every attempt here; dispatch.test.ts covers the hold
 useEscalationStubs();
 
 test('scenario 7: an escalation is stored with the normalised email, booked, and the team is notified once', { skip: skipWithoutDatabase }, async () => {

@@ -12,8 +12,9 @@ import type { ToolSpec } from '../define.ts';
 const input = z.object({
   ticket_id: z.string().max(40).optional().describe('The RP-T- reference from create_support_ticket, if one was made.'),
   customer_id: z.string().max(40).optional().describe('Only a customer verified on this call is attached.'),
-  user_name: z.string().trim().min(1).max(120),
-  user_email: z.string().trim().min(3).max(200).describe('As the caller gave it; "amara at lagos ledger dot example" is fine.'),
+  user_name: z.string().trim().min(1).max(120).optional().describe('Leave out when the caller signed in: it comes from their account.'),
+  user_email: z.string().trim().min(3).max(200).optional()
+    .describe('As the caller gave it; "amara at lagos ledger dot example" is fine. Leave out when the caller signed in.'),
   category: z.enum(['compliance', 'account', 'dispute', 'payment', 'other']),
   reason: z.string().trim().min(5).max(500).describe('Why a specialist is needed, in one or two sentences.'),
   preferred_time: z.string().max(40).optional().describe('ISO 8601 WITH an offset, for example 2026-10-06T14:00:00Z.'),
@@ -40,15 +41,22 @@ export const escalationTool: ToolSpec<typeof input> = {
   input, readOnly: false,
   async run(args, conversationId, opts) {
     const now = opts?.now ?? new Date();
-    const email = normalizeSpokenEmail(args.user_email);
+    const conv = await one<{ verified_customer_id: string | null; channel: string; caller_mode: string | null }>(
+      'select verified_customer_id, channel, caller_mode from public.conversations where id = $1', [conversationId]);
+    // A signed-in customer's contact details come from their account, so the agent never asks for them.
+    const account = conv?.caller_mode === 'customer' && conv.verified_customer_id ? await one<{ contact_name: string; contact_email: string }>(
+      'select contact_name, contact_email from public.customers where customer_id = $1', [conv.verified_customer_id]) : null;
+    const name = args.user_name ?? account?.contact_name;
+    if (!name) throw new ToolError('INVALID_INPUT', 'user_name is needed; ask the caller for their name');
+    if (!args.user_email && !account) throw new ToolError('INVALID_INPUT', 'user_email is needed; ask the caller for their email');
+    const email = args.user_email ? normalizeSpokenEmail(args.user_email) : account!.contact_email.toLowerCase();
     if (!email) throw new ToolError('INVALID_INPUT', 'user_email is not a valid address; ask the caller to spell it');
     const tz = args.caller_timezone && isValidTimezone(args.caller_timezone) ? args.caller_timezone : null;
     const slot = args.preferred_time ? validateSlot(args.preferred_time, now, config.hours) : null;
     const requested = slot?.ok ? slot.start : null;
 
-    const conv = await one<{ verified_customer_id: string | null; channel: string }>(
-      'select verified_customer_id, channel from public.conversations where id = $1', [conversationId]);
-    const customerId = args.customer_id && normalizeRef(args.customer_id, 'CUS') === conv?.verified_customer_id ? conv!.verified_customer_id : null;
+    const customerId = account ? conv!.verified_customer_id
+      : args.customer_id && normalizeRef(args.customer_id, 'CUS') === conv?.verified_customer_id ? conv!.verified_customer_id : null;
     const ticket = args.ticket_id ? await one<{ id: string }>(
       'select id from public.support_tickets where ticket_ref = $1 and conversation_id = $2', [args.ticket_id.trim().toUpperCase(), conversationId]) : null;
 
@@ -66,7 +74,7 @@ export const escalationTool: ToolSpec<typeof input> = {
          requested_slot_at = coalesce(excluded.requested_slot_at, public.escalations.requested_slot_at),
          updated_at = now()
        returning id, escalation_ref, (xmax = 0) as inserted`,
-      [conversationId, ticket?.id ?? null, customerId, args.user_name, email, args.category, args.reason,
+      [conversationId, ticket?.id ?? null, customerId, name, email, args.category, args.reason,
        args.preferred_time_text ?? null, tz, requested]))!;
     if ((e as any).inserted) await query(`insert into public.conversation_events (conversation_id, event_type, source, summary)
       values ($1, 'escalation_triggered', 'system', $2)`, [conversationId, `${e.escalation_ref} ${args.category}`]);
@@ -95,7 +103,7 @@ export const escalationTool: ToolSpec<typeof input> = {
     } else if (row.notify_status === 'fallback_sent' || row.notify_status === 'failed' || row.booking_status === 'failed' || outcome?.status === 'retry') {
       follow = `A specialist will follow up by email to confirm a time. The reference is ${row.escalation_ref}.`;
     } else {
-      follow = `The support team has been told, and a specialist will follow up by email to arrange a time. The reference is ${row.escalation_ref}.`;
+      follow = `A specialist will follow up by email to arrange a time. The reference is ${row.escalation_ref}.`;
     }
     const result = {
       escalation_id: row.escalation_ref, status: 'open', follow_up_summary: follow, call_booked: row.call_booked,

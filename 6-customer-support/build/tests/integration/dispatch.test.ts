@@ -6,8 +6,19 @@ import { sweepNotifications } from '../../mcp/sweeper.ts';
 import { lanes, bookings, healLanes, useEscalationStubs, esc } from '../fakes/escalation-fixtures.ts';
 import { skipWithoutDatabase, newConversation, dropConversation } from '../helpers.ts';
 
+// These tests are about each lane, so an alert goes out on every attempt. The hold has its own tests below.
+process.env.ESCALATION_ALERT_HOLD_MS = '0';
 useEscalationStubs();
 afterEach(healLanes);
+
+/** Runs `fn` with a two-minute alert hold, the production default. */
+async function withHold(fn: () => Promise<void>) {
+  process.env.ESCALATION_ALERT_HOLD_MS = '120000';
+  try { await fn(); } finally { process.env.ESCALATION_ALERT_HOLD_MS = '0'; }
+}
+const statuses = (conv: string) => query<{ slot_key: string; status: string }>(
+  `select n.slot_key, n.status from public.notifications n join public.escalations e on e.id = n.escalation_id
+   where e.conversation_id = $1 order by n.created_at`, [conv]).then((r) => r.map((x) => x.status));
 
 const outbox = (conv: string) => query<{ status: string; attempts: number; booking_result: string | null; discord_status: string | null }>(
   `select n.status, n.attempts, n.booking_result, n.discord_status from public.notifications n
@@ -127,3 +138,48 @@ test('a crash between claim and send is recovered by the sweeper once the claim 
   assert.deepEqual(n, { status: 'sent', attempts: 2 });
   await dropConversation(c.id);
 });
+
+test('while the caller settles a time, the team is emailed once, about the attempt the call ended on', { skip: skipWithoutDatabase }, async () => withHold(async () => {
+  const mails = lanes.resend.calls.length, posts = lanes.discord.calls.length + lanes.discordErrors.calls.length;
+  const c = await newConversation({ channel: 'voice_web' });
+  assert.equal((await esc(c.id, {})).booking_status, 'not_requested');                      // no time yet
+  lanes.calAnswers.slots = () => ({ status: 200, json: { status: 'success', data: {} } });
+  assert.equal((await esc(c.id, { preferred_time: '2026-10-06T13:00:00Z' })).booking_status, 'slot_unavailable');
+  assert.deepEqual(await statuses(c.id), ['superseded', 'held']);
+  assert.equal(lanes.resend.calls.length - mails, 0);
+  healLanes(); lanes.calAnswers.create = () => ({ status: 400, json: { status: 'error', error: { message: 'Cannot book' } } });
+  assert.equal((await esc(c.id, { preferred_time: '2026-10-06T14:00:00Z' })).booking_status, 'failed');
+  assert.deepEqual(await statuses(c.id), ['superseded', 'superseded', 'fallback_sent']);
+  assert.equal(lanes.resend.calls.length - mails, 1);
+  assert.match(lanes.resend.calls.at(-1)!.body.text, /The calendar booking failed/);
+  assert.equal(lanes.discord.calls.length + lanes.discordErrors.calls.length - posts, 1);
+  await sweepNotifications(later(5));
+  assert.equal(lanes.resend.calls.length - mails, 1);                                      // nothing waiting was left to send
+  await dropConversation(c.id);
+}));
+
+test('a booked time after a taken one emails the booking only', { skip: skipWithoutDatabase }, async () => withHold(async () => {
+  const mails = lanes.resend.calls.length;
+  const c = await newConversation({ channel: 'voice_web' });
+  lanes.calAnswers.slots = () => ({ status: 200, json: { status: 'success', data: {} } });
+  await esc(c.id, { preferred_time: '2026-10-06T13:00:00Z' });
+  healLanes();
+  assert.equal((await esc(c.id, { preferred_time: '2026-10-06T14:00:00Z' })).call_booked, true);
+  assert.deepEqual(await statuses(c.id), ['superseded', 'sent']);
+  assert.equal(lanes.resend.calls.length - mails, 1);
+  assert.match(lanes.resend.calls.at(-1)!.body.subject, /callback booked$/);
+  await dropConversation(c.id);
+}));
+
+test('a caller who settles nothing still reaches the team: the held alert is sent once the hold ends', { skip: skipWithoutDatabase }, async () => withHold(async () => {
+  const mails = lanes.resend.calls.length;
+  const c = await newConversation({ channel: 'voice_web' });
+  await esc(c.id, {});
+  assert.deepEqual(await statuses(c.id), ['held']);
+  await sweepNotifications(later(1));                                                       // inside the hold
+  assert.deepEqual([await statuses(c.id), lanes.resend.calls.length - mails], [['held'], 0]);
+  await sweepNotifications(later(3));
+  assert.deepEqual([await statuses(c.id), lanes.resend.calls.length - mails], [['sent'], 1]);
+  assert.equal((await outbox(c.id)).attempts, 1);                                           // the hold did not spend an email attempt
+  await dropConversation(c.id);
+}));

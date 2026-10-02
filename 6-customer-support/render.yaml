@@ -89,3 +89,4 @@ services:
       - { key: SUPPORT_HOURS_END_UTC, value: "18" }
       - { key: SUPPORT_SLOT_MINUTES, value: "30" }
       - { key: ESCALATION_STEP_TIMEOUT_MS, value: "5000" }
+      - { key: ESCALATION_ALERT_HOLD_MS, value: "120000" }   # while a caller settles a time, the team waits 2 min and hears the outcome once

@@ -12,6 +12,9 @@ export async function sweepNotifications(now: Date = new Date()): Promise<number
     where status = 'sending' and claimed_at < $1::timestamptz - interval '60 seconds' and attempts < $2`, [now.toISOString(), MAX_ATTEMPTS]);
   await query(`update public.notifications set status = 'failed', last_error = coalesce(last_error, 'abandoned mid-send')
     where status = 'sending' and claimed_at < $1::timestamptz - interval '60 seconds' and attempts >= $2`, [now.toISOString(), MAX_ATTEMPTS]);
+  // A held alert whose caller had their chance to settle a time is sent as it stands.
+  await query(`update public.notifications set status = 'retry', claimed_at = null
+    where status = 'held' and alert_after <= $1::timestamptz`, [now.toISOString()]);
   const due = await query<{ id: string; channel: string }>(
     `select n.id, c.channel from public.notifications n
      join public.escalations e on e.id = n.escalation_id join public.conversations c on c.id = e.conversation_id
