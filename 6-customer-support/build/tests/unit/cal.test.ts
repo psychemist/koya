@@ -13,11 +13,11 @@ const none = (): Answer => ({ status: 200, json: { status: 'success', data: [] }
 before(async () => {
   cal = await startStub(async (body, call) =>
     call.path === '/v2/slots' ? slots(call) : call.method === 'POST' ? create(body) : list(call));
-  Object.assign(process.env, { CAL_API_KEY: 'cal_test', CAL_EVENT_TYPE_ID: '42', ESCALATION_STEP_TIMEOUT_MS: '2000' });
+  Object.assign(process.env, { CAL_API_KEY: 'cal_test', CAL_EVENT_TYPE_ID: '42', ESCALATION_STEP_TIMEOUT_MS: '2000', SUPPORT_INBOX: 'support@relaypay.io' });
 });
 after(async () => { await cal.close(); });
 
-const input = { start: '2026-10-06T14:00:00.000Z', name: 'Efua Mensah', email: 'efua@accrastack.example',
+const input = { start: '2026-10-06T14:00:00.000Z', name: 'Efua Mensah', email: 'efua@accrastack.com',
   timeZone: 'Africa/Lagos', ref: 'RP-E-000004', key: 'RP-E-000004:2026-10-06T14:00:00.000Z' };
 const run = (opts: { lookFirst?: boolean; baseUrl?: string } = {}) => bookCallback(input, { baseUrl: opts.baseUrl ?? cal.url, lookFirst: opts.lookFirst ?? false });
 const posts = () => cal.calls.filter((c) => c.method === 'POST');
@@ -35,7 +35,7 @@ test('a free slot is booked with the key, the event type and the caller timezone
   assert.equal(post.headers.authorization, 'Bearer cal_test');
   assert.equal(post.headers['cal-api-version'], '2026-02-25');
   assert.deepEqual(post.body, { start: input.start, eventTypeId: 42,
-    attendee: { name: 'Efua Mensah', email: 'efua@accrastack.example', timeZone: 'Africa/Lagos' },
+    attendee: { name: 'Efua Mensah', email: 'efua@accrastack.com', timeZone: 'Africa/Lagos' },
     metadata: { relaypay_ref: 'RP-E-000004', relaypay_key: input.key } });
 });
 
@@ -81,7 +81,7 @@ test('a retry finds the booking an earlier attempt made and does not book again'
   assert.deepEqual(await run({ lookFirst: true }), { result: 'booked', uid: 'bk_earlier' });
   const [look] = cal.calls;
   assert.equal(look.headers['cal-api-version'], '2026-05-01');
-  assert.deepEqual([look.query.get('attendeeEmail'), look.query.get('eventTypeId')], ['efua@accrastack.example', '42']);
+  assert.deepEqual([look.query.get('attendeeEmail'), look.query.get('eventTypeId')], ['efua@accrastack.com', '42']);
   assert.equal(posts().length, 0);
 });
 
@@ -94,4 +94,29 @@ test('a retry that cannot look up earlier bookings fails rather than risk bookin
   reset(free, booked, () => ({ status: 503, json: {} }));
   assert.equal((await run({ lookFirst: true })).result, 'failed');
   assert.equal(posts().length, 0);
+});
+
+test('a customer address that can never receive mail is booked under the support inbox, with the customer kept in metadata', async () => {
+  reset();
+  const demo = { ...input, email: 'efua@accrastack.example' };
+  assert.deepEqual(await bookCallback(demo, { baseUrl: cal.url, lookFirst: false }), { result: 'booked', uid: 'bk_1' });
+  const post = posts()[0];
+  assert.equal(post.body.attendee.email, 'support@relaypay.io');
+  assert.equal(post.body.attendee.name, 'Efua Mensah');
+  assert.equal(post.body.metadata.relaypay_customer_email, 'efua@accrastack.example');
+});
+
+test('a real customer address is booked as given, with nothing extra in metadata', async () => {
+  reset();
+  await bookCallback({ ...input, email: 'efua@accrastack.com' }, { baseUrl: cal.url, lookFirst: false });
+  const post = posts()[0];
+  assert.equal(post.body.attendee.email, 'efua@accrastack.com');
+  assert.equal('relaypay_customer_email' in post.body.metadata, false);
+});
+
+test('a retry looks for the earlier booking under the same attendee address it booked with', async () => {
+  reset(free, booked, () => ({ status: 200, json: { status: 'success', data: [] } }));
+  await bookCallback({ ...input, email: 'efua@accrastack.example' }, { baseUrl: cal.url, lookFirst: true });
+  const look = cal.calls.find((c) => c.method === 'GET' && c.path === '/v2/bookings')!;
+  assert.equal(look.query.get('attendeeEmail'), 'support@relaypay.io');
 });

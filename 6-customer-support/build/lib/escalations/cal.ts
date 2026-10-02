@@ -28,6 +28,15 @@ async function call(base: string, path: string, version: string, init: { method?
 /** Cal.com's own reason, kept in the outbox's last_error so a failed booking says why, not only its status. */
 const why = (j: any) => { const m = String(j?.error?.message ?? j?.message ?? '').trim(); return m ? `: ${m.slice(0, 200)}` : ''; };
 
+/**
+ * Domains reserved for documentation and tests (RFC 2606, RFC 6761). Mail is never delivered there, and
+ * Cal.com refuses them as attendees ("This email address cannot receive mail"), which failed every booking
+ * for the seed customers. Such a booking goes in under the support inbox, with the customer's own address in
+ * its metadata, so the callback still lands on the calendar and the team can see who it is for.
+ */
+const UNDELIVERABLE = /@(?:[a-z0-9-]+\.)*(?:example|test|invalid|localhost)$|@example\.(?:com|net|org)$/i;
+export const canReceiveMail = (email: string) => !UNDELIVERABLE.test(email.trim());
+
 const sameInstant = (a: unknown, b: string) => typeof a === 'string' && new Date(a).getTime() === new Date(b).getTime();
 
 /**
@@ -42,10 +51,12 @@ const sameInstant = (a: unknown, b: string) => typeof a === 'string' && new Date
 export async function bookCallback(r: CallbackRequest, opts: { baseUrl: string; lookFirst: boolean }): Promise<BookingResult> {
   const eventTypeId = config.escalation.calEventTypeId;
   const end = new Date(new Date(r.start).getTime() + config.hours.slotMinutes * 60_000).toISOString();
+  // One attendee address for the lookup and the booking, so a retry finds the booking it made.
+  const attendeeEmail = canReceiveMail(r.email) ? r.email : config.escalation.supportInbox;
   try {
     if (opts.lookFirst) {
       const pad = (iso: string, min: number) => new Date(new Date(iso).getTime() + min * 60_000).toISOString();
-      const found = await call(opts.baseUrl, '/v2/bookings', V_LIST, { query: { attendeeEmail: r.email, eventTypeId: String(eventTypeId),
+      const found = await call(opts.baseUrl, '/v2/bookings', V_LIST, { query: { attendeeEmail, eventTypeId: String(eventTypeId),
         afterStart: pad(r.start, -1), beforeEnd: pad(end, 1) } });
       if (!found.ok) return { result: 'failed', error: `cal.com lookup returned ${found.status}${why(found.json)}` };
       const hit = (found.json?.data ?? []).find((b: any) => sameInstant(b.start, r.start) && b.status !== 'cancelled');
@@ -58,7 +69,8 @@ export async function bookCallback(r: CallbackRequest, opts: { baseUrl: string; 
     if (!open) return { result: 'slot_taken' };
 
     const made = await call(opts.baseUrl, '/v2/bookings', V_CREATE, { method: 'POST', body: { start: r.start, eventTypeId,
-      attendee: { name: r.name, email: r.email, timeZone: r.timeZone }, metadata: { relaypay_ref: r.ref, relaypay_key: r.key } } });
+      attendee: { name: r.name, email: attendeeEmail, timeZone: r.timeZone },
+      metadata: { relaypay_ref: r.ref, relaypay_key: r.key, ...(attendeeEmail !== r.email ? { relaypay_customer_email: r.email } : {}) } } });
     if (made.ok && made.json?.data?.uid) return { result: 'booked', uid: String(made.json.data.uid) };
     // Someone took the slot between the check and the booking: the customer is offered other times, as for any taken slot.
     if (made.status < 500 && TAKEN.test(String(made.json?.error?.message ?? made.json?.message ?? ''))) return { result: 'slot_taken' };

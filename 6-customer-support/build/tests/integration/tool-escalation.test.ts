@@ -25,7 +25,9 @@ test('the booking goes to Cal.com with the API key, the event type and the calle
   const last = bookings().at(-1)!;
   assert.equal(last.headers.authorization, 'Bearer cal_test');
   assert.deepEqual([last.body.start, last.body.eventTypeId], ['2026-10-06T14:00:00.000Z', 42]);
-  assert.deepEqual(last.body.attendee, { name: 'Efua Mensah', email: 'efua@accrastack.example', timeZone: 'Africa/Lagos' });
+  // A .example address cannot receive mail, so Cal.com gets the support inbox and the customer rides in metadata.
+  assert.deepEqual(last.body.attendee, { name: 'Efua Mensah', email: 'support@example.com', timeZone: 'Africa/Lagos' });
+  assert.equal(last.body.metadata.relaypay_customer_email, 'efua@accrastack.example');
   assert.match(last.body.metadata.relaypay_key, /^RP-E-\d{6}:2026-10-06T14:00:00\.000Z$/);
 });
 
