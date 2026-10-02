@@ -53,6 +53,7 @@ services:
       - { key: AGENT_MAX_BUDGET_USD, value: "0.25" }
       - { key: AGENT_MAX_TURNS, value: "60" }
       - { key: AGENT_MAX_TOOL_CALLS_PER_TURN, value: "4" }
+      - { key: AGENT_FILLER_AFTER_MS, value: "1200" }   # a caller hears "One moment" after 1.2 s of silence, never after the reply
       - { key: DAILY_CLAUDE_CAP_USD, value: "5.00" }
       - { key: MAX_CONCURRENT_CALLS, value: "3" }
       - { key: ALLOW_FAULT_INJECTION, value: "false" }  # never true in production

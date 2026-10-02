@@ -38,6 +38,8 @@ export function loadConfig(env: Record<string, string | undefined>) {
       get maxBudgetUsd() { return num('AGENT_MAX_BUDGET_USD', 0.25); },
       get maxTurns() { return num('AGENT_MAX_TURNS', 60); },
       get maxToolCallsPerTurn() { return num('AGENT_MAX_TOOL_CALLS_PER_TURN', 4); },
+      /** Silence before the filler line on a slow turn; 0 turns it off and leaves only the filler a tool call starts. */
+      get fillerAfterMs() { return num('AGENT_FILLER_AFTER_MS', 1200); },
       get maxConcurrentCalls() { return num('MAX_CONCURRENT_CALLS', 3); },
       get dailyCapUsd() {
         const cap = num('DAILY_CLAUDE_CAP_USD', 5), per = num('AGENT_MAX_BUDGET_USD', 0.25);

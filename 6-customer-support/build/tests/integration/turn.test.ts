@@ -132,12 +132,37 @@ test('a turn records its cost on the conversation and in the ledger', { skip: sk
 });
 
 test('over the daily cap, the capacity line and goodbye are spoken, with no model call', { skip: skipWithoutDatabase }, async () => {
-  process.env.DAILY_CLAUDE_CAP_USD = '0.30';            // cap above the per-call budget, so config accepts it
-  const c = await newConversation();
-  await query(`insert into public.spend_ledger (provider, amount_usd, conversation_id, note) values ('anthropic', 1.0, $1, 'cap test')`, [c.id]);
-  const s = sink();
-  const r = await runTurn({ sessions: new SessionManager(fakeRuntime([])) }, { conversationId: c.id, text: 'hello there' }, s);
-  assert.equal(r.status, 'capacity');
-  assert.equal(s.said.at(-1), `${LINES.capacity} ${LINES.goodbye}`);
-  await dropConversation(c.id);
+  // The ledger row outlives the conversation (ON DELETE SET NULL), so the low cap must not outlive this test.
+  const cap = process.env.DAILY_CLAUDE_CAP_USD; process.env.DAILY_CLAUDE_CAP_USD = '0.30';   // above the per-call budget, so config accepts it
+  try {
+    const c = await newConversation();
+    await query(`insert into public.spend_ledger (provider, amount_usd, conversation_id, note) values ('anthropic', 1.0, $1, 'cap test')`, [c.id]);
+    const s = sink();
+    const r = await runTurn({ sessions: new SessionManager(fakeRuntime([])) }, { conversationId: c.id, text: 'hello there' }, s);
+    assert.equal(r.status, 'capacity');
+    assert.equal(s.said.at(-1), `${LINES.capacity} ${LINES.goodbye}`);
+    await dropConversation(c.id);
+  } finally { if (cap === undefined) delete process.env.DAILY_CLAUDE_CAP_USD; else process.env.DAILY_CLAUDE_CAP_USD = cap; }
+});
+
+test('a slow turn speaks the filler before the reply, and the filler never follows the reply', { skip: skipWithoutDatabase }, async () => {
+  const before = process.env.AGENT_FILLER_AFTER_MS; process.env.AGENT_FILLER_AFTER_MS = '50';
+  try {
+    const clarify = { answer_type: 'clarify', spoken_response: 'Is that an incoming transfer or an outgoing payout?', citations: [],
+      confidence_note: 'vague', escalation_category: null };
+    const c = await newConversation();
+    const slow = fakeRuntime([async () => { await new Promise((r) => setTimeout(r, 200)); return [ok(clarify)]; }]);
+    const s = sink();
+    await runTurn({ sessions: new SessionManager(slow) }, { conversationId: c.id, text: 'my payment is stuck' }, s);
+    assert.deepEqual(s.said, [LINES.filler, clarify.spoken_response]);
+    // A timer longer than the turn: once the reply is out, the moment it would have fired passes in silence.
+    process.env.AGENT_FILLER_AFTER_MS = '2500';
+    const c2 = await newConversation();
+    const s2 = sink(); const t0 = Date.now();
+    await runTurn({ sessions: new SessionManager(fakeRuntime([[ok(clarify)]])) }, { conversationId: c2.id, text: 'my payment is stuck' }, s2);
+    await new Promise((r) => setTimeout(r, Math.max(0, 2600 - (Date.now() - t0))));
+    assert.equal(s2.said.at(-1), clarify.spoken_response);
+    assert.equal(s2.said.filter((x) => x === LINES.filler).length <= 1, true);
+    await dropConversation(c.id); await dropConversation(c2.id);
+  } finally { if (before === undefined) delete process.env.AGENT_FILLER_AFTER_MS; else process.env.AGENT_FILLER_AFTER_MS = before; }
 });

@@ -8,12 +8,15 @@ import type { TurnFacts } from '../lib/gates/reply.ts';
  * logged at or after `since`, which is the database clock at the turn's start.
  */
 export async function loadTurnFacts(conversationId: string, since: Date, currentText: string): Promise<TurnFacts> {
-  const calls = await query<{ tool_name: string; input_summary: any; result_summary: any; created_at: Date }>(
-    `select tool_name, input_summary, result_summary, created_at from public.tool_calls
-     where conversation_id = $1 and status = 'ok' order by created_at`, [conversationId]);
+  // Three independent reads, so they go out together: the reply waits on the slowest, not the sum.
+  const [calls, conv, said] = await Promise.all([
+    query<{ tool_name: string; input_summary: any; result_summary: any; created_at: Date }>(
+      `select tool_name, input_summary, result_summary, created_at from public.tool_calls
+       where conversation_id = $1 and status = 'ok' order by created_at`, [conversationId]),
+    one<{ verified_customer_id: string | null }>('select verified_customer_id from public.conversations where id = $1', [conversationId]),
+    query<{ user_transcript: string }>('select user_transcript from public.conversation_turns where conversation_id = $1 order by seq', [conversationId]),
+  ]);
   const turn = calls.filter((c) => c.created_at >= since);
-  const conv = await one<{ verified_customer_id: string | null }>('select verified_customer_id from public.conversations where id = $1', [conversationId]);
-  const said = await query<{ user_transcript: string }>('select user_transcript from public.conversation_turns where conversation_id = $1 order by seq', [conversationId]);
   const emails = calls.flatMap((c) => [c.input_summary?.email, c.input_summary?.user_email]).filter(Boolean)
     .map((e: string) => normalizeSpokenEmail(e)).filter((e): e is string => !!e);
   return {

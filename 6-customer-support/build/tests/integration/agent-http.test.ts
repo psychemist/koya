@@ -9,7 +9,9 @@ import type { AgentRuntime, RuntimeEvent } from '../../agent/runtime.ts';
 import { skipWithoutDatabase, dropConversation } from '../helpers.ts';
 
 // Assigned, not defaulted: .env.local carries the real secrets, and these tests send these.
-Object.assign(process.env, { VAPI_CUSTOM_LLM_KEY: 'llm-test', VAPI_WEBHOOK_SECRET: 'hook-test', AGENT_INTERNAL_TOKEN: 'internal-test' });
+// The timed filler is off: these assert the wire shape of a reply, and turn.test.ts covers the filler.
+Object.assign(process.env, { VAPI_CUSTOM_LLM_KEY: 'llm-test', VAPI_WEBHOOK_SECRET: 'hook-test', AGENT_INTERNAL_TOKEN: 'internal-test',
+  AGENT_FILLER_AFTER_MS: '0' });
 
 const reply = (spoken: string, answer_type = 'clarify'): RuntimeEvent => ({ kind: 'result', ok: true, costUsd: 0.001, durationMs: 5,
   output: { answer_type, spoken_response: spoken, citations: [], confidence_note: 'test', escalation_category: null } });
