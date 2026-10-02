@@ -119,7 +119,11 @@ time, .num { font-variant-numeric: tabular-nums; }
 .sp-safe svg { flex: none; margin-top: 1px; color: var(--rp-teal-on-blue); }
 
 .sp-main { min-width: 0; display: flex; flex-direction: column; padding: 24px 28px; }
-.sp-main .rp-desk { flex: 1; height: calc(100dvh - 60px - 48px); min-height: 480px; }
+/* The workspace is exactly the window below the bar, so the desk inside it can never grow with the conversation:
+   without a fixed height here the grid row stretched to fit the transcript, the page scrolled instead of the
+   transcript, and the desk header and End call scrolled off the top. */
+.sp-main:has(> .rp-desk) { height: calc(100dvh - 60px); min-height: 540px; }
+.sp-main .rp-desk { flex: 1; min-height: 0; }
 
 /* Sign in: customer or guest, centred in the workspace. */
 .sp-signin { width: 100%; max-width: 440px; margin: 0 auto; padding: clamp(24px, 8vh, 88px) 0 40px; }
@@ -310,9 +314,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 /* A phone gets the same frame as a desktop: the desk fills the screen below the bar and the folded panel, and only
    the conversation scrolls, instead of the page and the transcript both scrolling with the controls in between. */
 @media (max-width: 899px) {
-  .sp-main .rp-desk { height: calc(100dvh - 60px - 60px - 32px); min-height: 440px; }
-  .sp-body:not([data-collapsed='true']) .sp-main .rp-desk { height: auto; }
-  .sp-body:not([data-collapsed='true']) .rp-desk-body { max-height: 60vh; }
+  .sp-main:has(> .rp-desk) { height: calc(100dvh - 60px - 60px); min-height: 480px; }
 }
 .rp-scroll { position: relative; }
 .rp-jump {

@@ -106,7 +106,10 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
     closing.current = { heard: false, speaking: false, timer: null };
     try {
       if (!vapi.current) {
-        const { default: VapiClient } = await import('@vapi-ai/web');
+        // In development only, a browser test can hand the page a stand-in client, so the call screen can be
+        // driven without a microphone, an agent or Vapi credits. The production build removes this branch.
+        const fake = process.env.NODE_ENV !== 'production' ? (window as any).__RP_FAKE_VAPI__ : undefined;
+        const VapiClient = fake ?? (await import('@vapi-ai/web')).default;
         const v = new VapiClient(PUBLIC_KEY) as unknown as Vapi;
         v.on('call-start', () => { setTurn('greeting'); setState('listening'); });
         v.on('call-end', () => { if (closing.current.timer) clearTimeout(closing.current.timer); setState('ended'); meter.current?.style.setProperty('--lvl', '0'); });

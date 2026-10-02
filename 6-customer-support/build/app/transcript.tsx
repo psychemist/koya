@@ -42,9 +42,14 @@ export function Transcript({ entries, label = 'Conversation', pending, empty }: 
   useEffect(() => {
     const el = box();
     if (!el) return;
+    // Only the reader scrolling up counts as leaving the bottom. A smooth scroll to a new line fires scroll events
+    // part way down, and treating those as "away" stopped the transcript following the call after a few lines.
+    let lastTop = el.scrollTop;
     const onScroll = () => {
-      away.current = el.scrollHeight - el.scrollTop - el.clientHeight > 80;
-      if (!away.current) setBehind(false);
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 80;
+      if (atBottom) { away.current = false; setBehind(false); }
+      else if (el.scrollTop < lastTop - 2) away.current = true;
+      lastTop = el.scrollTop;
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
@@ -57,7 +62,8 @@ export function Transcript({ entries, label = 'Conversation', pending, empty }: 
     const el = box();
     if (!el) return;
     if (away.current) { setBehind(true); return; }
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth() ? 'smooth' : 'auto' });
+    // Straight to the newest line: a smooth scroll restarted by every new line never reached the bottom.
+    el.scrollTop = el.scrollHeight;
   }, [entries.length, last?.text.length, pending]);
 
   function jump() {
