@@ -1,0 +1,88 @@
+# Three long-running services, one Supabase project, all in US East next to
+# Vapi and the Anthropic API. The blueprint is NOT at the repo root:
+#   Render > Blueprint > Settings > Blueprint Path = 6-customer-support/render.yaml
+# rootDir is REPO-ROOT-RELATIVE, so it is 6-customer-support/build.
+#
+# Secrets are sync: false and set in the dashboard. Budgets, models and
+# thresholds are committed values, so the numbers being enforced are the
+# numbers anyone reading this file sees (the Week 5 lesson).
+services:
+  - type: web
+    name: relaypay-web
+    runtime: node
+    region: virginia
+    rootDir: 6-customer-support/build
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/voice/availability
+    # Migrations run here ONLY, so two services never race to migrate.
+    preDeployCommand: npm run migrate
+    envVars:
+      - { key: DATABASE_URL, sync: false }
+      - { key: SESSION_SECRET, sync: false }          # a NEW value, not the one used locally
+      - { key: APP_BASE_URL, sync: false }            # this service's own https URL
+      - { key: AGENT_URL, sync: false }               # the relaypay-agent https URL
+      - { key: AGENT_INTERNAL_TOKEN, sync: false }
+      # NEXT_PUBLIC_* are compiled into the page at build time: set them before the first build.
+      - { key: NEXT_PUBLIC_VAPI_PUBLIC_KEY, sync: false }
+      - { key: NEXT_PUBLIC_VAPI_ASSISTANT_ID, sync: false }
+      - { key: NEXT_PUBLIC_SUPPORT_PHONE, sync: false }
+
+  - type: web                       # public HTTPS, because Vapi must reach it
+    name: relaypay-agent
+    runtime: node
+    region: virginia
+    rootDir: 6-customer-support/build
+    # Standard (2 GB): the Agent SDK spawns one CLI subprocess per live call or chat.
+    plan: standard
+    # NOT --omit=optional: the SDK's native binary ships as an optional dependency.
+    buildCommand: npm ci
+    startCommand: npm run agent
+    healthCheckPath: /health
+    envVars:
+      - { key: DATABASE_URL, sync: false }
+      - { key: ANTHROPIC_API_KEY, sync: false }
+      - { key: MCP_URL, sync: false }                 # https://relaypay-mcp.onrender.com/mcp
+      - { key: MCP_TOKEN, sync: false }
+      - { key: AGENT_INTERNAL_TOKEN, sync: false }
+      - { key: VAPI_CUSTOM_LLM_KEY, sync: false }
+      - { key: VAPI_WEBHOOK_SECRET, sync: false }
+      - { key: AGENT_MODEL, value: claude-sonnet-5 }    # the falsifier's verdict, 2026-10-02: Haiku failed brief rows after prompt fixes
+      - { key: AGENT_EFFORT, value: low }
+      - { key: AGENT_MAX_BUDGET_USD, value: "0.25" }
+      - { key: AGENT_MAX_TURNS, value: "60" }
+      - { key: AGENT_MAX_TOOL_CALLS_PER_TURN, value: "4" }
+      - { key: DAILY_CLAUDE_CAP_USD, value: "5.00" }
+      - { key: MAX_CONCURRENT_CALLS, value: "3" }
+      - { key: ALLOW_FAULT_INJECTION, value: "false" }  # never true in production
+
+  - type: web
+    name: relaypay-mcp
+    runtime: node
+    region: virginia
+    rootDir: 6-customer-support/build
+    plan: starter
+    buildCommand: npm ci --omit=optional
+    startCommand: npm run mcp
+    healthCheckPath: /health
+    envVars:
+      - { key: DATABASE_URL, sync: false }
+      - { key: MCP_TOKEN, sync: false }
+      - { key: VOYAGE_API_KEY, sync: false }
+      - { key: CAL_API_KEY, sync: false }
+      - { key: CAL_EVENT_TYPE_ID, sync: false }
+      - { key: DISCORD_SUCCESS_WEBHOOK_URL, sync: false }   # optional; empty skips that Discord post
+      - { key: DISCORD_ERROR_WEBHOOK_URL, sync: false }     # optional; empty skips that Discord post
+      - { key: RESEND_API_KEY, sync: false }
+      - { key: SUPPORT_INBOX, sync: false }
+      - { key: NOTIFY_FROM_EMAIL, sync: false }
+      - { key: APP_BASE_URL, sync: false }            # the relaypay-web URL, for console links in alerts
+      - { key: VOYAGE_MODEL, value: voyage-3.5-lite }
+      - { key: KB_GROUNDING_THRESHOLD, value: "0.51" }  # tuned 2026-10-02 on Voyage vectors, runs c5943718 and ab9328b7 plus 16 probes: in-scope >= 0.517, off-topic <= 0.504
+      - { key: KB_FTS_STRONG, value: "1.0" }            # a heading match; a body-only word (0.1) never grounds (2026-09-29)
+      - { key: SUPPORT_HOURS_DAYS, value: "1,2,3,4,5" }
+      - { key: SUPPORT_HOURS_START_UTC, value: "8" }
+      - { key: SUPPORT_HOURS_END_UTC, value: "18" }
+      - { key: SUPPORT_SLOT_MINUTES, value: "30" }
+      - { key: ESCALATION_STEP_TIMEOUT_MS, value: "5000" }
