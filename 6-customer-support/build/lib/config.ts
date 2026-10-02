@@ -78,8 +78,9 @@ export function loadConfig(env: Record<string, string | undefined>) {
       get calApiKey() { return req('CAL_API_KEY'); },
       get calApiUrl() { return env.CAL_API_URL || 'https://api.cal.com'; },
       get calEventTypeId() { return Number(req('CAL_EVENT_TYPE_ID')); },
-      // Optional: Discord is best effort, so an unset webhook skips it rather than failing the escalation.
-      get discordWebhookUrl() { return env.DISCORD_WEBHOOK_URL || null; },
+      // Optional: Discord is best effort, so an unset webhook skips that channel rather than failing the escalation.
+      get discordSuccessWebhookUrl() { return env.DISCORD_SUCCESS_WEBHOOK_URL || null; },
+      get discordErrorWebhookUrl() { return env.DISCORD_ERROR_WEBHOOK_URL || null; },
       // Per outbound call. Two Cal.com calls in turn, then Discord and email together: 15 s at worst, inside the tool's 20 s.
       get stepTimeoutMs() { return num('ESCALATION_STEP_TIMEOUT_MS', 5000); },
       get resendKey() { return req('RESEND_API_KEY'); },

@@ -12,12 +12,13 @@ export const calFree = {
 };
 
 /**
- * Shared by tool-escalation.test.ts and dispatch.test.ts: a Cal.com, a Discord
- * and a Resend that accept everything. A test swaps `lanes.calAnswers` or a
- * stub's answer to make a lane fail, and puts it back after.
+ * Shared by tool-escalation.test.ts and dispatch.test.ts: a Cal.com, the two
+ * Discord channels (success and error) and a Resend that accept everything. A
+ * test swaps `lanes.calAnswers` or a stub's answer to make a lane fail, and
+ * puts it back after.
  */
 export const lanes = { calAnswers: { ...calFree }, discordStatus: 204, resendStatus: 200 } as {
-  cal: Stub; discord: Stub; resend: Stub; calAnswers: typeof calFree; discordStatus: number; resendStatus: number };
+  cal: Stub; discord: Stub; discordErrors: Stub; resend: Stub; calAnswers: typeof calFree; discordStatus: number; resendStatus: number };
 
 export const bookings = () => lanes.cal.calls.filter((c) => c.method === 'POST' && c.path === '/v2/bookings');
 
@@ -26,12 +27,13 @@ export function useEscalationStubs() {
     lanes.cal = await startStub(async (body, call) => call.path === '/v2/slots' ? lanes.calAnswers.slots(call)
       : call.method === 'POST' ? lanes.calAnswers.create(body) : lanes.calAnswers.list());
     lanes.discord = await startStub(async () => ({ status: lanes.discordStatus, json: {} }));
+    lanes.discordErrors = await startStub(async () => ({ status: lanes.discordStatus, json: {} }));
     lanes.resend = await startStub(async () => ({ status: lanes.resendStatus, json: { id: 'em_1' } }));
     Object.assign(process.env, { CAL_API_URL: lanes.cal.url, CAL_API_KEY: 'cal_test', CAL_EVENT_TYPE_ID: '42',
-      DISCORD_WEBHOOK_URL: lanes.discord.url, RESEND_API_KEY: 're_test', RESEND_API_URL: lanes.resend.url,
+      DISCORD_SUCCESS_WEBHOOK_URL: lanes.discord.url, DISCORD_ERROR_WEBHOOK_URL: lanes.discordErrors.url, RESEND_API_KEY: 're_test', RESEND_API_URL: lanes.resend.url,
       SUPPORT_INBOX: 'support@example.com', ESCALATION_STEP_TIMEOUT_MS: '2000' });
   });
-  after(async () => { await lanes.cal.close(); await lanes.discord.close(); await lanes.resend.close(); });
+  after(async () => { await lanes.cal.close(); await lanes.discord.close(); await lanes.discordErrors.close(); await lanes.resend.close(); });
 }
 
 /** Restores every lane to healthy, so one test's outage never leaks into the next. */

@@ -69,7 +69,7 @@ Every step writes to Supabase: the conversation, each turn, each retrieval, each
 | A support ticket | `support_tickets` | Reference such as `RP-T-000012`, category, priority, summary, linked customer and transaction |
 | An escalation | `escalations` | Reference such as `RP-E-000004`, reason, category, name, email, callback time, booked yes or no, status |
 | A calendar booking | Cal.com, from code | 30 minutes, inside support hours, tagged with the escalation reference. Cal.com sends the invite |
-| A support alert | Resend email to the support inbox (always), plus Discord (best effort), from code | The escalation reference, category, reason, callback time and console link |
+| A support alert | Resend email to the support inbox (always), plus Discord success or error channel (best effort), from code | The escalation reference, category, reason, callback time and console link |
 | An audit trail | `conversations`, `conversation_turns`, `retrieval_logs`, `tool_calls`, `conversation_events` | Everything needed to replay why the agent said what it said |
 | Evaluation results | `evaluations`, console, [test-evidence.md](test-evidence.md) | Scenario, expected, actual, pass or fail, notes, model, cost, latency |
 
@@ -198,7 +198,7 @@ Three long-running Render services and one Supabase project. Cal.com, Discord an
 |---|---|---|
 | `relaypay-web` | `DATABASE_URL` (console reads), `SESSION_SECRET`, `AGENT_INTERNAL_TOKEN`, Vapi **public** key and assistant id | Anthropic, Voyage, MCP, Cal.com, Discord or Resend keys |
 | `relaypay-agent` | `ANTHROPIC_API_KEY`, `MCP_TOKEN`, Vapi webhook and custom-llm secrets, `DATABASE_URL` (turns, conversations, ledger) | Voyage, Cal.com, Discord or Resend keys. It never touches business tables directly |
-| `relaypay-mcp` | `DATABASE_URL`, `VOYAGE_API_KEY`, `MCP_TOKEN`, `CAL_API_KEY`, `CAL_EVENT_TYPE_ID`, `DISCORD_WEBHOOK_URL`, `RESEND_API_KEY` | Anthropic key |
+| `relaypay-mcp` | `DATABASE_URL`, `VOYAGE_API_KEY`, `MCP_TOKEN`, `CAL_API_KEY`, `CAL_EVENT_TYPE_ID`, `DISCORD_SUCCESS_WEBHOOK_URL`, `DISCORD_ERROR_WEBHOOK_URL`, `RESEND_API_KEY` | Anthropic key |
 
 **Why the MCP server is its own service.** The brief grades it as a deliverable a grader must be able to run. As its own process it runs three ways from one codebase: deployed over Streamable HTTP, locally over HTTP, and locally over stdio for MCP Inspector or Claude Desktop. If the agent service falls over, the tool surface and its logs stay up and inspectable.
 
@@ -363,7 +363,7 @@ This implements the source policy ([Escalation & Support Handling Policy](assets
 5. **The server runs the lane in code**, each outbound call with a 5 second timeout:
    - asks Cal.com for the event type's free slots at that time; a slot it does not list is `slot_taken`;
    - if the slot is free, books it on Cal.com with the caller as attendee, which sends the invite;
-   - then, together, emails the support inbox through Resend and posts to the support Discord channel.
+   - then, together, emails the support inbox through Resend and posts to Discord: the success channel when the escalation went through as asked, the error channel when the booking failed. If the email is still undelivered after 3 attempts, the error channel is told once.
    Each step's result is stored on the outbox row, so a retry redoes only the steps that did not happen.
 6. **On `slot_taken`** the tool returns the next free slots and the agent offers them. The escalation stays open, and the notification is still sent so the team knows.
 7. **On a Cal.com failure or timeout**, the support email still goes out and says no callback is booked, so the team arranges a time by hand. The email is the alert of record and is retried; Discord is best effort, tried once and never retried. The escalation records `call_booked = false`, `booking_status = failed` and `notify_status = fallback_sent`. The agent says a representative will follow up by email to confirm a time. It does not claim a booking that did not happen.

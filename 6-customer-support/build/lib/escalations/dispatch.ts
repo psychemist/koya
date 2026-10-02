@@ -2,7 +2,7 @@ import { config } from '../config.ts';
 import { one, query } from '../db.ts';
 import { redactString } from '../sanitise.ts';
 import { bookCallback } from './cal.ts';
-import { postToDiscord } from './discord.ts';
+import { postEmailGaveUp, postToDiscord } from './discord.ts';
 import { sendSupportEmail } from './support-email.ts';
 import type { Alert, BookingOutcome } from './alert.ts';
 
@@ -89,7 +89,11 @@ export async function dispatchNotification(notificationId: string, opts: { dryRu
     }
     const final = n.attempts >= MAX_ATTEMPTS;
     await query(`update public.notifications set status = $2 where id = $1`, [n.id, final ? 'failed' : 'retry']);
-    if (final) await query(`update public.escalations set notify_status = 'failed', updated_at = now() where id = $1`, [e.id]);
+    if (final) {
+      await query(`update public.escalations set notify_status = 'failed', updated_at = now() where id = $1`, [e.id]);
+      // The claim makes this branch run once per row, so the error channel hears about it once.
+      await postEmailGaveUp(alert, redactString(mail.error), n.attempts);
+    }
     return { status: final ? 'failed' : 'retry', ...result };
   } catch (err) {
     const msg = redactString((err as Error).message).slice(0, 500);

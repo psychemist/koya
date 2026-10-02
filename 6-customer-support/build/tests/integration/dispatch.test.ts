@@ -16,8 +16,11 @@ const later = (min: number) => new Date(Date.now() + min * 60_000);
 
 test('row 23: Cal.com answering 502 books nothing, emails support to arrange a time, and tells the truth', { skip: skipWithoutDatabase }, async () => {
   lanes.calAnswers.slots = () => ({ status: 502, json: {} });
+  const [ok, err] = [lanes.discord.calls.length, lanes.discordErrors.calls.length];
   const c = await newConversation({ channel: 'voice_web' });
   const r = await esc(c.id, { preferred_time: '2026-10-06T15:00:00Z' });
+  assert.deepEqual([lanes.discord.calls.length - ok, lanes.discordErrors.calls.length - err], [0, 1]);
+  assert.match(lanes.discordErrors.calls.at(-1)!.body.content, /The calendar booking failed/);
   assert.deepEqual([r.call_booked, r.booking_status], [false, 'failed']);
   assert.match(r.follow_up_summary, /follow up by email to confirm a time/);
   const [row] = await query('select notify_status from public.escalations where conversation_id=$1', [c.id]);
@@ -39,19 +42,23 @@ test('the calendar_down fault fails the booking without reaching Cal.com', { ski
 
 test('with the email down, the row is retried by the sweeper at most three times, and Discord is posted once', { skip: skipWithoutDatabase }, async () => {
   lanes.resendStatus = 500;
-  const discordBefore = lanes.discord.calls.length;
+  const discordBefore = lanes.discord.calls.length, errorsBefore = lanes.discordErrors.calls.length;
   const c = await newConversation({ channel: 'voice_web' });
   await esc(c.id, {});                                   // no time: alert-only row, slot_key 'none'
   assert.deepEqual(await outbox(c.id), { status: 'retry', attempts: 1, booking_result: null, discord_status: 'sent' });
   await sweepNotifications(later(2));
   assert.deepEqual([(await outbox(c.id)).status, (await outbox(c.id)).attempts], ['retry', 2]);
+  assert.equal(lanes.discordErrors.calls.length - errorsBefore, 0);
   await sweepNotifications(later(4));
   assert.deepEqual([(await outbox(c.id)).status, (await outbox(c.id)).attempts], ['failed', 3]);
+  assert.equal(lanes.discordErrors.calls.length - errorsBefore, 1);
+  assert.match(lanes.discordErrors.calls.at(-1)!.body.content, /the support email was not delivered after 3 attempts \(resend returned 500\)/);
   await sweepNotifications(later(6));
   assert.equal((await outbox(c.id)).attempts, 3);
   const [e] = await query('select notify_status from public.escalations where conversation_id = $1', [c.id]);
   assert.equal(e.notify_status, 'failed');
   assert.equal(lanes.discord.calls.length - discordBefore, 1);
+  assert.equal(lanes.discordErrors.calls.length - errorsBefore, 1);
   await dropConversation(c.id);
 });
 
