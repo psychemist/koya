@@ -33,7 +33,7 @@
     "maxEndpointDelayMs": 1500,
     "endpointSensitivity": 0.3,
     "endpointLatencyAdjustmentLevel": 2,
-    "keyterm": [
+    "customVocabulary": [
       "RelayPay",
       "TXN",
       "payout",
@@ -46,7 +46,22 @@
       "Daniel Mwangi",
       "Efua Mensah",
       "Amina Jacobs",
-      "Patrick Ndayisaba"
+      "Patrick Ndayisaba",
+      "PAY",
+      "CUS",
+      "customer ID",
+      "payout ID",
+      "transaction ID"
+    ],
+    "contextGeneral": [
+      {
+        "key": "domain",
+        "value": "B2B cross-border payments and invoicing support"
+      },
+      {
+        "key": "references",
+        "value": "Transaction IDs like TXN-9001, payout IDs like PAY-7001, customer IDs like CUS-1001"
+      }
     ]
   },
   "startSpeakingPlan": {
