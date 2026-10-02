@@ -16,7 +16,7 @@ const PHONE = process.env.NEXT_PUBLIC_SUPPORT_PHONE ?? '';
 
 const STATUS: Record<CallState, string> = {
   checking: 'Checking whether voice support is available.',
-  idle: 'Press Start call and speak when you hear the greeting.',
+  idle: 'Press Start call. RelayPay says hello first, then it is your turn to speak.',
   unavailable: 'Voice support is busy right now. Try again in a few minutes, or use chat.',
   connecting: 'Connecting you to RelayPay support.',
   listening: 'Listening.',
@@ -33,6 +33,22 @@ function describeError(e: unknown): string {
   if (/NotFound|no.*device/i.test(text)) return `No microphone was found. You can use chat instead${phone}.`;
   return `The call could not connect. Try again in a moment, or use chat instead${phone}.`;
 }
+
+/** The closing line the agent says when a call is over (lib/lines.ts), however the transcriber spells RelayPay. */
+const CLOSING = /thanks for calling relay ?pay support,? goodbye/i;
+
+/**
+ * Whose turn it is on a live call. A caller should never have to guess when to talk: RelayPay greets first,
+ * then the strip says "Your turn" until they speak, and shows when it is listening and when it is answering.
+ */
+type Turn = 'greeting' | 'agent' | 'you' | 'hearing' | 'thinking';
+const TURN: Record<Turn, { title: string; hint: string }> = {
+  greeting: { title: 'Connected. RelayPay is about to say hello', hint: 'Wait for the greeting to finish, then it is your turn.' },
+  agent: { title: 'RelayPay is speaking', hint: 'Wait for it to finish, then it is your turn.' },
+  you: { title: 'Your turn. Speak now', hint: 'Ask your question. RelayPay answers when you pause.' },
+  hearing: { title: 'Listening to you', hint: 'Take your time. Read references out slowly, RelayPay waits for the whole thing.' },
+  thinking: { title: 'Got it. Working on an answer', hint: 'RelayPay will reply in a moment.' },
+};
 
 const clock = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
@@ -53,8 +69,10 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
   const [error, setError] = useState('');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [muted, setMuted] = useState(false);
+  const [turn, setTurn] = useState<Turn>('greeting');
   const vapi = useRef<Vapi | null>(null);
   const meter = useRef<HTMLSpanElement>(null);
+  const closing = useRef<{ heard: boolean; speaking: boolean; timer: ReturnType<typeof setTimeout> | null }>({ heard: false, speaking: false, timer: null });
   const configured = Boolean(PUBLIC_KEY && ASSISTANT_ID);
 
   useEffect(() => {
@@ -72,20 +90,46 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
   useEffect(() => { onCallActive?.(active); }, [active, onCallActive]);
   useEffect(() => () => { vapi.current?.stop(); }, []);
 
+  /**
+   * The agent's goodbye should end the call, and Vapi's end-call phrase does not always fire, which left calls
+   * open and billing after the goodbye. So the page hangs up itself once the closing line has finished playing,
+   * and at the latest a few seconds after it was heard.
+   */
+  function hangUpSoon(afterMs: number) {
+    if (closing.current.timer) clearTimeout(closing.current.timer);
+    closing.current.timer = setTimeout(() => vapi.current?.stop(), afterMs);
+  }
+
   async function start() {
-    setError(''); setEntries([]); setMuted(false); setState('connecting');
+    setError(''); setEntries([]); setMuted(false); setTurn('greeting'); setState('connecting');
+    if (closing.current.timer) clearTimeout(closing.current.timer);
+    closing.current = { heard: false, speaking: false, timer: null };
     try {
       if (!vapi.current) {
         const { default: VapiClient } = await import('@vapi-ai/web');
         const v = new VapiClient(PUBLIC_KEY) as unknown as Vapi;
-        v.on('call-start', () => setState('listening'));
-        v.on('call-end', () => { setState('ended'); meter.current?.style.setProperty('--lvl', '0'); });
-        v.on('speech-start', () => setState('speaking'));
-        v.on('speech-end', () => { setState('listening'); meter.current?.style.setProperty('--lvl', '0'); });
+        v.on('call-start', () => { setTurn('greeting'); setState('listening'); });
+        v.on('call-end', () => { if (closing.current.timer) clearTimeout(closing.current.timer); setState('ended'); meter.current?.style.setProperty('--lvl', '0'); });
+        v.on('speech-start', () => { closing.current.speaking = true; setTurn('agent'); setState('speaking'); });
+        v.on('speech-end', () => {
+          closing.current.speaking = false;
+          if (closing.current.heard) hangUpSoon(600);
+          setTurn('you'); setState('listening'); meter.current?.style.setProperty('--lvl', '0'); });
         // Written straight to a CSS variable: ten updates a second should not re-render the transcript.
         v.on('volume-level', (level: number) => meter.current?.style.setProperty('--lvl', String(Math.min(1, Math.max(0, level)))));
         v.on('message', (m: any) => {
+          // The caller's own speech: started means we hear them, stopped means the agent is now working on it.
+          if (m?.type === 'speech-update' && m.role === 'user') {
+            if (m.status === 'started') setTurn('hearing');
+            if (m.status === 'stopped') setTurn((t) => (t === 'hearing' ? 'thinking' : t));
+            return;
+          }
           if (m?.type !== 'transcript' || m.transcriptType !== 'final') return;
+          if (m.role === 'user') setTurn((t) => (t === 'hearing' || t === 'you' ? 'thinking' : t));
+          if (m.role !== 'user' && CLOSING.test(m.transcript ?? '') && !closing.current.heard) {
+            closing.current.heard = true;
+            hangUpSoon(closing.current.speaking ? 8000 : 900);
+          }
           setEntries((prev) => [...prev, { who: m.role === 'user' ? 'you' : 'relaypay', text: m.transcript, at: new Date().toISOString() }]);
         });
         v.on('error', (e: unknown) => { setError(describeError(e)); setState('error'); });
@@ -111,12 +155,12 @@ export function VoicePanel({ onSwitchToChat, onCallActive }: { onSwitchToChat?: 
   return (
     <>
       {active ? (
-        <div className="rp-live" data-state={state}>
+        <div className="rp-live" data-state={state} data-turn={state === 'connecting' ? 'connecting' : muted ? 'muted' : turn}>
           <div className="rp-live-main">
-            <span className="rp-live-dot" aria-hidden="true" />
-            <div>
-              <p className="rp-live-title">{state === 'connecting' ? 'Connecting' : 'Call in progress'}</p>
-              <p className="rp-status" role="status" aria-live="polite" data-tone="live">{muted && connected ? 'Your microphone is muted.' : status}</p>
+            <span className="rp-live-badge" aria-hidden="true">{turn === 'you' || turn === 'hearing' ? <MicIcon size={20} /> : <PhoneIcon size={18} />}</span>
+            <div role="status" aria-live="polite">
+              <p className="rp-live-title">{state === 'connecting' ? 'Connecting you to RelayPay support' : muted ? 'Your microphone is muted' : TURN[turn].title}</p>
+              <p className="rp-status">{state === 'connecting' ? 'Allow the microphone if your browser asks.' : muted ? 'Unmute to speak. RelayPay cannot hear you.' : TURN[turn].hint}</p>
             </div>
             {connected && <span className="rp-live-time" aria-label={`Call time ${clock(elapsed)}`}>{clock(elapsed)}</span>}
             <span className="rp-meter" ref={meter} aria-hidden="true" data-on={state === 'speaking'}><i /><i /><i /><i /><i /></span>
