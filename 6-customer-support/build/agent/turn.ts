@@ -8,6 +8,7 @@ import type { SessionManager } from './sessions.ts';
 import type { RuntimeEvent } from './runtime.ts';
 import type { Prefetch } from './prefetch.ts';
 import { fillers, fillerKind } from './fillers.ts';
+import { isClosing } from './closing.ts';
 import type { FillerKind } from '../lib/lines.ts';
 
 /** Voice speaks both kinds; chat shows only replies, because a filler line is a pause, not a message. */
@@ -123,6 +124,15 @@ export function runTurn(deps: { sessions: SessionManager; now?: () => Date; pref
   async function turnBody(): Promise<TurnOutcome> {
     const t0 = Date.now();
     const id = input.conversationId;
+    // A caller signing off hears the closing line at once, with no model call and no turn row: the exact line is
+    // what ends a call (Vapi's end-call phrase, and the page's own hang-up), and a goodbye answers nothing.
+    if (isClosing(text)) {
+      const spoken = channel === 'chat' ? LINES.chatGoodbye : LINES.goodbye;
+      speak(spoken);
+      await query(`insert into public.conversation_events (conversation_id, event_type, source, summary) values ($1, 'caller_goodbye', 'system', $2)`,
+        [id, text.slice(0, 200)]).catch(() => undefined);
+      return { status: 'ok', answerType: null, spoken, turnId: null };
+    }
     const pre = (await preflight(id))!;
 
     // Replay: Vapi re-posts the last utterance on reconnect. Answer from the stored turn, never re-run it.
