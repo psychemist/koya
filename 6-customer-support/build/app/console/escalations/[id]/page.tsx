@@ -12,9 +12,8 @@ export default async function EscalationPage({ params }: { params: Promise<{ id:
   return (
     <>
       <p className="rp-crumb"><Link href="/console/escalations">Escalations</Link></p>
-      <h1>{e.escalation_ref}</h1>
+      <div className="rp-page-head"><h1>{e.escalation_ref}</h1><StatusActions kind="escalations" id={e.id} reference={e.escalation_ref} status={e.status} /></div>
       <dl className="rp-facts">
-        <div><dt>Status</dt><dd>{words(e.status)}</dd></div>
         <div><dt>Category</dt><dd>{e.category}</dd></div>
         <div><dt>Reason</dt><dd>{e.reason}</dd></div>
         <div><dt>Customer</dt><dd>{e.user_name}, {e.user_email}{e.customer_id ? `, ${e.customer_id}` : ''}</dd></div>
@@ -24,7 +23,6 @@ export default async function EscalationPage({ params }: { params: Promise<{ id:
         {d.ticket && <div><dt>Ticket</dt><dd>{d.ticket.ticket_ref}: {d.ticket.summary}</dd></div>}
         <div><dt>Conversation</dt><dd><Link href={`/console/conversations/${e.conversation_id}`}>Open the conversation</Link></dd></div>
       </dl>
-      <StatusActions kind="escalations" id={e.id} reference={e.escalation_ref} status={e.status} />
       <h2>Notifications</h2>
       {d.notifications.length === 0 ? <p className="rp-lede">None were queued.</p> : (
         <ul className="rp-events">{d.notifications.map((n: any) => (

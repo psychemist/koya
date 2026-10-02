@@ -7,7 +7,7 @@ export default async function Escalations() {
   const rows = await listEscalations();
   return (
     <>
-      <h1>Escalations</h1>
+      <div className="rp-page-head"><h1>Escalations</h1><p>{rows.filter((e) => e.status !== 'closed').length} open of {rows.length}</p></div>
       {rows.length === 0 ? <p className="rp-lede">No escalations yet.</p> : (
         <div className="rp-table-wrap"><table className="rp-table">
           <thead><tr><th>Reference</th><th>Raised</th><th>Category</th><th>Customer</th><th>Callback</th><th>Team</th><th>Status</th></tr></thead>

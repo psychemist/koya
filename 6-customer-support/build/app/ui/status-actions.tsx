@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ConfirmButton } from './confirm.tsx';
+import { Pill } from './pill.tsx';
 
 /**
  * Move to in progress, and Close. Close asks first, naming the consequence
@@ -22,9 +23,10 @@ export function StatusActions({ kind, id, reference, status }: { kind: 'escalati
     return null;
   }
 
-  if (current === 'closed') return <span className="rp-tag">Closed</span>;
+  if (current === 'closed') return <Pill value="closed" label="Closed" />;
   return (
     <div className="rp-row rp-actions">
+      <Pill value={current} />
       {current === 'open' && (
         <button type="button" className="rp-btn rp-btn-quiet rp-btn-small" onClick={async () => { const e = await move('in_progress'); if (e) setError(e); }}>
           Move to in progress

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { conversationDetail, CHANNEL_LABEL } from '../../../../lib/console.ts';
 import { StatusActions } from '../../../ui/status-actions.tsx';
 import { usd, utc, words } from '../../../ui/format.ts';
+import { Pill } from '../../../ui/pill.tsx';
 
 const GATE: Record<string, string> = { G1: 'reply shape', G2: 'grounding', G3: 'required escalation', G4: 'promise', G5: 'sensitive data', G6: 'speakable' };
 
@@ -26,7 +27,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
       <dl className="rp-facts">
         <div><dt>Started</dt><dd>{utc(c.started_at)}</dd></div>
         <div><dt>Ended</dt><dd>{c.ended_at ? `${utc(c.ended_at)} (${words(c.ended_reason)})` : 'Still open'}</dd></div>
-        <div><dt>Outcome</dt><dd>{c.final_status ? words(c.final_status) : 'Not finalised'}</dd></div>
+        <div><dt>Outcome</dt><dd>{c.final_status ? <Pill value={c.final_status} /> : 'Not finalised'}</dd></div>
         <div><dt>Caller</dt><dd>{c.caller_identifier ?? ''}{c.verified_customer_id ? `, verified as ${c.verified_customer_id}` : ''}</dd></div>
         <div><dt>Turns and cost</dt><dd>{c.turn_count} turns, {usd(c.cost_usd)}{c.model ? `, ${c.model}` : ''}</dd></div>
         {c.summary && <div><dt>Summary</dt><dd>{c.summary}</dd></div>}

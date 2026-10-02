@@ -3,6 +3,7 @@ import { canSeeEvaluations } from '../../../lib/auth.ts';
 import { requireConsoleUser } from '../../../lib/console-session.ts';
 import { ManualEvaluation } from '../../ui/manual-evaluation.tsx';
 import { usd, utc } from '../../ui/format.ts';
+import { Pill } from '../../ui/pill.tsx';
 
 const pct = (xs: number[], p: number) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.ceil((p / 100) * s.length) - 1)]; };
 
@@ -34,7 +35,7 @@ export default async function Evaluations() {
               <tbody>{rs.map((r) => (
                 <tr key={r.id} data-attention={r.passed ? undefined : 'true'}>
                   <td>{r.scenario_title}{r.source === 'manual' ? ' (manual)' : ''}</td><td className="rp-clip">{r.expected_behavior}</td>
-                  <td className="rp-clip">{r.actual_behavior}</td><td>{r.passed ? 'Pass' : 'Fail'}</td><td className="rp-clip">{r.notes ?? ''}</td>
+                  <td className="rp-clip">{r.actual_behavior}</td><td><Pill value={r.passed ? 'pass' : 'fail'} label={r.passed ? 'Pass' : 'Fail'} /></td><td className="rp-clip">{r.notes ?? ''}</td>
                 </tr>))}
               </tbody></table></div>
           </section>);
