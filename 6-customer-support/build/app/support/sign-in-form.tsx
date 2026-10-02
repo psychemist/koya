@@ -46,15 +46,15 @@ export function SignInForm() {
           <input id="sp-cid" autoComplete="off" required value={form.customer_id} placeholder="For example CUS-1234" aria-describedby="sp-cid-help"
             onChange={(e) => setForm({ ...form, customer_id: e.target.value })} />
           <small id="sp-cid-help">It is on your invoices and in Settings, and starts with CUS.</small>
-          <button type="submit" className="rp-btn" disabled={busy}>{busy ? 'Checking your account' : 'Continue to support'}</button>
+          <button type="submit" className="rp-btn" disabled={busy}>{busy ? 'Checking your account' : 'Continue to Support'}</button>
         </form>
       ) : (
         <div className="sp-form">
-          <h2>Continue as a guest</h2>
+          <h2>Continue as a Guest</h2>
           <p className="sp-form-lede">Ask general questions about fees, payment timelines and our policies. We will not look up any account, transaction or payout, so do not share account details here.</p>
           {error && <p className="sp-error" role="alert">{error}</p>}
           <button type="button" className="rp-btn" disabled={busy} onClick={() => void start({ mode: 'guest' })}>
-            {busy ? 'Starting' : 'Continue as a guest'}
+            {busy ? 'Starting' : 'Continue as a Guest'}
           </button>
           <p className="sp-form-note">Need help with a payment? <button type="button" className="rp-link-btn" onClick={() => setTab('customer')}>Sign in instead</button></p>
         </div>
