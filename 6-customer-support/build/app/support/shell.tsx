@@ -37,7 +37,7 @@ export function SupportShell({ panel, children, rail, initials, railText, topRig
     <div className="sp-page">
       <header className="sp-top">
         <img src="/relaypay-logo.png" alt="RelayPay" width={137} height={28} />
-        <span className="sp-top-note">Customer support</span>
+        <span className="sp-top-note">Customer Support</span>
         {topRight && <div className="sp-top-right">{topRight}</div>}
       </header>
       <div className="sp-body" data-collapsed={collapsed}>

@@ -39,7 +39,7 @@ export function SignInForm() {
           <h2>Sign in to your account</h2>
           <p className="sp-form-lede">Use the email on your RelayPay account and your customer ID. Support can then check your payments without asking who you are.</p>
           {error && <p className="sp-error" role="alert">{error}</p>}
-          <label htmlFor="sp-email">Account email</label>
+          <label htmlFor="sp-email">Account Email</label>
           <input id="sp-email" type="email" autoComplete="email" required value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })} />
           <label htmlFor="sp-cid">Customer ID</label>
