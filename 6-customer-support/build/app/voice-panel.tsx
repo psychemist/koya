@@ -57,6 +57,35 @@ const TURN: Record<Turn, { title: string; hint: string }> = {
 
 const clock = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
+/**
+ * The SDK is downloaded while the caller reads the page, not after they press Start call, so the press
+ * does not wait on a script. A failed download is forgotten, and the press tries again.
+ */
+let sdk: Promise<any> | null = null;
+const loadSdk = () => (sdk ??= import('@vapi-ai/web').then((m) => m.default).catch((e) => { sdk = null; throw e; }));
+
+/**
+ * Where the seconds between Start call and the greeting go, one console line per call. Vapi reports each
+ * connect stage itself (call-start-progress); the page adds the moments the caller notices.
+ */
+function startTimer() {
+  const t0 = performance.now();
+  const stages: string[] = [];
+  let done = false;
+  const ms = () => Math.round(performance.now() - t0);
+  return {
+    stage(p: { stage?: string; status?: string; duration?: number }) {
+      if (p?.status === 'completed' && typeof p.duration === 'number' && p.duration > 0) stages.push(`${p.stage} ${p.duration}ms`);
+    },
+    mark(label: string) { if (!done) stages.push(`${label} at ${ms()}ms`); },
+    greeted() {
+      if (done) return;
+      done = true;
+      console.info(`[voice timing] ${[...stages, `greeting heard at ${ms()}ms`].join(', ')}`);
+    },
+  };
+}
+
 /** Seconds since the call connected, for the live strip. */
 function useElapsed(running: boolean) {
   const [secs, setSecs] = useState(0);
@@ -88,9 +117,11 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
   const cancelled = useRef(false);
   const closing = useRef<{ heard: boolean; speaking: boolean; timer: ReturnType<typeof setTimeout> | null }>({ heard: false, speaking: false, timer: null });
   const configured = Boolean(PUBLIC_KEY && ASSISTANT_ID);
+  const timer = useRef<ReturnType<typeof startTimer> | null>(null);
 
   useEffect(() => {
     if (!configured) { setState('unavailable'); return; }
+    loadSdk().catch(() => {});
     let live = true;
     fetch('/api/voice/availability', { cache: 'no-store' }).then((r) => r.json())
       .then((a: { available: boolean }) => { if (live) setState(a.available ? 'idle' : 'unavailable'); })
@@ -120,16 +151,21 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
     primeTones();
     if (closing.current.timer) clearTimeout(closing.current.timer);
     closing.current = { heard: false, speaking: false, timer: null };
+    timer.current = startTimer();
+    // The signed caller rides with the call, so the agent knows who is speaking without asking. Asked for
+    // now, alongside the SDK, rather than after it.
+    const tokenAsked = fetch('/api/voice/token', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
     try {
       if (!vapi.current) {
         // In development only, a browser test can hand the page a stand-in client, so the call screen can be
         // driven without a microphone, an agent or Vapi credits. The production build removes this branch.
         const fake = process.env.NODE_ENV !== 'production' ? (window as any).__RP_FAKE_VAPI__ : undefined;
-        const VapiClient = fake ?? (await import('@vapi-ai/web')).default;
+        const VapiClient = fake ?? (await loadSdk());
         const v = new VapiClient(PUBLIC_KEY) as unknown as Vapi;
-        v.on('call-start', () => { cue('connected'); setTurn('greeting'); setState('listening'); });
+        v.on('call-start-progress', (p: any) => timer.current?.stage(p));
+        v.on('call-start', () => { timer.current?.mark('connected'); cue('connected'); setTurn('greeting'); setState('listening'); });
         v.on('call-end', () => { if (closing.current.timer) clearTimeout(closing.current.timer); cue('ended'); requestsChanged(); setState('ended'); meter.current?.style.setProperty('--lvl', '0'); });
-        v.on('speech-start', () => { closing.current.speaking = true; setTurn('agent'); setState('speaking'); });
+        v.on('speech-start', () => { timer.current?.greeted(); closing.current.speaking = true; setTurn('agent'); setState('speaking'); });
         v.on('speech-end', () => {
           closing.current.speaking = false;
           if (closing.current.heard) hangUpSoon(600);
@@ -162,8 +198,8 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
         v.on('error', (e: unknown) => { setError(describeError(e)); setState('error'); });
         vapi.current = v;
       }
-      // The signed caller rides with the call, so the agent knows who is speaking without asking.
-      const token = await fetch('/api/voice/token', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const token = await tokenAsked;
+      timer.current?.mark('sdk and token ready');
       if (cancelled.current) { setState('ended'); return; }
       // A signed-in caller is greeted by name; the greeting is the only line Vapi speaks without the agent.
       const call = await vapi.current.start(ASSISTANT_ID, {
