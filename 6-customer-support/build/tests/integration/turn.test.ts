@@ -25,6 +25,24 @@ test('a grounded answer is spoken, after the filler, and written as one ok turn'
   await dropConversation(c.id);
 });
 
+test('an answer citing the transaction a lookup found on this turn is spoken, with no knowledge search needed', { skip: skipWithoutDatabase }, async () => {
+  const c = await newConversation();
+  const rt = fakeRuntime([async () => { await logToolCall(c.id, 'lookup_transaction', { found: true, transaction_id: 'TXN-9001', status: 'processing' });
+    return [{ kind: 'tool_start', tool: 'mcp__relaypay__lookup_transaction' }, ok({ answer_type: 'answer',
+      spoken_response: 'TXN-9001 is processing within the normal expected window.', citations: ['TXN-9001'], confidence_note: 'lookup', escalation_category: null })]; }]);
+  const r = await runTurn({ sessions: new SessionManager(rt) }, { conversationId: c.id, text: 'check TXN-9001' }, sink());
+  assert.equal(r.status, 'ok');
+  await dropConversation(c.id);
+});
+
+test('a lookup that found nothing grounds nothing', { skip: skipWithoutDatabase }, async () => {
+  const c = await newConversation();
+  const bad = { answer_type: 'answer', spoken_response: 'TXN-0000 is processing.', citations: ['TXN-0000'], confidence_note: 'x', escalation_category: null };
+  const rt = fakeRuntime([async () => { await logToolCall(c.id, 'lookup_transaction', { found: false, reason: 'not_found', transaction_id: 'TXN-0000' }); return [ok(bad)]; }, [ok(bad)]]);
+  assert.equal((await runTurn({ sessions: new SessionManager(rt) }, { conversationId: c.id, text: 'check TXN-0000' }, sink())).status, 'fallback');
+  await dropConversation(c.id);
+});
+
 test('an ungrounded answer is retried once with the reason, then the decline line is spoken', { skip: skipWithoutDatabase }, async () => {
   const c = await newConversation(); const prompts: string[] = [];
   const rt = fakeRuntime([(p) => { prompts.push(p); return [ok(answer(['faq/invented']))]; }, (p) => { prompts.push(p); return [ok(answer(['faq/invented']))]; }]);

@@ -20,6 +20,10 @@ export async function loadTurnFacts(conversationId: string, since: Date, current
     groundedChunkIds: new Set(turn.filter((c) => c.tool_name === 'search_knowledge_base')
       .flatMap((c) => (c.result_summary?.chunks ?? []).filter((ch: any) => ch.grounded).map((ch: any) => ch.id))),
     escalationRequired: turn.some((c) => c.result_summary?.escalation_required === true),
+    // Only what a lookup FOUND on this turn. A reference the caller said, or one that came back not_found, grounds nothing.
+    recordRefs: new Set(turn.filter((c) => /^lookup_/.test(c.tool_name) && c.result_summary?.found === true)
+      .flatMap((c) => [c.result_summary.transaction_id, c.result_summary.payout_id, c.result_summary.customer_id])
+      .filter((x): x is string => typeof x === 'string' && /^(TXN|PAY|CUS)-\d{4}$/.test(x))),
     supportNotes: calls.filter((c) => c.tool_name === 'lookup_customer' && c.result_summary?.found)
       .map((c) => String(c.result_summary.support_notes ?? '')).filter(Boolean),
     callerText: [...said.map((s) => s.user_transcript), currentText].join('\n'),

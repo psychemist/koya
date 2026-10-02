@@ -49,3 +49,10 @@ test('G6 and G5 findings are collected together, not just the first', () => {
   const v = checkReply(reply({ spoken_response: 'Your risk score is fine. See https://relaypay.example for more.' }), facts()).violations.map((x) => x.gate);
   assert.ok(v.includes('G5') && v.includes('G6'));
 });
+
+test('G2: an answer from a lookup may cite the record the lookup returned on this turn, and nothing it did not', () => {
+  const lookup = reply({ spoken_response: 'TXN-9001 is processing within the normal expected window.', citations: ['TXN-9001'] });
+  assert.deepEqual(checkReply(lookup, facts({ recordRefs: new Set(['TXN-9001']) })).violations, []);
+  assert.equal(checkReply(lookup, facts()).violations[0].gate, 'G2');
+  assert.equal(checkReply(reply({ citations: ['TXN-9002'] }), facts({ recordRefs: new Set(['TXN-9001']) })).violations[0].gate, 'G2');
+});

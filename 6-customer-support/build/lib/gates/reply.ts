@@ -15,7 +15,9 @@ export type Reply = z.infer<typeof ReplySchema>;
 const { $schema: _dialect, ...replyJsonSchema } = z.toJSONSchema(ReplySchema) as Record<string, unknown>;
 export const REPLY_JSON_SCHEMA = replyJsonSchema;
 export type TurnFacts = { groundedChunkIds: Set<string>; escalationRequired: boolean; supportNotes: string[];
-  callerText: string; knownEmails: string[]; verifiedCustomerId: string | null };
+  callerText: string; knownEmails: string[]; verifiedCustomerId: string | null;
+  /** References a lookup FOUND on this turn (TXN-9001, PAY-7002, CUS-1001): an answer from a record cites the record. */
+  recordRefs?: Set<string> };
 export type Violation = { gate: 'G1' | 'G2' | 'G3' | 'G4' | 'G5' | 'G6'; detail: string };
 
 export const normalizeSpeech = (s: string) =>
@@ -28,9 +30,9 @@ export function checkReply(raw: unknown, facts: TurnFacts) {
   const reply: Reply = { ...parsed.data, spoken_response: normalizeSpeech(parsed.data.spoken_response) };
   const v: Violation[] = [];
   if (reply.answer_type === 'answer') {
-    if (reply.citations.length === 0) v.push({ gate: 'G2', detail: 'An answer needs at least one chunk id from a grounded search on this turn.' });
-    const bad = reply.citations.filter((c) => !facts.groundedChunkIds.has(c));
-    if (bad.length) v.push({ gate: 'G2', detail: `Not retrieved and grounded on this turn: ${bad.join(', ')}. Search again, or decline.` });
+    if (reply.citations.length === 0) v.push({ gate: 'G2', detail: 'An answer needs at least one citation from this turn: a chunk id from a grounded search, or the reference a lookup found.' });
+    const bad = reply.citations.filter((c) => !facts.groundedChunkIds.has(c) && !facts.recordRefs?.has(c));
+    if (bad.length) v.push({ gate: 'G2', detail: `Not retrieved and grounded, or found by a lookup, on this turn: ${bad.join(', ')}. Search again, or decline.` });
   }
   if (facts.escalationRequired && reply.answer_type !== 'escalate')
     v.push({ gate: 'G3', detail: 'A lookup on this turn returned escalation_required: true. The path must be escalate.' });
