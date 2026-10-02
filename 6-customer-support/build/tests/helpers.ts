@@ -21,7 +21,7 @@ after(async () => { await globalThis.__relaypayPool?.end(); globalThis.__relaypa
 
 /**
  * The default channel is eval, so a test that forgets to choose one can never
- * reach n8n: eval conversations book in dry run (Task 10).
+ * reach Cal.com, Discord or the inbox: eval conversations book in dry run (Task 10).
  */
 export async function newConversation(patch: { channel?: Channel; verified_customer_id?: string } = {}): Promise<ConversationRow> {
   return (await one<ConversationRow>(

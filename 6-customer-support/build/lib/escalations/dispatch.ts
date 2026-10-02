@@ -1,29 +1,40 @@
 import { config } from '../config.ts';
 import { one, query } from '../db.ts';
 import { redactString } from '../sanitise.ts';
-import { signPayload } from './sign.ts';
-import { sendEscalationFallback } from './email-fallback.ts';
+import { bookCallback } from './cal.ts';
+import { postToDiscord } from './discord.ts';
+import { sendSupportEmail } from './support-email.ts';
+import type { Alert, BookingOutcome } from './alert.ts';
 
 export type DispatchOutcome = { status: 'sent' | 'fallback_sent' | 'retry' | 'failed' | 'skipped'; booked: boolean;
   appointmentAt: string | null; reason?: string };
 export const MAX_ATTEMPTS = 3;
 
-type Claimed = { id: string; escalation_id: string; slot_key: string; attempts: number };
-type Esc = { id: string; escalation_ref: string; category: string; reason: string; user_name: string; user_email: string };
+type Claimed = { id: string; escalation_id: string; slot_key: string; attempts: number; booking_result: 'booked' | 'slot_taken' | 'failed' | null;
+  booking_uid: string | null; discord_status: string | null; email_sent_at: Date | null };
+type Esc = { id: string; escalation_ref: string; category: string; reason: string; user_name: string; user_email: string; caller_timezone: string | null };
 
 /**
  * Sends one outbox row, exactly once. The claim is a single conditional
  * UPDATE, so two workers (the tool and the sweeper) can never both send it.
+ *
+ * Three steps: book the callback on Cal.com, then post to Discord and email
+ * the support inbox together. Each step's result is stored on the row, so a
+ * retry only redoes what did not happen. The email is the alert of record and
+ * is retried; Discord is best effort and tried once.
+ *
  * It never throws: every failure is stored on the row for the sweeper and the
  * console, and the caller gets an outcome it can tell the customer about.
  */
-export async function dispatchNotification(notificationId: string, opts: { dryRun?: boolean; fault?: 'n8n_down' | null } = {}): Promise<DispatchOutcome> {
+export async function dispatchNotification(notificationId: string, opts: { dryRun?: boolean; fault?: 'calendar_down' | null } = {}): Promise<DispatchOutcome> {
   let n: Claimed | null = null;
   try {
     n = await one<Claimed>(`update public.notifications set status = 'sending', attempts = attempts + 1, claimed_at = now()
-      where id = $1 and status in ('pending', 'retry') returning id, escalation_id, slot_key, attempts`, [notificationId]);
+      where id = $1 and status in ('pending', 'retry')
+      returning id, escalation_id, slot_key, attempts, booking_result, booking_uid, discord_status, email_sent_at`, [notificationId]);
     if (!n) return { status: 'skipped', booked: false, appointmentAt: null };
-    const e = (await one<Esc>(`select id, escalation_ref, category, reason, user_name, user_email from public.escalations where id = $1`, [n.escalation_id]))!;
+    const e = (await one<Esc>(`select id, escalation_ref, category, reason, user_name, user_email, caller_timezone
+      from public.escalations where id = $1`, [n.escalation_id]))!;
     const slot = n.slot_key === 'none' ? null : n.slot_key;
 
     if (opts.dryRun) {
@@ -34,47 +45,47 @@ export async function dispatchNotification(notificationId: string, opts: { dryRu
       return { status: 'sent', booked: !!slot, appointmentAt: slot };
     }
 
-    const body = JSON.stringify({ escalation_ref: e.escalation_ref, idempotency_key: `${e.escalation_ref}:${n.slot_key}`,
-      category: e.category, reason: e.reason, user_name: e.user_name, user_email: e.user_email, requested_slot_utc: slot,
-      slot_minutes: config.hours.slotMinutes, console_url: `${config.web.baseUrl}/console/escalations/${e.id}` });
-    const ts = Math.floor(Date.now() / 1000);
-    const url = opts.fault === 'n8n_down' ? 'http://127.0.0.1:9/' : config.escalation.n8nUrl;
-    let answer: { booked?: boolean; event_id?: string; appointment_at?: string; reason?: string } | null = null;
-    let laneError = '';
-    try {
-      const res = await fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(config.escalation.timeoutMs),
-        headers: { 'content-type': 'application/json', 'x-relaypay-timestamp': String(ts),
-          'x-relaypay-signature': signPayload(config.escalation.n8nSecret, body, ts) } });
-      if (res.ok) answer = await res.json() as any;
-      else laneError = `n8n returned ${res.status}`;
-    } catch (err) { laneError = `n8n unreachable: ${(err as Error).message}`; }
-
-    if (answer) {
-      await query(`update public.notifications set status = 'sent', sent_at = now(), last_error = null where id = $1`, [n.id]);
-      const booked = !!slot && answer.booked === true;
-      const bookingStatus = !slot ? null : booked ? 'booked' : answer.reason === 'slot_taken' ? 'slot_unavailable' : 'failed';
-      await query(`update public.escalations set notify_status = 'sent', updated_at = now(),
-          booking_status = coalesce($2, booking_status), call_booked = $3,
-          appointment_at = case when $3 then coalesce($4::timestamptz, $5::timestamptz) else appointment_at end,
-          calendar_event_id = coalesce($6, calendar_event_id)
-        where id = $1`, [e.id, bookingStatus, booked, answer.appointment_at ?? null, slot, answer.event_id ?? null]);
-      return { status: 'sent', booked, appointmentAt: booked ? (answer.appointment_at ?? slot) : null, reason: answer.reason };
+    // 1. The booking, unless an earlier attempt settled it. A failed booking is tried again: Cal.com may be back.
+    let booking = n.booking_result, uid = n.booking_uid, bookError = '';
+    if (slot && booking !== 'booked' && booking !== 'slot_taken') {
+      const baseUrl = opts.fault === 'calendar_down' ? 'http://127.0.0.1:9/' : config.escalation.calApiUrl;
+      const r = await bookCallback({ start: slot, name: e.user_name, email: e.user_email, timeZone: e.caller_timezone ?? 'UTC',
+        ref: e.escalation_ref, key: `${e.escalation_ref}:${n.slot_key}` }, { baseUrl, lookFirst: n.attempts > 1 });
+      booking = r.result;
+      if (r.result === 'booked') uid = r.uid;
+      if (r.result === 'failed') bookError = r.error;
+      await query(`update public.notifications set booking_result = $2, booking_uid = $3 where id = $1`, [n.id, booking, uid]);
     }
+    const booked = booking === 'booked';
+    if (slot) await query(`update public.escalations set updated_at = now(), booking_status = $2, call_booked = $3,
+        appointment_at = case when $3 then $4::timestamptz else appointment_at end, calendar_event_id = coalesce($5, calendar_event_id)
+      where id = $1`, [e.id, booked ? 'booked' : booking === 'slot_taken' ? 'slot_unavailable' : 'failed', booked, slot, uid]);
 
-    const mail = await sendEscalationFallback({ ref: e.escalation_ref, category: e.category, reason: e.reason, userName: e.user_name,
-      userEmail: e.user_email, requestedSlot: slot, consoleUrl: `${config.web.baseUrl}/console/escalations/${e.id}` });
+    // 2. Tell the team. Discord once, best effort; the email until it is delivered.
+    const outcome: BookingOutcome = !slot ? 'no_slot' : booked ? 'booked' : booking === 'slot_taken' ? 'slot_taken' : 'booking_failed';
+    const alert: Alert = { ref: e.escalation_ref, category: e.category, reason: e.reason, userName: e.user_name, userEmail: e.user_email,
+      requestedSlot: slot, consoleUrl: `${config.web.baseUrl}/console/escalations/${e.id}`, outcome };
+    const [discord, mail] = await Promise.all([
+      n.discord_status ?? postToDiscord(alert),
+      n.email_sent_at ? { ok: true as const } : sendSupportEmail(alert),
+    ]);
+    const errors = [bookError, discord === 'failed' ? 'discord post failed' : '', mail.ok ? '' : mail.error].filter(Boolean).join('; ');
+    const lastError = errors ? redactString(errors).slice(0, 500) : null;
+    await query(`update public.notifications set discord_status = $2, email_sent_at = case when $3 then coalesce(email_sent_at, now()) else email_sent_at end,
+      last_error = $4 where id = $1`, [n.id, discord, mail.ok, lastError]);
+    const result = { booked, appointmentAt: booked ? slot : null, ...(errors ? { reason: errors } : {}) };
+
     if (mail.ok) {
-      await query(`update public.notifications set status = 'fallback_sent', sent_at = now(), last_error = $2 where id = $1`, [n.id, redactString(laneError)]);
-      await query(`update public.escalations set notify_status = 'fallback_sent', call_booked = false, updated_at = now(),
-        booking_status = case when $2::text is null then booking_status else 'failed' end where id = $1`, [e.id, slot]);
-      return { status: 'fallback_sent', booked: false, appointmentAt: null, reason: laneError };
+      // fallback_sent: the team knows, but has to arrange the time by hand.
+      const status = outcome === 'booking_failed' ? 'fallback_sent' : 'sent';
+      await query(`update public.notifications set status = $2, sent_at = now() where id = $1`, [n.id, status]);
+      await query(`update public.escalations set notify_status = $2, updated_at = now() where id = $1`, [e.id, status]);
+      return { status, ...result };
     }
     const final = n.attempts >= MAX_ATTEMPTS;
-    await query(`update public.notifications set status = $2, last_error = $3 where id = $1`,
-      [n.id, final ? 'failed' : 'retry', redactString(`${laneError}; ${mail.error}`).slice(0, 500)]);
-    await query(`update public.escalations set updated_at = now(), notify_status = case when $2 then 'failed' else notify_status end,
-      booking_status = case when $3::text is null then booking_status else 'failed' end where id = $1`, [e.id, final, slot]);
-    return { status: final ? 'failed' : 'retry', booked: false, appointmentAt: null, reason: `${laneError}; ${mail.error}` };
+    await query(`update public.notifications set status = $2 where id = $1`, [n.id, final ? 'failed' : 'retry']);
+    if (final) await query(`update public.escalations set notify_status = 'failed', updated_at = now() where id = $1`, [e.id]);
+    return { status: final ? 'failed' : 'retry', ...result };
   } catch (err) {
     const msg = redactString((err as Error).message).slice(0, 500);
     if (n) await query(`update public.notifications set status = case when attempts >= $3 then 'failed' else 'retry' end, last_error = $2 where id = $1`,

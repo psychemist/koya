@@ -109,7 +109,7 @@ export function createAgentServer(deps: { sessions: SessionManager }): Server & 
     if (b.channel !== 'web_text' && b.channel !== 'eval') return json(res, 400, { error: 'channel must be web_text or eval' });
     const channel = b.channel as Extract<Channel, 'web_text' | 'eval'>;
     const model = channel === 'eval' && (config.models.allowed as readonly string[]).includes(b.model) ? b.model as string : undefined;
-    const mcpFault = config.agent.allowFaults && (b.fault === 'mcp_down' || b.fault === 'n8n_down') ? b.fault as 'mcp_down' | 'n8n_down' : null;
+    const mcpFault = config.agent.allowFaults && (b.fault === 'mcp_down' || b.fault === 'calendar_down') ? b.fault as 'mcp_down' | 'calendar_down' : null;
     // 1 and 2. A chat continues only its own kind of conversation, and never one that has ended.
     let id: string;
     if (b.conversation_id) {

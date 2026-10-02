@@ -1,8 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { query } from '../../lib/db.ts';
-import { signPayload } from '../../lib/escalations/sign.ts';
-import { lanes, useEscalationStubs, esc } from '../fakes/escalation-fixtures.ts';
+import { lanes, bookings, useEscalationStubs, esc } from '../fakes/escalation-fixtures.ts';
 import { skipWithoutDatabase, newConversation, dropConversation } from '../helpers.ts';
 
 useEscalationStubs();
@@ -14,15 +13,19 @@ test('scenario 7: an escalation is stored with the normalised email, booked, and
   assert.deepEqual([r.call_booked, r.booking_status, r.appointment_time_utc], [true, 'booked', '2026-10-06T14:00:00.000Z']);
   assert.match(r.follow_up_summary, /Tuesday 6 October at 14:00 UTC, which is 15:00 in Lagos/);
   const [row] = await query('select user_email, notify_status, calendar_event_id from public.escalations where conversation_id=$1', [c.id]);
-  assert.deepEqual(row, { user_email: 'efua@accrastack.example', notify_status: 'sent', calendar_event_id: 'evt_1' });
-  assert.equal(lanes.n8n.calls.length, 1);
+  assert.deepEqual(row, { user_email: 'efua@accrastack.example', notify_status: 'sent', calendar_event_id: 'bk_1' });
+  assert.equal(bookings().length, 1);
+  assert.equal(lanes.discord.calls.length, 1);
+  assert.equal(lanes.resend.calls.length, 1);
   await dropConversation(c.id);
 });
 
-test('the n8n request is signed, and the signature verifies', { skip: skipWithoutDatabase }, async () => {
-  const last = lanes.n8n.calls.at(-1)!;
-  assert.equal(last.headers['x-relaypay-signature'], signPayload('s', last.raw, Number(last.headers['x-relaypay-timestamp'])));
-  assert.match(last.body.idempotency_key, /^RP-E-\d{6}:2026-10-06T14:00:00\.000Z$/);
+test('the booking goes to Cal.com with the API key, the event type and the caller timezone', { skip: skipWithoutDatabase }, async () => {
+  const last = bookings().at(-1)!;
+  assert.equal(last.headers.authorization, 'Bearer cal_test');
+  assert.deepEqual([last.body.start, last.body.eventTypeId], ['2026-10-06T14:00:00.000Z', 42]);
+  assert.deepEqual(last.body.attendee, { name: 'Efua Mensah', email: 'efua@accrastack.example', timeZone: 'Africa/Lagos' });
+  assert.match(last.body.metadata.relaypay_key, /^RP-E-\d{6}:2026-10-06T14:00:00\.000Z$/);
 });
 
 test('the follow-up never promises the customer an email the system does not send', { skip: skipWithoutDatabase }, async () => {
@@ -34,11 +37,11 @@ test('the follow-up never promises the customer an email the system does not sen
 
 test('the same request twice is one escalation, one calendar event', { skip: skipWithoutDatabase }, async () => {
   const c = await newConversation({ channel: 'voice_web' });
-  const before = lanes.n8n.calls.length;
+  const before = bookings().length;
   const a = await esc(c.id, { preferred_time: '2026-10-06T14:30:00Z' });
   const b = await esc(c.id, { preferred_time: '2026-10-06T14:30:00Z' });
   assert.equal(a.escalation_id, b.escalation_id);
-  assert.equal(lanes.n8n.calls.length - before, 1);
+  assert.equal(bookings().length - before, 1);
   await dropConversation(c.id);
 });
 
@@ -73,11 +76,12 @@ test('Review Focus 1: an email that cannot be normalised is refused, asking to s
   await dropConversation(c.id);
 });
 
-test('an eval conversation never reaches n8n: booking is dry_run', { skip: skipWithoutDatabase }, async () => {
+test('an eval conversation never reaches Cal.com, Discord or the inbox: booking is dry_run', { skip: skipWithoutDatabase }, async () => {
   const c = await newConversation({ channel: 'eval' });
-  const before = lanes.n8n.calls.length;
+  const calls = () => lanes.cal.calls.length + lanes.discord.calls.length + lanes.resend.calls.length;
+  const before = calls();
   const r = await esc(c.id, { preferred_time: '2026-10-07T10:00:00Z' });
-  assert.deepEqual([r.booking_status, lanes.n8n.calls.length - before], ['dry_run', 0]);
+  assert.deepEqual([r.booking_status, calls() - before], ['dry_run', 0]);
   await dropConversation(c.id);
 });
 

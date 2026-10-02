@@ -11,6 +11,6 @@ export interface AgentSession {
   close(): Promise<void>;
 }
 export interface AgentRuntime {
-  open(conversationId: string, opts?: { model?: string; mcpFault?: 'mcp_down' | 'n8n_down' | null }): Promise<AgentSession>;
+  open(conversationId: string, opts?: { model?: string; mcpFault?: 'mcp_down' | 'calendar_down' | null }): Promise<AgentSession>;
 }
 export type SessionState = { conversationId: string; toolCallsThisTurn: number; budgetExhausted: boolean };

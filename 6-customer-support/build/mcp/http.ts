@@ -36,7 +36,7 @@ export function createMcpHttpServer(tools: ToolSpec<any>[] = TOOLS): Server {
       // 2. Bearer, before anything is parsed or any server is built.
       if (!bearerMatches(req.headers.authorization, config.mcp.token)) return json(res, 401, { error: 'unauthorized' });
       // 3 and 4. The conversation comes from the transport, never from the model's arguments.
-      const fault = config.agent.allowFaults && headerOf(req, 'x-relaypay-fault') === 'n8n_down' ? 'n8n_down' : null;
+      const fault = config.agent.allowFaults && headerOf(req, 'x-relaypay-fault') === 'calendar_down' ? 'calendar_down' : null;
       const ctx: RequestContext = { conversationId: headerOf(req, 'x-conversation-id'), fault };
       // 5. Serve.
       await withRequestContext(ctx, () => handler(req, res));

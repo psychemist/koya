@@ -4,7 +4,7 @@ import { escalationDetail } from '../../../../lib/console.ts';
 import { StatusActions } from '../../../ui/status-actions.tsx';
 import { utc, words } from '../../../ui/format.ts';
 
-/** The page the n8n alert and the fallback email link to. */
+/** The page the Discord alert and the support email link to. */
 export default async function EscalationPage({ params }: { params: Promise<{ id: string }> }) {
   const d = await escalationDetail((await params).id);
   if (!d) notFound();

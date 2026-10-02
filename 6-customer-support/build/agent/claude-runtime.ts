@@ -16,13 +16,13 @@ export const hasOpenEscalation = async (conversationId: string) =>
   !!(await one(`select 1 from public.escalations where conversation_id = $1 and status <> 'closed'`, [conversationId]));
 
 export function buildQueryOptions(conversationId: string, state: SessionState,
-  opts: { model?: string; mcpFault?: 'mcp_down' | 'n8n_down' | null }): Options {
+  opts: { model?: string; mcpFault?: 'mcp_down' | 'calendar_down' | null }): Options {
   const model = opts.model ?? config.models.agent;
   const fault = config.agent.allowFaults ? opts.mcpFault ?? null : null;
   const env: Record<string, string> = { CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', ANTHROPIC_API_KEY: config.anthropic.key };
   for (const k of ENV_PASSTHROUGH) if (process.env[k]) env[k] = process.env[k]!;
   const headers: Record<string, string> = { authorization: `Bearer ${config.agent.mcpToken}`, 'x-conversation-id': conversationId };
-  if (fault === 'n8n_down') headers['x-relaypay-fault'] = 'n8n_down';
+  if (fault === 'calendar_down') headers['x-relaypay-fault'] = 'calendar_down';
   return {
     model,
     systemPrompt: SYSTEM_PROMPT,
@@ -31,7 +31,7 @@ export function buildQueryOptions(conversationId: string, state: SessionState,
     allowedTools: ['mcp__relaypay__*'],
     canUseTool: async (name: string, input: Record<string, unknown>) => name.startsWith('mcp__relaypay__')
       ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: 'Only RelayPay support tools are available.' },
-    // 20 s: an escalation waits up to 8 s for n8n and 8 s more for the Resend fallback. Slower than that is a
+    // 20 s: an escalation makes two Cal.com calls in turn, then Discord and email together, 5 s each at most. Slower than that is a
     // tool error the agent turns into the failure line (spec §12), not a caller left in silence.
     mcpServers: { relaypay: { type: 'http', url: fault === 'mcp_down' ? 'http://127.0.0.1:9/mcp' : config.agent.mcpUrl, headers, timeout: 20_000 } },
     strictMcpConfig: true,

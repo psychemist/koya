@@ -2,7 +2,7 @@ import { config } from '../lib/config.ts';
 import type { AgentRuntime, AgentSession } from './runtime.ts';
 
 export type SessionKind = 'voice' | 'chat';
-type OpenOpts = { model?: string; mcpFault?: 'mcp_down' | 'n8n_down' | null; kind?: SessionKind };
+type OpenOpts = { model?: string; mcpFault?: 'mcp_down' | 'calendar_down' | null; kind?: SessionKind };
 type Entry = { session: AgentSession; lastUsed: number; kind: SessionKind };
 
 /**

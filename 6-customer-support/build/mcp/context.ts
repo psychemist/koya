@@ -3,7 +3,7 @@ import { one } from '../lib/db.ts';
 import { ToolError } from '../lib/errors.ts';
 import { upsertConversation } from '../lib/conversations.ts';
 
-export type RequestContext = { conversationId: string | null; fault: 'n8n_down' | null };
+export type RequestContext = { conversationId: string | null; fault: 'calendar_down' | null };
 const als = new AsyncLocalStorage<RequestContext>();
 export const withRequestContext = <T>(ctx: RequestContext, fn: () => T) => als.run(ctx, fn);
 export const currentContext = (): RequestContext => als.getStore() ?? { conversationId: null, fault: null };

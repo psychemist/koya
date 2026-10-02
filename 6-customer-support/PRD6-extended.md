@@ -68,8 +68,8 @@ Every step writes to Supabase: the conversation, each turn, each retrieval, each
 | A spoken reply | Vapi, to the caller | One or two sentences, grounded or safely declined |
 | A support ticket | `support_tickets` | Reference such as `RP-T-000012`, category, priority, summary, linked customer and transaction |
 | An escalation | `escalations` | Reference such as `RP-E-000004`, reason, category, name, email, callback time, booked yes or no, status |
-| A calendar event | Support Google Calendar via n8n | 30 minutes, inside support hours, titled with the escalation reference |
-| A support alert | Discord and email via n8n, or Resend email if n8n is down | The escalation reference, category, reason, callback time and console link |
+| A calendar booking | Cal.com, from code | 30 minutes, inside support hours, tagged with the escalation reference. Cal.com sends the invite |
+| A support alert | Resend email to the support inbox (always), plus Discord (best effort), from code | The escalation reference, category, reason, callback time and console link |
 | An audit trail | `conversations`, `conversation_turns`, `retrieval_logs`, `tool_calls`, `conversation_events` | Everything needed to replay why the agent said what it said |
 | Evaluation results | `evaluations`, console, [test-evidence.md](test-evidence.md) | Scenario, expected, actual, pass or fail, notes, model, cost, latency |
 
@@ -164,7 +164,7 @@ Vapi also offers a native MCP tool type that would let Vapi call our MCP server 
 
 ### 4.3 Services
 
-Three long-running Render services, one Supabase project, one n8n workflow. All are co-located in **US East** (Render `virginia`, Supabase `us-east-1`), because Vapi's media servers and the Anthropic API sit in the US, and every hop on the voice path counts.
+Three long-running Render services and one Supabase project. Cal.com, Discord and Resend are called from code. All are co-located in **US East** (Render `virginia`, Supabase `us-east-1`), because Vapi's media servers and the Anthropic API sit in the US, and every hop on the voice path counts.
 
 ```
  Caller (browser mic or phone)
@@ -183,22 +183,22 @@ Three long-running Render services, one Supabase project, one n8n workflow. All 
  │ Next.js      │                                                    │  7 tools, tool log    │
  │ voice page   │                                                    │  retrieval, outbox    │
  │ console      │                                                    └───┬─────────┬─────────┘
- └──────┬───────┘                                                        │         │ signed POST
+ └──────┬───────┘                                                        │         │ HTTPS, from code
         │ pg (console reads)                                             │ pg      ▼
-        ▼                                                                ▼    ┌──────────┐  fallback
- ┌──────────────────────────────── Supabase Postgres + pgvector ─────────┐   │   n8n    │──► Resend
- │ seed: customers transactions payouts · kb_chunks                      │   │ GCal     │   (in code)
- │ runtime: conversations turns retrieval_logs tool_calls tickets        │   │ Discord  │
- │ escalations conversation_events notifications evaluations ledger      │   │ Gmail    │
- └───────────────────────────────────────────────────────────────────────┘   └──────────┘
+        ▼                                                                ▼    ┌──────────┐
+ ┌──────────────────────────────── Supabase Postgres + pgvector ─────────┐   │ Cal.com  │ booking
+ │ seed: customers transactions payouts · kb_chunks                      │   │ Resend   │ email (always)
+ │ runtime: conversations turns retrieval_logs tool_calls tickets        │   │ Discord  │ best effort
+ │ escalations conversation_events notifications evaluations ledger      │   └──────────┘
+ └───────────────────────────────────────────────────────────────────────┘
                                                                Voyage AI (embeddings) ◄── mcp
 ```
 
 | Service | Holds | Does not hold |
 |---|---|---|
-| `relaypay-web` | `DATABASE_URL` (console reads), `SESSION_SECRET`, `AGENT_INTERNAL_TOKEN`, Vapi **public** key and assistant id | Anthropic, Voyage, MCP, n8n or Resend keys |
-| `relaypay-agent` | `ANTHROPIC_API_KEY`, `MCP_TOKEN`, Vapi webhook and custom-llm secrets, `DATABASE_URL` (turns, conversations, ledger) | Voyage, n8n or Resend keys. It never touches business tables directly |
-| `relaypay-mcp` | `DATABASE_URL`, `VOYAGE_API_KEY`, `MCP_TOKEN`, n8n URL and signing secret, `RESEND_API_KEY` | Anthropic key |
+| `relaypay-web` | `DATABASE_URL` (console reads), `SESSION_SECRET`, `AGENT_INTERNAL_TOKEN`, Vapi **public** key and assistant id | Anthropic, Voyage, MCP, Cal.com, Discord or Resend keys |
+| `relaypay-agent` | `ANTHROPIC_API_KEY`, `MCP_TOKEN`, Vapi webhook and custom-llm secrets, `DATABASE_URL` (turns, conversations, ledger) | Voyage, Cal.com, Discord or Resend keys. It never touches business tables directly |
+| `relaypay-mcp` | `DATABASE_URL`, `VOYAGE_API_KEY`, `MCP_TOKEN`, `CAL_API_KEY`, `CAL_EVENT_TYPE_ID`, `DISCORD_WEBHOOK_URL`, `RESEND_API_KEY` | Anthropic key |
 
 **Why the MCP server is its own service.** The brief grades it as a deliverable a grader must be able to run. As its own process it runs three ways from one codebase: deployed over Streamable HTTP, locally over HTTP, and locally over stdio for MCP Inspector or Claude Desktop. If the agent service falls over, the tool surface and its logs stay up and inspectable.
 
@@ -360,14 +360,13 @@ This implements the source policy ([Escalation & Support Handling Policy](assets
 2. **The agent calls `create_support_ticket` first when there is a concrete issue, then `create_escalation`** with the ticket id, category, reason (its summary), name, email, `preferred_time` as ISO 8601 with offset, `preferred_time_text` as the caller said it, and `caller_timezone` if given.
 3. **The MCP server validates the time.** Support hours are **Mon to Fri, 08:00 to 18:00 UTC**, in 30-minute slots, set through env. A time in the past or outside hours is refused with the next three valid slots, which the agent offers.
 4. **The escalation row is written with `notify_status = pending`**, and an outbox row is written in the same transaction. The unique constraint on `(escalation_id, kind)` makes the notification exactly-once at the database level.
-5. **The server calls n8n** with an HMAC-signed payload (the same signing scheme as Week 5, with a new secret) and an 8 second timeout. n8n:
-   - checks Google Calendar free/busy for the slot;
-   - if the slot is free, creates the 30-minute event;
-   - posts to the support Discord channel;
-   - emails the support inbox from Gmail;
-   - returns `{ booked, event_id, appointment_at }` or `{ booked: false, reason: "slot_taken" }`.
+5. **The server runs the lane in code**, each outbound call with a 5 second timeout:
+   - asks Cal.com for the event type's free slots at that time; a slot it does not list is `slot_taken`;
+   - if the slot is free, books it on Cal.com with the caller as attendee, which sends the invite;
+   - then, together, emails the support inbox through Resend and posts to the support Discord channel.
+   Each step's result is stored on the outbox row, so a retry redoes only the steps that did not happen.
 6. **On `slot_taken`** the tool returns the next free slots and the agent offers them. The escalation stays open, and the notification is still sent so the team knows.
-7. **On n8n failure or timeout**, code sends a plain email to the support inbox through **Resend**. This fallback lives in code, not in n8n, so it cannot share n8n's failure. The escalation records `call_booked = false`, `booking_status = failed` and `notify_status = fallback_sent`. The agent says a representative will follow up by email to confirm a time. It does not claim a booking that did not happen.
+7. **On a Cal.com failure or timeout**, the support email still goes out and says no callback is booked, so the team arranges a time by hand. The email is the alert of record and is retried; Discord is best effort, tried once and never retried. The escalation records `call_booked = false`, `booking_status = failed` and `notify_status = fallback_sent`. The agent says a representative will follow up by email to confirm a time. It does not claim a booking that did not happen.
 8. **A sweeper in the MCP service** retries outbox rows left `pending` for more than 60 seconds, for example after a crash between commit and send. It retries up to 3 times, then marks the row `failed` and shows it on the console.
 9. **The agent confirms** the booked time in UTC and in the caller's timezone when known, for example "Tuesday at 14:00 UTC, which is 3pm in Lagos". It confirms the follow-up and stops trying to solve the issue.
 
@@ -384,7 +383,7 @@ Escalation status (`open`, `in_progress`, `closed`) is changed only by a signed-
 | An interrupted turn does not double-act | A new utterance for a call with a turn in flight calls `interrupt()` on the session and waits for it to settle before sending. Write tools are idempotent regardless |
 | One open ticket per conversation and category | `dedupe_key = conversation_id + ':' + category`, unique while open |
 | One open escalation per conversation | Partial unique index where `status <> 'closed'`. A second call updates missing fields, such as a preferred time, and returns the same reference |
-| One calendar event per escalation | Outbox unique on `(escalation_id, kind)`. n8n is sent the escalation reference as its idempotency key and writes it into the event, and a re-send finds the existing event |
+| One calendar event per escalation | Outbox unique on `(escalation_id, slot_key)`. The booking result is stored on the outbox row, and a retry first looks up the customer's Cal.com bookings for that slot, so a timed-out attempt that did book is found, not booked again |
 | Seed and ingest can re-run | `ON CONFLICT DO UPDATE` on seed ids. `content_hash` on chunks |
 | No tool call is unlogged | The wrapper writes the row, not the agent |
 | A chat is bound to one browser | The conversation id lives in a signed, httpOnly, SameSite=Lax cookie. A forged or foreign cookie starts a new chat. An ended conversation refuses new turns (409) |
@@ -428,7 +427,7 @@ Escalation status (`open`, `in_progress`, `closed`) is changed only by a signed-
 | Voyage down | Search falls back to full-text only. The result is marked `degraded: true` and grounded only on a strong full-text match | `retrieval_logs.degraded`, tool-call row |
 | Claude API error or budget hit | Failure or capacity line. Session closed. Conversation `final_status = failed` | Conversation row, ledger |
 | Database down | Agent service answers the failure line from memory. The MCP server returns a structured error. Health checks go red | `/health` on each service |
-| n8n down | Resend fallback email, `call_booked = false`, honest spoken confirmation | Escalation row, console |
+| Cal.com down | Support email says no callback is booked, `call_booked = false`, honest spoken confirmation | Escalation row, console |
 | Resend also down | `notify_status = failed`, retried by the sweeper, shown on the console as red | Console |
 | Vapi re-posts a turn | Answered from the stored turn | Turn row unchanged |
 | Caller interrupts | In-flight turn interrupted and marked `interrupted`. The new utterance is handled | Turn row |
@@ -483,7 +482,7 @@ Every row is automated through the eval harness (`npm run eval`) or an integrati
 | 20 | Repeated request: the same ticket asked for twice | One ticket, second call returns `deduplicated: true` |
 | 21 | Callback on Sunday at 03:00 | Refused with three valid slots. The agent offers them |
 | 22 | MCP down (integration, MCP URL pointed at a dead port) | Failure line spoken. Turn `failed`. Tool error visible |
-| 23 | n8n down (integration, stub returns 502) | Escalation stored. Resend fallback sent. `call_booked = false`. Honest confirmation |
+| 23 | Cal.com down (integration, stub returns 502) | Escalation stored. Support email sent, saying no callback is booked. `call_booked = false`. Honest confirmation |
 | 24 | Duplicate turn re-post (integration) | One turn row. Same reply returned |
 | 25 | Chat context after a session rebuild (integration) | The second message's prompt carries turn 1 as prior transcript. The agent does not ask again for what it was told |
 | 26 | Forged or foreign chat cookie (integration) | A new conversation is started. Nothing from the other conversation is returned or continued |
