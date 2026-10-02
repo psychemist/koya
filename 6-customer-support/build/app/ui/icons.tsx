@@ -30,3 +30,6 @@ export const FlagIcon = ({ size = 20 }: P) => svg(size, <><path d="M5 21V4" /><p
 export const ChecklistIcon = ({ size = 20 }: P) => svg(size,
   <><path d="M4 6.5l1.5 1.5L8 5.5" /><path d="M4 12.5l1.5 1.5L8 11.5" /><path d="M4 18.5l1.5 1.5L8 17.5" /><path d="M11 7h9M11 13h9M11 19h9" /></>);
 export const SignOutIcon = ({ size = 18 }: P) => svg(size, <><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" /><path d="M10 16l-4-4 4-4" /><path d="M6 12h10" /></>);
+export const PlayIcon = ({ size = 16 }: P) => svg(size, <path d="M8 5.5v13l10-6.5z" />);
+export const ChartIcon = ({ size = 20 }: P) => svg(size, <><path d="M4 20h16" /><path d="M7 16v-5" /><path d="M12 16V7" /><path d="M17 16v-8" /></>);
+export const BookIcon = ({ size = 20 }: P) => svg(size, <><path d="M5 4.5h9a3 3 0 0 1 3 3V20H8a3 3 0 0 1-3-3z" /><path d="M5 17a3 3 0 0 1 3-3h9" /></>);

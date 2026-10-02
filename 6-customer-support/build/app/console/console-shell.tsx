@@ -2,7 +2,7 @@
 
 import { usePersisted } from '../ui/use-persisted.ts';
 import { NavLink } from '../ui/nav-link.tsx';
-import { ChatIcon, ChecklistIcon, ChevronIcon, FlagIcon, SignOutIcon, TicketIcon } from '../ui/icons.tsx';
+import { BookIcon, ChartIcon, ChatIcon, ChecklistIcon, ChevronIcon, FlagIcon, SignOutIcon, TicketIcon } from '../ui/icons.tsx';
 
 /**
  * The console frame, built like the support page: the logo on a white bar, a flat deep-blue sidebar with the
@@ -19,7 +19,11 @@ export function ConsoleShell({ name, role, evaluations, children }: {
     { href: '/console', label: 'Conversations', icon: <ChatIcon size={19} /> },
     { href: '/console/tickets', label: 'Tickets', icon: <TicketIcon size={19} /> },
     { href: '/console/escalations', label: 'Escalations', icon: <FlagIcon size={19} /> },
-    ...(evaluations ? [{ href: '/console/evaluations', label: 'Evaluations', icon: <ChecklistIcon size={19} /> }] : []),
+    ...(evaluations ? [
+      { href: '/console/evaluations', label: 'Evaluations', icon: <ChecklistIcon size={19} /> },
+      { href: '/console/analytics', label: 'Analytics', icon: <ChartIcon size={19} /> },
+      { href: '/console/knowledge', label: 'Knowledge base', icon: <BookIcon size={19} /> },
+    ] : []),
   ];
   return (
     <div className="sp-page">

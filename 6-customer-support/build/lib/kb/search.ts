@@ -5,7 +5,7 @@ import { recordSpend } from '../ledger.ts';
 import { chunkMarkdown } from './chunk.ts';
 import { toVectorLiteral, type Embedder } from './embed.ts';
 
-const VOYAGE_USD_PER_TOKEN = 0.02 / 1_000_000; // voyage-3.5-lite list price, checked 2026-09-28
+export const VOYAGE_USD_PER_TOKEN = 0.02 / 1_000_000; // voyage-3.5-lite list price, checked 2026-09-28
 export type ChunkHit = { id: string; source_title: string; heading: string; content: string; source_summary: string;
   similarity: number; fts_rank: number; rrf: number; grounded: boolean };
 export type SearchResult = { query: string; chunks: ChunkHit[]; grounded: boolean; degraded: boolean };
@@ -39,6 +39,9 @@ export async function searchKb(raw: string, e: Embedder, opts: { matchCount?: nu
   return { query: q, chunks, grounded: chunks.some((c) => c.grounded), degraded };
 }
 
+/** Chunk ids for articles added in the console start with this; the source file never makes one. */
+export const CONSOLE_PREFIX = 'console-articles/';
+
 export async function ingestKb(md: string, e: Embedder) {
   const chunks = chunkMarkdown(md);
   const existing = new Map((await query<{ id: string; content_hash: string; retired_at: Date | null; embedding_model: string | null }>(
@@ -61,7 +64,8 @@ export async function ingestKb(md: string, e: Embedder) {
     }
   });
   const live = new Set(chunks.map((c) => c.id));
-  const toRetire = [...existing.values()].filter((r) => !live.has(r.id) && !r.retired_at).map((r) => r.id);
+  // Articles added in the console are not in the file, and the file ingest must never retire them.
+  const toRetire = [...existing.values()].filter((r) => !live.has(r.id) && !r.retired_at && !r.id.startsWith(CONSOLE_PREFIX)).map((r) => r.id);
   if (toRetire.length) await query('update public.kb_chunks set retired_at = now() where id = any($1)', [toRetire]);
   if (tokens) await recordSpend('voyage', tokens * VOYAGE_USD_PER_TOKEN, null, 'kb ingest');
   return { inserted, updated, unchanged: chunks.length - changed.length, retired: toRetire.length, tokens };

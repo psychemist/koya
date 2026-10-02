@@ -28,6 +28,7 @@ services:
       - { key: NEXT_PUBLIC_VAPI_PUBLIC_KEY, sync: false }
       - { key: NEXT_PUBLIC_VAPI_ASSISTANT_ID, sync: false }
       - { key: NEXT_PUBLIC_SUPPORT_PHONE, sync: false }
+      - { key: VOYAGE_API_KEY, sync: false }          # the console embeds knowledge base articles; same key as relaypay-mcp
 
   - type: web                       # public HTTPS, because Vapi must reach it
     name: relaypay-agent
