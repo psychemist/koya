@@ -17,7 +17,7 @@
     "provider": "vapi",
     "voiceId": "Layla",
     "version": "2",
-    "speed": 1.1,
+    "speed": 1.0,
     "language": "auto",
     "pronunciationDictionary": [
       {
@@ -30,7 +30,7 @@
     "provider": "soniox",
     "model": "stt-rt-v5",
     "languageHintsStrict": true,
-    "maxEndpointDelayMs": 500,
+    "maxEndpointDelayMs": 1500,
     "endpointSensitivity": 0.3,
     "endpointLatencyAdjustmentLevel": 2,
     "keyterm": [
@@ -50,9 +50,34 @@
     ]
   },
   "startSpeakingPlan": {
+    "waitSeconds": 0.6,
     "smartEndpointingPlan": {
       "provider": "vapi"
-    }
+    },
+    "customEndpointingRules": [
+      {
+        "type": "customer",
+        "regex": "(t ?x ?n|p ?a ?y|c ?u ?s|reference|it's|its)[\\s,.-]*((\\d|zero|oh|one|two|three|four|five|six|seven|eight|nine)[\\s,.-]*){0,3}$",
+        "regexOptions": [
+          {
+            "type": "ignore-case",
+            "enabled": true
+          }
+        ],
+        "timeoutSeconds": 2.5
+      },
+      {
+        "type": "assistant",
+        "regex": "(reference|transaction id|payout id|customer id|email|spell)[^.!?]*\\?",
+        "regexOptions": [
+          {
+            "type": "ignore-case",
+            "enabled": true
+          }
+        ],
+        "timeoutSeconds": 2
+      }
+    ]
   },
   "server": {
     "url": "${AGENT_PUBLIC_URL}/vapi/events",

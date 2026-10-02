@@ -32,3 +32,7 @@ test('brief 6: a ticket needs no contact details, so asking to log an issue crea
 test('row 14: a contact name and a company name are two identifiers, not one', () => {
   assert.match(SYSTEM_PROMPT, /a contact name and a company name are two identifiers/i);
 });
+
+test('a reference spoken in pieces over several turns is joined before the lookup', () => {
+  assert.match(SYSTEM_PROMPT, /join the pieces into one reference before you look it up/i);
+});
