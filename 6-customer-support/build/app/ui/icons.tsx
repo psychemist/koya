@@ -24,3 +24,9 @@ export const ClockIcon = ({ size = 20 }: P) => svg(size, <><circle cx="12" cy="1
 export const ChevronIcon = ({ size = 18, direction = 'left' }: P & { direction?: 'left' | 'right' }) =>
   svg(size, <path d={direction === 'left' ? 'M14.5 6l-6 6 6 6' : 'M9.5 6l6 6-6 6'} />);
 export const UserIcon = ({ size = 20 }: P) => svg(size, <><circle cx="12" cy="8.5" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></>);
+export const TicketIcon = ({ size = 20 }: P) => svg(size,
+  <><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2.5a2.5 2.5 0 0 0 0 5V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2.5a2.5 2.5 0 0 0 0-5z" /><path d="M14 5v14" strokeDasharray="2 2.5" /></>);
+export const FlagIcon = ({ size = 20 }: P) => svg(size, <><path d="M5 21V4" /><path d="M5 4h11l-2 4 2 4H5" /></>);
+export const ChecklistIcon = ({ size = 20 }: P) => svg(size,
+  <><path d="M4 6.5l1.5 1.5L8 5.5" /><path d="M4 12.5l1.5 1.5L8 11.5" /><path d="M4 18.5l1.5 1.5L8 17.5" /><path d="M11 7h9M11 13h9M11 19h9" /></>);
+export const SignOutIcon = ({ size = 18 }: P) => svg(size, <><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" /><path d="M10 16l-4-4 4-4" /><path d="M6 12h10" /></>);
