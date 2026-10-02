@@ -30,7 +30,7 @@
     "provider": "soniox",
     "model": "stt-rt-v5",
     "languageHintsStrict": true,
-    "maxEndpointDelayMs": 1500,
+    "maxEndpointDelayMs": 1000,
     "endpointSensitivity": 0.3,
     "endpointLatencyAdjustmentLevel": 2,
     "customVocabulary": [
@@ -65,7 +65,7 @@
     ]
   },
   "startSpeakingPlan": {
-    "waitSeconds": 0.6,
+    "waitSeconds": 0.4,
     "smartEndpointingPlan": {
       "provider": "vapi"
     },
