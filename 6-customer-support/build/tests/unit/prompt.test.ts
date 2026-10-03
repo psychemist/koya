@@ -40,3 +40,7 @@ test('a reference spoken in pieces over several turns is joined before the looku
 test('a taken time is reported and the caller picks from next_slots; the agent never books one for them', () => {
   assert.match(SYSTEM_PROMPT, /Book one only after the caller picks it, on their next turn; never choose one for them/);
 });
+
+test('a lookup refused for identity is answered by verifying the caller, then looking again', () => {
+  assert.match(SYSTEM_PROMPT, /identity_required[\s\S]{0,200}ask for two identifiers, call lookup_customer, then look the reference up again/i);
+});

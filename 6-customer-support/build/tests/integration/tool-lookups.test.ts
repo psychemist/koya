@@ -111,3 +111,27 @@ test('a failed or delayed transaction recommends a ticket', { skip: skipWithoutD
   assert.equal((await txn(c.id, 'TXN-9004')).ticket_recommended, true);
   await dropConversation(c.id);
 });
+
+// A call has no sign-in: until the caller is matched on two identifiers, a reference alone tells them nothing.
+test('on a phone call, an unverified caller gets no transaction or payout details', { skip: skipWithoutDatabase }, async () => {
+  const c = await newConversation({ channel: 'voice_phone' });
+  assert.deepEqual([(await txn(c.id, 'TXN-9001')).found, (await txn(c.id, 'TXN-9001')).reason], [false, 'identity_required']);
+  const p = (await payoutTool.run({ payout_id: 'PAY-7002' }, c.id)).result as any;
+  assert.deepEqual([p.found, p.reason], [false, 'identity_required']);
+  assert.ok(!('status' in p) && !('support_summary' in p), 'nothing about the record is returned');
+  await dropConversation(c.id);
+});
+
+test('on a phone call, a caller matched on two identifiers gets their own transaction', { skip: skipWithoutDatabase }, async () => {
+  const c = await newConversation({ channel: 'voice_phone' });
+  assert.equal((await cust(c.id, { contact_name: 'Amara', company_name: 'LagosLedger' })).found, true);
+  const r = await txn(c.id, 'TXN-9001');
+  assert.deepEqual([r.found, r.status, r.verification], [true, 'processing', 'customer_verified']);
+  await dropConversation(c.id);
+});
+
+test('a web call with no sign-in is held to the same rule', { skip: skipWithoutDatabase }, async () => {
+  const c = await newConversation({ channel: 'voice_web' });
+  assert.equal((await txn(c.id, 'TXN-9001')).reason, 'identity_required');
+  await dropConversation(c.id);
+});

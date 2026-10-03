@@ -2,7 +2,7 @@ import { z } from 'zod/v4';
 import { one } from '../../lib/db.ts';
 import { normalizeRef } from '../../lib/refs.ts';
 import { payoutSupportSummary, recordNeedsEscalation } from '../../lib/safe-summaries.ts';
-import { callerOf, GUEST_REFUSAL } from '../../lib/caller-binding.ts';
+import { callerOf, refusalFor } from '../../lib/caller-binding.ts';
 import type { ToolSpec } from '../define.ts';
 
 const input = z.object({
@@ -18,7 +18,8 @@ export const payoutTool: ToolSpec<any> = {
     'true, the reply must escalate. The recipient is returned only when the owning customer is verified on this call.',
   input: input as any, readOnly: true,
   async run(args: z.infer<typeof input>, conversationId: string) {
-    if ((await callerOf(conversationId)).mode === 'guest') return { result: GUEST_REFUSAL, summary: GUEST_REFUSAL };
+    const refused = refusalFor(await callerOf(conversationId));
+    if (refused) return { result: refused, summary: refused };
     const payoutRef = args.payout_id ? normalizeRef(args.payout_id, 'PAY') : null;
     const txnRef = !payoutRef && args.transaction_id ? normalizeRef(args.transaction_id, 'TXN') : null;
     if (!payoutRef && !txnRef) {

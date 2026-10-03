@@ -28,11 +28,29 @@ export async function bindCaller(conversationId: string, caller: Caller): Promis
 }
 
 /** What the tools need to know about the caller on this conversation. */
-export async function callerOf(conversationId: string): Promise<{ mode: CallerMode; verifiedCustomerId: string | null }> {
-  const r = await one<{ caller_mode: CallerMode; verified_customer_id: string | null }>(
-    'select caller_mode, verified_customer_id from public.conversations where id = $1', [conversationId]);
-  return { mode: r?.caller_mode ?? null, verifiedCustomerId: r?.verified_customer_id ?? null };
+export async function callerOf(conversationId: string): Promise<{ mode: CallerMode; verifiedCustomerId: string | null; channel: string | null }> {
+  const r = await one<{ caller_mode: CallerMode; verified_customer_id: string | null; channel: string | null }>(
+    'select caller_mode, verified_customer_id, channel from public.conversations where id = $1', [conversationId]);
+  return { mode: r?.caller_mode ?? null, verifiedCustomerId: r?.verified_customer_id ?? null, channel: r?.channel ?? null };
 }
+
+/**
+ * A call has no sign-in, so a caller on one is nobody in particular until lookup_customer matches them on two
+ * identifiers. Until then a transaction or payout reference tells them nothing: the support page refuses a guest the
+ * same way, and anyone can read a reference off an invoice.
+ */
+export function refusalFor(c: { mode: CallerMode; verifiedCustomerId: string | null; channel: string | null }) {
+  if (c.mode === 'guest') return GUEST_REFUSAL;
+  if (!c.verifiedCustomerId && (c.channel === 'voice_phone' || c.channel === 'voice_web')) return IDENTITY_FIRST;
+  return null;
+}
+
+/** Said the same way for a record that exists and one that does not. */
+export const IDENTITY_FIRST = {
+  found: false, reason: 'identity_required',
+  message: 'The caller is not verified yet, so nothing about this record can be shared. Keep the reference, ask for two ' +
+    'identifiers (contact name, company name, account email or customer ID), call lookup_customer, then look the reference up again.',
+};
 
 /** The tools' answer to a guest asking for account data. Said the same way for a record that exists and one that does not. */
 export const GUEST_REFUSAL = {
