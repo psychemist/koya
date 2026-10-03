@@ -118,7 +118,8 @@
   "maxDurationSeconds": 600,
   "silenceTimeoutSeconds": 30,
   "endCallPhrases": [
-    "Thanks for calling RelayPay support, goodbye."
+    "Thanks for calling RelayPay support, goodbye.",
+    "Thanks for calling RelayPay support. Goodbye."
   ],
   "backgroundDenoisingEnabled": true,
   "credentialIds": [

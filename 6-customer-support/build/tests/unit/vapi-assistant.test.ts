@@ -16,8 +16,9 @@ test('both server URLs authenticate through saved credentials, and no secret is 
   assert.match(a.server.credentialId, /^\$\{VAPI_WEBHOOK_CREDENTIAL_ID\}$/);
   assert.ok(!/"secret"|sk-ant|Bearer [a-z0-9]/i.test(JSON.stringify(a)));
 });
-test('the end-call phrase is the exact goodbye line the agent is told to say', () => {
-  assert.deepEqual(a.endCallPhrases, [LINES.goodbye]);
+// The agent sends "support, goodbye"; the transcript of the speech reads "support. Goodbye.". Either form ends the call.
+test('the end-call phrases are the goodbye line the agent is told to say, as sent and as transcribed', () => {
+  assert.deepEqual(a.endCallPhrases, [LINES.goodbye, LINES.goodbye.replace(', goodbye', '. Goodbye')]);
 });
 test('Vapi does not spend on its own summaries; the agent service builds them from records', () => {
   assert.equal(a.analysisPlan.summaryPlan.enabled, false);

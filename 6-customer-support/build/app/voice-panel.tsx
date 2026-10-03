@@ -39,8 +39,11 @@ function describeError(e: unknown): string {
   return `The call could not connect. Try again in a moment, or use chat instead${phone}.`;
 }
 
-/** The closing line the agent says when a call is over (lib/lines.ts), however the transcriber spells RelayPay. */
-const CLOSING = /thanks for calling relay ?pay support,? goodbye/i;
+/**
+ * The closing line the agent says when a call is over (lib/lines.ts), however the transcriber spells and punctuates
+ * it: the agent sends "support, goodbye", and the transcript comes back as "support. Goodbye.", sometimes in two parts.
+ */
+const CLOSING = /thanks for calling relay ?pay support[\s,.!]*goodbye/i;
 
 /**
  * Whose turn it is on a live call. A caller should never have to guess when to talk: RelayPay greets first,
@@ -118,7 +121,8 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
   // Whether a call is in progress. The SDK's stop() drops its speaking timer without clearing it, so a speech-end can
   // arrive up to a second after call-end; without this it put the live strip back on screen after End call.
   const live = useRef(false);
-  const closing = useRef<{ heard: boolean; speaking: boolean; timer: ReturnType<typeof setTimeout> | null }>({ heard: false, speaking: false, timer: null });
+  // said: what the agent has said since the caller last spoke, so a closing line split across transcript parts still counts.
+  const closing = useRef<{ heard: boolean; speaking: boolean; said: string; timer: ReturnType<typeof setTimeout> | null }>({ heard: false, speaking: false, said: '', timer: null });
   const configured = Boolean(PUBLIC_KEY && ASSISTANT_ID);
   const timer = useRef<ReturnType<typeof startTimer> | null>(null);
 
@@ -154,7 +158,7 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
     setError(''); setEntries([]); setMuted(false); setTurn('greeting'); setCallId(null); setState('connecting');
     primeTones();
     if (closing.current.timer) clearTimeout(closing.current.timer);
-    closing.current = { heard: false, speaking: false, timer: null };
+    closing.current = { heard: false, speaking: false, said: '', timer: null };
     timer.current = startTimer();
     // The signed caller rides with the call, so the agent knows who is speaking without asking. Asked for
     // now, alongside the SDK, rather than after it.
@@ -188,7 +192,9 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
           }
           if (m?.type !== 'transcript' || m.transcriptType !== 'final') return;
           if (m.role === 'user') setTurn((t) => (t === 'hearing' || t === 'you' ? 'thinking' : t));
-          if (m.role !== 'user' && CLOSING.test(m.transcript ?? '') && !closing.current.heard) {
+          if (m.role === 'user') closing.current.said = '';
+          else closing.current.said = `${closing.current.said} ${m.transcript ?? ''}`;
+          if (m.role !== 'user' && CLOSING.test(closing.current.said) && !closing.current.heard) {
             closing.current.heard = true;
             hangUpSoon(closing.current.speaking ? 8000 : 900);
           }
