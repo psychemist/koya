@@ -5,7 +5,7 @@ import { Transcript, type Entry } from './transcript.tsx';
 import { MicIcon, MicOffIcon, PhoneIcon } from './ui/icons.tsx';
 import { Lines } from './ui/lines.tsx';
 import { Feedback } from './ui/feedback.tsx';
-import { primeTones, tones } from './ui/tones.ts';
+import { primeTones, ring, tones } from './ui/tones.ts';
 import { usePersisted } from './ui/use-persisted.ts';
 import { requestsChanged } from './support/requests.tsx';
 
@@ -123,6 +123,8 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
   const live = useRef(false);
   // said: what the agent has said since the caller last spoke, so a closing line split across transcript parts still counts.
   const closing = useRef<{ heard: boolean; speaking: boolean; said: string; timer: ReturnType<typeof setTimeout> | null }>({ heard: false, speaking: false, said: '', timer: null });
+  // Stops the ringback. It rings from Start call until RelayPay starts speaking, or the call ends first.
+  const stopRing = useRef<() => void>(() => {});
   const configured = Boolean(PUBLIC_KEY && ASSISTANT_ID);
   const timer = useRef<ReturnType<typeof startTimer> | null>(null);
 
@@ -140,7 +142,7 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
   const connected = state === 'listening' || state === 'speaking';
   const elapsed = useElapsed(connected);
   useEffect(() => { onCallActive?.(active); }, [active, onCallActive]);
-  useEffect(() => () => { vapi.current?.stop(); }, []);
+  useEffect(() => () => { stopRing.current(); vapi.current?.stop(); }, []);
 
   /**
    * The agent's goodbye should end the call, and Vapi's end-call phrase does not always fire, which left calls
@@ -159,6 +161,8 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
     primeTones();
     if (closing.current.timer) clearTimeout(closing.current.timer);
     closing.current = { heard: false, speaking: false, said: '', timer: null };
+    stopRing.current();
+    if (soundOn.current) stopRing.current = ring();
     timer.current = startTimer();
     // The signed caller rides with the call, so the agent knows who is speaking without asking. Asked for
     // now, alongside the SDK, rather than after it.
@@ -171,9 +175,9 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
         const VapiClient = fake ?? (await loadSdk());
         const v = new VapiClient(PUBLIC_KEY) as unknown as Vapi;
         v.on('call-start-progress', (p: any) => timer.current?.stage(p));
-        v.on('call-start', () => { if (!live.current) return; timer.current?.mark('connected'); cue('connected'); setTurn('greeting'); setState('listening'); });
-        v.on('call-end', () => { live.current = false; if (closing.current.timer) clearTimeout(closing.current.timer); cue('ended'); requestsChanged(); setState('ended'); meter.current?.style.setProperty('--lvl', '0'); });
-        v.on('speech-start', () => { if (!live.current) return; timer.current?.greeted(); closing.current.speaking = true; setTurn('agent'); setState('speaking'); });
+        v.on('call-start', () => { if (!live.current) return; timer.current?.mark('connected'); setTurn('greeting'); setState('listening'); });
+        v.on('call-end', () => { live.current = false; stopRing.current(); if (closing.current.timer) clearTimeout(closing.current.timer); cue('ended'); requestsChanged(); setState('ended'); meter.current?.style.setProperty('--lvl', '0'); });
+        v.on('speech-start', () => { if (!live.current) return; stopRing.current(); timer.current?.greeted(); closing.current.speaking = true; setTurn('agent'); setState('speaking'); });
         v.on('speech-end', () => {
           if (!live.current) return;
           closing.current.speaking = false;
@@ -207,7 +211,7 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
             return [...prev, { who, text: m.transcript, at: new Date().toISOString() }];
           });
         });
-        v.on('error', (e: unknown) => { setError(describeError(e)); setState('error'); });
+        v.on('error', (e: unknown) => { stopRing.current(); setError(describeError(e)); setState('error'); });
         vapi.current = v;
       }
       const token = await tokenAsked;
@@ -221,6 +225,7 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
       if (call?.id) setCallId(call.id);
       if (cancelled.current) vapi.current.stop();
     } catch (e) {
+      stopRing.current();
       setError(describeError(e)); setState('error');
     }
   }
@@ -228,6 +233,7 @@ export function VoicePanel({ onSwitchToChat, onCallActive, firstName }: {
   function endCall() {
     cancelled.current = true;
     live.current = false;
+    stopRing.current();
     vapi.current?.stop();
     if (state === 'connecting') setState('ended');
   }
